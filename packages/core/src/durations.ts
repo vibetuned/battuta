@@ -94,6 +94,40 @@ export function meterCapacity(meter: MeterContext): Fraction | null {
   return frac(count, unit);
 }
 
+/**
+ * Decompose a duration into written notes (dur + dots, single dots only),
+ * largest first — used to fill gaps with rests after an entry replaces less
+ * time than it consumed. Throws if the remainder is not representable down
+ * to a double-dotted 128th (the entry should have been refused earlier).
+ */
+export function decomposeDuration(value: Fraction): { dur: string; dots?: number }[] {
+  const out: { dur: string; dots?: number }[] = [];
+  let rem = value;
+  let guard = 0;
+  while (rem.num > 0) {
+    if (++guard > 64) throw new Error("duration does not decompose");
+    let placed = false;
+    for (let den = 1; den <= 128; den *= 2) {
+      const dotted = frac(3, den * 2);
+      if (fCmp(dotted, rem) <= 0) {
+        out.push({ dur: String(den), dots: 1 });
+        rem = fAdd(rem, frac(-3, den * 2));
+        placed = true;
+        break;
+      }
+      const plain = frac(1, den);
+      if (fCmp(plain, rem) <= 0) {
+        out.push({ dur: String(den) });
+        rem = fAdd(rem, frac(-1, den));
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) throw new Error(`duration remainder ${rem.num}/${rem.den} not representable`);
+  }
+  return out;
+}
+
 export interface DurationProblem {
   staffN: number;
   layerN: number;

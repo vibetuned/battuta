@@ -5,11 +5,12 @@
  * version, and tiles re-render off cache-key changes alone.
  */
 import {
-  buildScore, resolveContexts, buildEventIndex, ensureIds, fromDom, serialize, childElements,
+  buildScore, resolveContexts, buildEventIndex, ensureIds, fromDom, serialize, serializeDocument, childElements, findAll, meterCapacity, frac,
   CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, DeleteToRestsCommand,
   copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand,
-  type CoreScore, type MeasureContext, type EventIndex, type Command, type DirtyRegion, type DomLikeElement,
-  type BlockSelection, type ClipboardFragment, type PastePlan,
+  ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand,
+  type CoreScore, type MeasureContext, type EventIndex, type Command, type DirtyRegion, type DomLikeElement, type DomLikeNode,
+  type BlockSelection, type ClipboardFragment, type PastePlan, type EntrySpec, type CoreElement, type CaretPosition,
 } from "@battuta/core";
 
 export class DocumentSession {
@@ -27,16 +28,39 @@ export class DocumentSession {
   /** `${measureIndex}/${staffN}` -> staff element id (block highlighting). */
   readonly staffIdByPos = new Map<string, string>();
 
+  /** Full document tree (meiHead and all) — the save target. */
+  readonly root: CoreElement;
+  /** Document prologue: xml-model PIs, license comments (preserved). */
+  readonly prologue: CoreElement[] = [];
+
   constructor(xml: string) {
     const doc = new DOMParser().parseFromString(xml, "application/xml");
     const err = doc.querySelector("parsererror");
     if (err) throw new Error("MEI parse error: " + err.textContent);
-    this.score = buildScore(fromDom(doc.documentElement as unknown as DomLikeElement));
+    const prologueComments: CoreElement[] = [];
+    for (let i = 0; i < doc.childNodes.length; i++) {
+      const node = doc.childNodes.item(i) as unknown as DomLikeNode & { nodeName: string };
+      if (!node || node === (doc.documentElement as unknown as DomLikeNode)) continue;
+      // Skip the source's own <?xml?> declaration; saves write a fresh one.
+      if (node.nodeType === 7 && node.nodeName !== "xml") this.prologue.push({ tag: "#pi", attrs: { target: node.nodeName }, children: [node.nodeValue ?? ""] });
+      else if (node.nodeType === 8) prologueComments.push({ tag: "#comment", attrs: {}, children: [node.nodeValue ?? ""] });
+    }
+    this.root = fromDom(doc.documentElement as unknown as DomLikeElement);
+    // Verovio rejects comments BEFORE the root element (PIs are fine), so
+    // prologue comments are preserved by moving them just inside <mei> —
+    // content kept verbatim, placement adjusted for compatibility.
+    this.root.children.unshift(...prologueComments);
+    this.score = buildScore(this.root);
     ensureIds(this.score.scoreDef);
     for (const m of this.score.measures) ensureIds(m);
     this.contexts = resolveContexts(this.score);
     this.index = buildEventIndex(this.score);
     this.reindexStaves();
+  }
+
+  /** Serialize the FULL document (edits, meiHead, unknown content, ids). */
+  saveDocument(): string {
+    return serializeDocument(this.root, this.prologue);
   }
 
   private reindexStaves(): void {
@@ -112,6 +136,55 @@ export class DocumentSession {
   }
   duplicateMeasures(at: number, count = 1): DirtyRegion[] {
     return this.execute(new DuplicateMeasuresCommand(at, count));
+  }
+
+  /** Overwrite-mode entry at the event; returns the entered event's id. */
+  enterEvent(targetId: string, spec: EntrySpec): string | null {
+    const ref = this.index.byId.get(targetId);
+    const capacity = (ref && meterCapacity(this.contexts[ref.measureIndex]?.get(ref.staffN)?.meter ?? {})) || frac(4, 4);
+    const cmd = new ReplaceEntryCommand(targetId, spec, capacity);
+    this.execute(cmd);
+    return cmd.enteredId;
+  }
+  addChordNote(targetId: string, pname: string, oct: number, accid?: string): DirtyRegion[] {
+    return this.execute(new AddChordNoteCommand(targetId, pname, oct, accid));
+  }
+  toggleTie(targetId: string): DirtyRegion[] {
+    return this.execute(new ToggleTieCommand(targetId));
+  }
+  toggleArtic(ids: string[], artic: string): DirtyRegion[] {
+    return this.execute(new ToggleArticCommand(ids, artic));
+  }
+  toggleDynam(targetId: string, value: string): DirtyRegion[] {
+    return this.execute(new ToggleDynamCommand(targetId, value));
+  }
+  private capacityAt(targetId: string) {
+    const ref = this.index.byId.get(targetId);
+    return (ref && meterCapacity(this.contexts[ref.measureIndex]?.get(ref.staffN)?.meter ?? {})) || frac(4, 4);
+  }
+  mergeWithNext(targetId: string): DirtyRegion[] {
+    return this.execute(new MergeEventsCommand(targetId, this.capacityAt(targetId)));
+  }
+  splitInHalf(targetId: string): DirtyRegion[] {
+    return this.execute(new SplitEventCommand(targetId, this.capacityAt(targetId)));
+  }
+
+  /** Pitch of the nearest note at or before the position (octave guessing). */
+  pitchNear(pos: CaretPosition): { pname: string; oct: number } | null {
+    for (let m = pos.measureIndex; m >= 0; m--) {
+      const events = this.index.eventsAt(m, pos.staffN, pos.layerN);
+      const start = m === pos.measureIndex ? Math.min(pos.eventIndex, events.length - 1) : events.length - 1;
+      for (let i = start; i >= 0; i--) {
+        const id = events[i];
+        const ref = id ? this.index.byId.get(id) : undefined;
+        if (!ref || (ref.tag !== "note" && ref.tag !== "chord")) continue;
+        const measure = this.score.measures[m];
+        const el = measure && findAll(measure, ref.tag).find((e) => e.attrs["xml:id"] === id);
+        const note = el && (el.tag === "note" ? el : findAll(el, "note")[0]);
+        if (note?.attrs["pname"] && note.attrs["oct"]) return { pname: note.attrs["pname"], oct: Number(note.attrs["oct"]) };
+      }
+    }
+    return null;
   }
 
   /**

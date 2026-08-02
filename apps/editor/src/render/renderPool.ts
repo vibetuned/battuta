@@ -17,6 +17,7 @@ export interface TileResult {
 interface Job {
   xml: string;
   key: string;
+  optionsJson: string;
   resolve: (r: TileResult) => void;
 }
 
@@ -50,9 +51,9 @@ class PoolWorker {
     });
   }
 
-  renderTile(id: number, xml: string, onDone: (msg: { svg: string; renderMs: number; error?: string }) => void) {
+  renderTile(id: number, xml: string, optionsJson: string, onDone: (msg: { svg: string; renderMs: number; error?: string }) => void) {
     this.handlers.set(id, onDone);
-    this.worker.postMessage({ type: "render", id, xml });
+    this.worker.postMessage({ type: "render", id, xml, optionsJson });
   }
 
   renderPages(id: number, xml: string, onPage: (index: number, svg: string) => void, done: (pageCount: number) => void) {
@@ -83,7 +84,11 @@ export class RenderPool {
     return Promise.all(this.workers.map((w) => w.ready)).then(() => undefined);
   }
 
-  render(key: string, xml: string): Promise<TileResult> {
+  /**
+   * Render a slice. `options` are per-document Verovio overrides (e.g. the
+   * forced spacingStaff); the CALLER must fold them into `key`.
+   */
+  render(key: string, xml: string, options?: Record<string, unknown>): Promise<TileResult> {
     const cached = this.cache.get(key);
     if (cached !== undefined) {
       this.hits++;
@@ -95,7 +100,7 @@ export class RenderPool {
     if (inFlight) return inFlight;
     this.misses++;
     const p = new Promise<TileResult>((resolve) => {
-      this.queue.push({ xml, key, resolve });
+      this.queue.push({ xml, key, optionsJson: JSON.stringify(options ?? {}), resolve });
       this.pump();
     });
     this.inFlight.set(key, p);
@@ -118,7 +123,7 @@ export class RenderPool {
     if (!job) return;
     worker.busy = true;
     await worker.ready;
-    worker.renderTile(this.nextId++, job.xml, ({ svg, renderMs, error }) => {
+    worker.renderTile(this.nextId++, job.xml, job.optionsJson, ({ svg, renderMs, error }) => {
       if (error === undefined) {
         this.cache.set(job.key, svg);
         if (this.cache.size > CACHE_MAX) {

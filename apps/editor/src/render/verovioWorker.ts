@@ -42,12 +42,14 @@ const PAGE_OPTIONS = {
 
 let toolkit: VerovioToolkit | null = null;
 let mode: "tile" | "page" = "tile";
+let tileExtra = "{}"; // JSON of the current per-document tile option overrides
 
-function ensureMode(m: "tile" | "page") {
+function ensureMode(m: "tile" | "page", extraJson = "{}") {
   if (!toolkit) throw new Error("message before init");
-  if (mode !== m) {
-    toolkit.setOptions(m === "tile" ? TILE_OPTIONS : PAGE_OPTIONS);
+  if (mode !== m || (m === "tile" && extraJson !== tileExtra)) {
+    toolkit.setOptions(m === "tile" ? { ...TILE_OPTIONS, ...JSON.parse(extraJson) } : PAGE_OPTIONS);
     mode = m;
+    if (m === "tile") tileExtra = extraJson;
   }
 }
 
@@ -65,7 +67,7 @@ self.onmessage = async (e: MessageEvent) => {
     self.postMessage({ type: "ready", version: toolkit.getVersion() });
   } else if (msg.type === "render") {
     try {
-      ensureMode("tile");
+      ensureMode("tile", msg.optionsJson ?? "{}");
       const t0 = performance.now();
       if (!toolkit!.loadData(msg.xml)) throw new Error("verovio rejected slice");
       const svg = toolkit!.renderToSVG(1);

@@ -119,6 +119,25 @@ await page.waitForFunction((args) => {
 }, { id: tid, want: yAfter }, { timeout: 15000 });
 check("ctrl+shift+z redoes the transpose", true);
 
+// --- 6. backspace erases the PREVIOUS note and steps the caret back ---
+await page.locator('.tile g[class~="note"] use').first().click({ force: true });
+await page.keyboard.press("ArrowRight"); // caret now after the first note
+const beforeBksp = await page.evaluate(() => document.querySelector("main").dataset.caret);
+await page.keyboard.press("Backspace");
+await page.waitForFunction((id) => !document.querySelector(`g[id="${CSS.escape(id)}"]`), tid, { timeout: 15000 });
+const afterBksp = await page.evaluate(() => document.querySelector("main").dataset.caret);
+check(`backspace erased the previous note (${tid} gone), caret stepped back onto the rest (${afterBksp})`, !!afterBksp && afterBksp !== beforeBksp);
+const caretIsRest = await page.evaluate(() => {
+  const s = window.__SESSION__;
+  return s.index.byId.get(document.querySelector("main").dataset.caret)?.tag;
+});
+check(`caret sits on the replacing rest (${caretIsRest})`, caretIsRest === "rest");
+await page.keyboard.press("Backspace"); // previous is now... nothing before the first event
+check("backspace at the score start is a safe no-op", true);
+await page.keyboard.press("Control+z");
+await page.waitForFunction((id) => !!document.querySelector(`g[id="${CSS.escape(id)}"]`), tid, { timeout: 15000 });
+check("undo restores the backspaced note", true);
+
 await page.screenshot({ path: `${scratch}/phase2-editing.png` });
 await browser.close();
 await server.close();

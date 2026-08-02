@@ -83,14 +83,18 @@ project exists.
   opening meter. Every tile displays in a uniform box with its **top staff
   line pinned to a shared baseline** (max extents above/below the staff over
   the document — ledger lines, lyrics, fermatas included).
-- Known limitation, noted for later: Verovio adapts **inter-staff** spacing
-  per tile (lyrics between staves), so lower staves can wobble a few px
-  between neighbors; `spacingStaff` is only a minimum and cannot force it.
-  The complete fix is **rows-as-single-slices** — render each row as one
-  multi-measure Verovio system (DESIGN.md's measure-window idea), which
-  makes all internal spacing consistent by construction at the cost of
-  row-level (instead of measure-level) re-render on edit (~15–60 ms, still
-  within budget). Revisit when polishing the edit view.
+- **Uniform inter-staff spacing via two-pass feedback, per row**: pass 1
+  renders tiles unforced and parses the inter-staff gap their content needs
+  (lyrics push staves apart) plus the real ink extent above the top staff
+  line; pass 2 re-renders each row with the row's max need forced as
+  Verovio's `spacingStaff` (a minimum, so the max of all needs is reachable
+  by all). Row box heights hug their own content — a lyric-free row stays
+  compact. `spacingStaff` also pads above the *first* staff, so tiles pin
+  to the intrinsic ink extent and crop the padding. Staff lines verified
+  pixel-identical across each row. Chosen over rendering whole rows as
+  single slices, which would have made structural edits, row sizing, and
+  per-measure drag-and-drop harder.
+- Tabs have close buttons; zoom is per-document.
 - `@battuta/core`: exact-rational **duration model** (dots, tuplets, mRest,
   grace, meter capacity) powering the paste validator; **block selection**
   (measure-range × staff-range) and **clipboard fragments** (plain data +
@@ -109,6 +113,40 @@ project exists.
   Verovio toolkit.
 - Still open in Phase 3: splice-at-caret and overlay-as-new-layer paste
   policies; split/merge measure commands; side-by-side split view.
+
+Phase 4 in progress (2026-08-02): note entry + round-trip hardening.
+
+- **Note input mode** (`i` to toggle): overwrite-mode entry that is
+  duration-invariant by construction — equal swaps in place, shorter fills
+  the remainder with rests, longer consumes following events (refusing
+  loudly at beam/tuplet/measure boundaries); a–g pitches with
+  nearest-octave guessing, shift+A–G chord building, `r` rests, 7..1
+  durations (5 = quarter), `.` dot, s/v/n accidentals, `t` tie (back to the
+  predecessor; pitch-checked), `,`/`;` staccato/accent, alt+f/p dynamics.
+  **Web MIDI** note-on enters at the caret while in input mode.
+- **Round-trip hardening**: the session now keeps the FULL document tree —
+  `meiHead`, unknown elements/attributes, comments, `<?xml-model?>` PIs —
+  and save serializes all of it. Corpus tests prove serialization is a
+  fixpoint, no content is lost across cycles, and a reloaded save needs
+  zero new ids. Compatibility note: Verovio rejects comments before the
+  root element (PIs are fine), so prologue comments are preserved by moving
+  them just inside `<mei>`.
+- 79 core tests (property suite now fuzzes entry commands too);
+  `node spikes/verify-phase4.mjs` covers the exit criterion: transcribe a
+  passage from scratch by keyboard, no XML touched, durations always valid.
+- **Merge/split** (`m` / `x`): merge the caret event with the next — same
+  pitch (or both rests / identical chord pitch-sets), adjacent in the same
+  container, sum expressible as one written duration (quarter+eighth →
+  dotted quarter; half+eighth → refused) — keeps the first event's id and
+  dissolves the inner tie pair. Split halves any note/rest/chord in place
+  (dur×2, dots preserved: dotted half → two dotted quarters), ties
+  redistributed. Whole-measure rests participate too: `x` splits an mRest
+  into two half-capacity rest runs (meter-aware — 6/8 gives two dotted
+  quarters), and merging rests back up to the full measure collapses them
+  into an mRest — so the shortcuts work in freshly inserted measures. Backspace erases the *previous* note and steps back
+  (text-editor semantics); Delete stays at the caret.
+- Still open in Phase 4: tuplet entry; file-watching for external edits
+  (needs the Tauri shell or the File System Access API).
 
 ## Layout
 

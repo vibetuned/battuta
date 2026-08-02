@@ -29,13 +29,24 @@ export interface DomLikeElement extends DomLikeNode {
 const ELEMENT_NODE = 1;
 const TEXT_NODE = 3;
 const CDATA_SECTION_NODE = 4;
+const PI_NODE = 7;
+const COMMENT_NODE = 8;
 
-/** Convert a DOM-shaped element tree into a CoreElement tree. */
+/** Pseudo-tags for non-element nodes preserved through round-trips. */
+export const COMMENT_TAG = "#comment";
+export const PI_TAG = "#pi";
+
+/**
+ * Convert a DOM-shaped element tree into a CoreElement tree. Comments and
+ * processing instructions are preserved as pseudo-elements (walkers switch
+ * on real tag names, so they pass through untouched); namespace attributes
+ * are kept so a full document serializes back valid.
+ */
 export function fromDom(el: DomLikeElement): CoreElement {
   const attrs: Record<string, string> = {};
   for (let i = 0; i < el.attributes.length; i++) {
     const a = el.attributes.item(i);
-    if (a && !a.name.startsWith("xmlns")) attrs[a.name] = a.value;
+    if (a) attrs[a.name] = a.value;
   }
   const children: (CoreElement | string)[] = [];
   for (let i = 0; i < el.childNodes.length; i++) {
@@ -46,6 +57,10 @@ export function fromDom(el: DomLikeElement): CoreElement {
     } else if (node.nodeType === TEXT_NODE || node.nodeType === CDATA_SECTION_NODE) {
       const text = node.nodeValue ?? "";
       if (text.trim() !== "") children.push(text);
+    } else if (node.nodeType === COMMENT_NODE) {
+      children.push({ tag: COMMENT_TAG, attrs: {}, children: [node.nodeValue ?? ""] });
+    } else if (node.nodeType === PI_NODE) {
+      children.push({ tag: PI_TAG, attrs: { target: (node as DomLikeElement).nodeName }, children: [node.nodeValue ?? ""] });
     }
   }
   return { tag: el.localName ?? el.nodeName, attrs, children };
@@ -56,12 +71,22 @@ const escapeAttr = (s: string) => escapeText(s).replace(/"/g, "&quot;");
 
 /** Serialize a CoreElement subtree to XML (no pretty-printing). */
 export function serialize(el: CoreElement): string {
+  if (el.tag === COMMENT_TAG) return `<!--${el.children[0] ?? ""}-->`;
+  if (el.tag === PI_TAG) return `<?${el.attrs["target"] ?? "pi"} ${el.children[0] ?? ""}?>`;
   const attrs = Object.entries(el.attrs)
     .map(([k, v]) => ` ${k}="${escapeAttr(v)}"`)
     .join("");
   if (el.children.length === 0) return `<${el.tag}${attrs}/>`;
   const inner = el.children.map((c) => (typeof c === "string" ? escapeText(c) : serialize(c))).join("");
   return `<${el.tag}${attrs}>${inner}</${el.tag}>`;
+}
+
+/**
+ * Serialize a full document: XML declaration, prologue nodes (xml-model
+ * processing instructions, license comments), then the root element.
+ */
+export function serializeDocument(root: CoreElement, prologue: CoreElement[] = []): string {
+  return [`<?xml version="1.0" encoding="UTF-8"?>`, ...prologue.map(serialize), serialize(root)].join("\n") + "\n";
 }
 
 export function deepClone(el: CoreElement): CoreElement {

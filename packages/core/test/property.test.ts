@@ -13,7 +13,9 @@ import {
   buildEventIndex, serialize, ensureIds, resolveContexts, CommandStack, copyBlock, planPasteReplace,
   TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, DeleteToRestsCommand,
   PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand,
-  validateMeasureDurations,
+  ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ToggleArticCommand, ToggleDynamCommand,
+  MergeEventsCommand, SplitEventCommand,
+  validateMeasureDurations, frac,
   type Command, type CommandContext, type CoreScore,
 } from "../src/index.js";
 import { scoreFrom } from "./helpers.js";
@@ -41,7 +43,8 @@ function makeCommand(ctx: CommandContext, d: CmdDescriptor): Command | null {
   const ids = [...new Set(d.targetSeeds.map((s) => candidates[s % candidates.length]!))];
   const nMeasures = ctx.score.measures.length;
   const m = d.param % nMeasures;
-  switch (d.kind % 7) {
+  const PNAMES = ["c", "d", "e", "f", "g", "a", "b"] as const;
+  switch (d.kind % 12) {
     case 0: return new TransposeStepCommand(ids, (d.param % 5) - 2 || 1);
     case 1: return new TransposeOctaveCommand(ids, d.param % 2 === 0 ? 1 : -1);
     case 2: return new ToggleAccidentalCommand(ids, (["s", "f", "n"] as const)[d.param % 3]!);
@@ -61,12 +64,30 @@ function makeCommand(ctx: CommandContext, d: CmdDescriptor): Command | null {
       const plan = planPasteReplace(ctx.score, contexts, frag, at, staffN);
       return plan.ok ? new PasteReplaceMeasuresCommand(frag, at, staffN) : null;
     }
-    default: return new DuplicateMeasuresCommand(m, 1);
+    case 7: return new DuplicateMeasuresCommand(m, 1);
+    case 8: {
+      const allEvents = [...ctx.index.byId.values()].map((r) => r.id);
+      const target = allEvents[(d.targetSeeds[0] ?? 0) % allEvents.length]!;
+      const kind = d.param % 3 === 0 ? "rest" as const : "note" as const;
+      return new ReplaceEntryCommand(target, { kind, pname: PNAMES[d.param % 7]!, oct: 3 + (d.param % 3), dur: ["1", "2", "4", "8", "16"][d.param % 5]!, ...(d.param % 4 === 0 ? { dots: 1 } : {}) }, frac(4, 4));
+    }
+    case 9: return new AddChordNoteCommand(ids[0]!, PNAMES[d.param % 7]!, 3 + (d.param % 3));
+    case 10: return new ToggleTieCommand(ids[0]!);
+    case 11: return new ToggleArticCommand(ids, ["stacc", "acc", "ten"][d.param % 3]!);
+    case 12: return new ToggleDynamCommand(ids[0]!, ["p", "f", "mf"][d.param % 3]!);
+    case 13: {
+      const allEvents = [...ctx.index.byId.values()].map((r) => r.id);
+      return new MergeEventsCommand(allEvents[(d.targetSeeds[0] ?? 0) % allEvents.length]!);
+    }
+    default: {
+      const allEvents = [...ctx.index.byId.values()].map((r) => r.id);
+      return new SplitEventCommand(allEvents[(d.targetSeeds[0] ?? 0) % allEvents.length]!);
+    }
   }
 }
 
 const cmdArb = fc.record({
-  kind: fc.integer({ min: 0, max: 7 }),
+  kind: fc.integer({ min: 0, max: 14 }),
   targetSeeds: fc.array(fc.nat(), { minLength: 1, maxLength: 6 }),
   param: fc.nat(),
 });
@@ -81,7 +102,9 @@ describe("command properties (fast-check)", () => {
         for (const d of descriptors) {
           const ctx: CommandContext = { score, index: buildEventIndex(score) };
           const cmd = makeCommand(ctx, d);
-          if (cmd) stack.execute(ctx, cmd);
+          try {
+            if (cmd) stack.execute(ctx, cmd);
+          } catch { /* refused entries (boundaries, pitch rules) are no-ops */ }
         }
         while (stack.canUndo) stack.undo({ score, index: buildEventIndex(score) });
         expect(snapshot()).toBe(original);
@@ -98,7 +121,9 @@ describe("command properties (fast-check)", () => {
         for (const d of descriptors) {
           const ctx: CommandContext = { score, index: buildEventIndex(score) };
           const cmd = makeCommand(ctx, d);
-          if (cmd) stack.execute(ctx, cmd);
+          try {
+            if (cmd) stack.execute(ctx, cmd);
+          } catch { /* refused entries are no-ops */ }
           const contexts = resolveContexts(score);
           score.measures.forEach((m, i) => {
             for (const [staffN, staffCtx] of contexts[i]!) {
@@ -127,7 +152,9 @@ describe("command properties (fast-check)", () => {
           const ctx: CommandContext = { score, index: buildEventIndex(score) };
           if (op.op === "execute") {
             const cmd = makeCommand(ctx, op.cmd);
-            if (cmd) stack.execute(ctx, cmd);
+            try {
+              if (cmd) stack.execute(ctx, cmd);
+            } catch { /* refused entries are no-ops */ }
           } else if (op.op === "undo") stack.undo(ctx);
           else stack.redo(ctx);
         }

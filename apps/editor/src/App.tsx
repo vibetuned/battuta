@@ -21,7 +21,10 @@ interface OpenDoc {
 }
 
 interface TileState {
-  key: string;
+  /** Content key (context + measure + header variant), spacing-agnostic. */
+  baseKey: string;
+  /** Key of the variant currently displayed (baseKey, or baseKey-ssN). */
+  displayKey: string;
   svg: string;
   ms: number;
   cached: boolean;
@@ -30,6 +33,8 @@ interface TileState {
   h: number;
   /** Top staff line offset from the viewBox top (baseline alignment). */
   staffTop: number;
+  /** Largest inter-staff gap in this render, in MEI units. */
+  maxGapUnits: number;
 }
 
 const parseViewBox = (svg: string): { w: number; h: number } => {
@@ -38,24 +43,45 @@ const parseViewBox = (svg: string): { w: number; h: number } => {
 };
 
 /**
- * Distance from the tile's viewBox top to its first staff line, in outer
- * viewBox units. Staff paths live in Verovio's inner definition-scale space
- * (×10). Tiles vary here (ledger lines, fermatas, lyrics extend the crop);
- * pinning this offset to a common value aligns staves across the row.
+ * Staff geometry parsed from a tile's SVG (outer viewBox units; staff paths
+ * live in Verovio's inner definition-scale space, ×10).
+ * - staffTop: first staff line offset from the viewBox top (baseline pin).
+ * - maxGapUnits: the largest inter-staff gap in MEI units — feeding the
+ *   document-wide maximum back as Verovio's spacingStaff forces every tile
+ *   to identical staff geometry (spacingStaff is a MINIMUM, so the max of
+ *   all needs is reachable by all tiles).
  */
-const parseStaffTop = (svg: string, h: number): number => {
-  let min = Infinity;
-  for (const m of svg.matchAll(/class="staff"[^>]*>\s*<path d="M\d+ (\d+)/g)) {
-    const y = Number(m[1]) / 10;
-    if (y < min) min = y;
+const parseStaffGeometry = (svg: string, h: number): { staffTop: number; maxGapUnits: number } => {
+  // Staff paths live in the nested definition-scale space, whose ratio to
+  // the outer viewBox depends on the render scale (1000/scale, i.e. ×25 at
+  // scale 40) — derive it from the two viewBoxes, never assume.
+  const innerTag = svg.match(/<svg[^>]*class="definition-scale"[^>]*>/)?.[0];
+  const innerH = Number(innerTag?.match(/viewBox="0 0 \d+ (\d+)"/)?.[1] ?? NaN);
+  const factor = innerH > 0 && h > 0 ? innerH / h : 10;
+  const tops: number[] = [];
+  let space = 180 / factor * 2.5; // fallback: one staff space
+  for (const m of svg.matchAll(/class="staff"[^>]*>\s*<path d="M\d+ (\d+)[^/]*?\/>\s*<path d="M\d+ (\d+)/g)) {
+    tops.push(Number(m[1]) / factor);
+    space = (Number(m[2]) - Number(m[1])) / factor;
   }
-  return Number.isFinite(min) ? min : h * 0.4;
+  tops.sort((a, b) => a - b);
+  const unit = space / 2; // 1 MEI unit = half staff space
+  let maxGapUnits = 0;
+  for (let i = 1; i < tops.length; i++) {
+    const gap = tops[i]! - tops[i - 1]! - 8 * unit; // minus the staff height
+    maxGapUnits = Math.max(maxGapUnits, gap / unit);
+  }
+  return { staffTop: tops[0] ?? h * 0.4, maxGapUnits: Math.ceil(maxGapUnits) };
 };
 
-const measureTile = (svg: string, key: string, r: TileResult): TileState => {
+const measureTile = (svg: string, baseKey: string, displayKey: string, r: TileResult): TileState => {
   const { w, h } = parseViewBox(svg);
-  return { key, svg, ms: r.renderMs, cached: r.cached, w, h, staffTop: parseStaffTop(svg, h) };
+  const geo = parseStaffGeometry(svg, h);
+  return { baseKey, displayKey, svg, ms: r.renderMs, cached: r.cached, w, h, staffTop: geo.staffTop, maxGapUnits: geo.maxGapUnits };
 };
+
+/** Verovio caps spacingStaff at 48 MEI units; beyond that, adaptive wins. */
+const SPACING_STAFF_MAX = 48;
 
 /**
  * Display zoom: Verovio's units-per-staff are constant across documents, so
@@ -78,7 +104,18 @@ function TileGrid({ session, version, pool, zoom, onRendered, onSettled }: { ses
   const [headers, setHeaders] = useState<ReadonlyMap<string, TileState>>(new Map());
   const [visible, setVisible] = useState<ReadonlySet<number>>(new Set());
   const [containerW, setContainerW] = useState(1400);
-  const requestedKey = useRef(new Map<number, string>());
+  /** Bumped whenever an unforced measurement lands (drives the forced pass). */
+  const [measureTick, setMeasureTick] = useState(0);
+  /** Intrinsic inter-staff need per content key — measured on UNFORCED
+   * renders only (a forced render reflects the forced gap, not the need). */
+  const intrinsicGap = useRef(new Map<string, number>());
+  /** Real ink extent above the top staff line per content key (unforced).
+   * Forced renders pad above the first staff too (spacingStaff applies to
+   * every staff); rows pin to this compact extent and crop the padding. */
+  const intrinsicTop = useRef(new Map<string, number>());
+  const sliceCache = useRef(new Map<number, { key: string; xml: string }>());
+  const requestedBase = useRef(new Map<number, string>());
+  const requestedForced = useRef(new Map<number, string>());
   const requestedHeaders = useRef(new Set<string>());
   const alive = useRef(true);
 
@@ -100,31 +137,24 @@ function TileGrid({ session, version, pool, zoom, onRendered, onSettled }: { ses
     return () => ro.disconnect();
   }, []);
 
-  // --- Document-wide vertical metrics: pin every staff to the same y and
-  // give every tile the same box height (max extent above/below the staff
-  // over all rendered tiles — ledger lines, lyrics, fermatas included).
   const measureCount = session.score.measures.length;
   const rendered = useMemo(() => [...tiles.values()], [tiles]);
-  const maxTop = rendered.reduce((m, t) => Math.max(m, t.staffTop), 60);
-  const maxBottom = rendered.reduce((m, t) => Math.max(m, t.h - t.staffTop), 140);
-  const boxH = (maxTop + maxBottom) * zoom;
-
-  // --- Row layout: greedy fill by real (or estimated) tile widths, each row
-  // prefixed by a system-start header cell (clef + keysig for that context).
   const estimateW = useMemo(() => {
     const ws = rendered.map((t) => t.w).sort((a, b) => a - b);
     return ws[Math.floor(ws.length / 2)] ?? 150;
   }, [rendered]);
   const headerSlices = useMemo(() => Array.from({ length: measureCount }, (_, i) => synthesizeRowHeader(session.score, session.contexts, i)), [session, measureCount, version]);
+
+  // --- Row layout: greedy fill by real (or estimated) tile widths, each row
+  // prefixed by a system-start header cell (clef + keysig for that context).
   const rows = useMemo(() => {
     const out: { headerKey: string; indices: number[] }[] = [];
-    const headerW = (key: string) => (headers.get(key)?.w ?? 110) * zoom;
+    const headerW = 110 * zoom;
     let cur: number[] = [];
     let acc = 0;
     for (let i = 0; i < measureCount; i++) {
       const wpx = (tiles.get(i)?.w ?? estimateW) * zoom;
-      const hk = headerSlices[cur.length ? cur[0]! : i]!.key;
-      if (cur.length && acc + wpx > containerW - headerW(hk)) {
+      if (cur.length && acc + wpx > containerW - headerW) {
         out.push({ headerKey: headerSlices[cur[0]!]!.key, indices: cur });
         cur = [i];
         acc = wpx;
@@ -135,22 +165,19 @@ function TileGrid({ session, version, pool, zoom, onRendered, onSettled }: { ses
     }
     if (cur.length) out.push({ headerKey: headerSlices[cur[0]!]!.key, indices: cur });
     return out;
-  }, [measureCount, tiles, headers, estimateW, zoom, containerW, headerSlices]);
+  }, [measureCount, tiles, estimateW, zoom, containerW, headerSlices]);
   const rowsSig = rows.map((r) => r.indices[0]).join(",");
 
-  // Render the header cell for each row (cached by context key).
-  useEffect(() => {
-    for (const row of rows) {
-      const slice = headerSlices[row.indices[0]!]!;
-      if (requestedHeaders.current.has(slice.key)) continue;
-      requestedHeaders.current.add(slice.key);
-      void pool.render(slice.key, slice.xml).then((r) => {
-        if (!alive.current || r.error) return;
-        setHeaders((prev) => new Map(prev).set(slice.key, measureTile(r.svg, slice.key, r)));
-      });
+  /** A row's forced gap: the max intrinsic need among its measured tiles. */
+  const rowSpacing = (row: { indices: number[] }): number => {
+    let ss = 0;
+    for (const i of row.indices) {
+      const base = sliceCache.current.get(i)?.key;
+      const g = base !== undefined ? intrinsicGap.current.get(base) : undefined;
+      if (g !== undefined) ss = Math.max(ss, g);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rowsSig, headerSlices, pool]);
+    return Math.min(ss, SPACING_STAFF_MAX);
+  };
 
   // Observe placeholders for lazy rendering. Re-runs when the measure count
   // or row structure changes (row reflow recreates the tile elements), so
@@ -174,16 +201,14 @@ function TileGrid({ session, version, pool, zoom, onRendered, onSettled }: { ses
     return () => io.disconnect();
   }, [session, measureCount, rowsSig]);
 
+  // --- Pass 1: measurement. Render visible tiles UNFORCED to learn their
+  // intrinsic inter-staff need; display immediately when content is new
+  // (fresh content beats spacing consistency; pass 2 replaces it shortly).
+  // No cancellation: in-flight renders are superseded by key checks only.
   useEffect(() => {
-    // No cancellation here: an in-flight render stays valid unless a newer
-    // key superseded it for the same tile (checked at resolve time). A
-    // cancel-on-rerun flag would drop renders every time `visible` grows
-    // during scrolling, permanently (requestedKey already marks them).
     // Header policy: the row-start header cells own clef/keysig/brackets, so
     // tiles draw only CHANGES (clef/keysig/meter where they differ from the
     // previous measure) plus the meter at the very start of the piece.
-    // Hidden elements keep their values in force (pitch spelling, staff
-    // positions); the page view always shows full engraving.
     const headerFor = (index: number): TileHeader => {
       if (index === 0) return { clef: false, keysig: false, meter: true, symbols: false };
       const prev = session.contexts[index - 1]!;
@@ -204,13 +229,18 @@ function TileGrid({ session, version, pool, zoom, onRendered, onSettled }: { ses
     for (const index of visible) {
       if (index >= session.score.measures.length) continue; // stale after -m
       const slice = synthesizeTile(session.score, session.contexts, index, 1, headerFor(index));
-      if (requestedKey.current.get(index) === slice.key) continue;
-      requestedKey.current.set(index, slice.key);
+      sliceCache.current.set(index, { key: slice.key, xml: slice.xml });
+      if (requestedBase.current.get(index) === slice.key) continue;
+      requestedBase.current.set(index, slice.key);
       jobs.push(
         pool.render(slice.key, slice.xml).then((r) => {
           if (!alive.current) return;
-          if (requestedKey.current.get(index) !== slice.key) return; // superseded by an edit
-          setTiles((prev) => new Map(prev).set(index, measureTile(r.svg, slice.key, r)));
+          if (requestedBase.current.get(index) !== slice.key) return; // superseded by an edit
+          const state = measureTile(r.svg, slice.key, slice.key, r);
+          intrinsicGap.current.set(slice.key, r.error ? 0 : state.maxGapUnits);
+          intrinsicTop.current.set(slice.key, state.staffTop);
+          setTiles((prev) => (prev.get(index)?.baseKey === slice.key ? prev : new Map(prev).set(index, state)));
+          setMeasureTick((t) => t + 1);
           onRendered(r);
         }),
       );
@@ -224,20 +254,72 @@ function TileGrid({ session, version, pool, zoom, onRendered, onSettled }: { ses
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, version, session, pool]);
 
-  // Pin a tile's staff to the shared baseline inside the uniform box.
-  const aligned = (t: TileState) => (
-    <div style={{ width: t.w * zoom, height: boxH, overflow: "visible", position: "relative" }}>
-      <div style={{ position: "absolute", top: (maxTop - t.staffTop) * zoom, width: t.w * zoom, height: t.h * zoom }} dangerouslySetInnerHTML={{ __html: t.svg }} />
+  // --- Pass 2: consistency. Each row re-renders its tiles (and header) with
+  // the row's max intrinsic gap forced as spacingStaff, so all staves in the
+  // row share identical geometry — without inflating gap-free rows.
+  useEffect(() => {
+    for (const row of rows) {
+      const ss = rowSpacing(row);
+      const sfx = ss > 0 ? `-ss${ss}` : "";
+      const options = ss > 0 ? { spacingStaff: ss } : undefined;
+      const headerBase = headerSlices[row.indices[0]!]!.key;
+      const headerKey = headerBase + sfx;
+      if (!requestedHeaders.current.has(headerKey)) {
+        requestedHeaders.current.add(headerKey);
+        const hs = headerSlices[row.indices[0]!]!;
+        void pool.render(headerKey, hs.xml, options).then((r) => {
+          if (!alive.current || r.error) return;
+          setHeaders((prev) => new Map(prev).set(headerKey, measureTile(r.svg, headerBase, headerKey, r)));
+        });
+      }
+      for (const index of row.indices) {
+        const base = sliceCache.current.get(index);
+        if (!base) continue;
+        const intrinsic = intrinsicGap.current.get(base.key);
+        if (intrinsic === undefined) continue; // not measured yet
+        // The max-need tile's unforced render already has the row geometry;
+        // resolving through the pool makes that case a cache hit while still
+        // restoring the display if it holds a stale forced variant.
+        const desired = ss === 0 || ss === intrinsic ? base.key : base.key + sfx;
+        if (requestedForced.current.get(index) === desired) continue;
+        requestedForced.current.set(index, desired);
+        void pool.render(desired, base.xml, desired === base.key ? undefined : options).then((r) => {
+          if (!alive.current || r.error) return;
+          if (sliceCache.current.get(index)?.key !== base.key) return; // superseded
+          if (requestedForced.current.get(index) !== desired) return;
+          setTiles((prev) => (prev.get(index)?.displayKey === desired ? prev : new Map(prev).set(index, measureTile(r.svg, base.key, desired, r))));
+        });
+      }
+    }
+    // rowSpacing reads refs; rows/measureTick are the real triggers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rowsSig, measureTick, headerSlices, pool]);
+
+  // Pin a tile's staff to the row baseline inside the row-uniform box.
+  // Offsets can be negative (cropping a forced variant's padding above the
+  // first staff); overflow:hidden keeps the crop, and rowTop covers all real
+  // ink above the line, so no content is ever clipped.
+  const aligned = (t: TileState, rowTop: number, rowBoxH: number) => (
+    <div style={{ width: t.w * zoom, height: rowBoxH, overflow: "hidden", position: "relative" }}>
+      <div style={{ position: "absolute", top: `${(rowTop - t.staffTop) * zoom}px`, width: t.w * zoom, height: t.h * zoom }} dangerouslySetInnerHTML={{ __html: t.svg }} />
     </div>
   );
 
   return (
     <div ref={containerRef}>
       {rows.map((row) => {
-        const header = headers.get(row.headerKey);
+        const ss = rowSpacing(row);
+        const header = headers.get(row.headerKey + (ss > 0 ? `-ss${ss}` : ""));
+        const members = row.indices.map((i) => tiles.get(i)).filter((t): t is TileState => !!t);
+        const withHeader = header ? [header, ...members] : members;
+        // Compact baseline: real ink above the line (intrinsic), not the
+        // forced variants' padding. Bottom extents come from what is shown.
+        const rowTop = members.reduce((m, t) => Math.max(m, intrinsicTop.current.get(t.baseKey) ?? t.staffTop), 60);
+        const rowBottom = withHeader.reduce((m, t) => Math.max(m, t.h - t.staffTop), 140);
+        const rowBoxH = (rowTop + rowBottom) * zoom;
         return (
           <div className="score-row" key={row.indices[0]}>
-            {header && <div className="rowhdr">{aligned(header)}</div>}
+            {header && <div className="rowhdr">{aligned(header, rowTop, rowBoxH)}</div>}
             {row.indices.map((index) => {
               const tile = tiles.get(index);
               return (
@@ -248,10 +330,10 @@ function TileGrid({ session, version, pool, zoom, onRendered, onSettled }: { ses
                         m{index + 1}
                         {tile.cached ? " · cache" : ` · ${tile.ms.toFixed(1)} ms`}
                       </span>
-                      {aligned(tile)}
+                      {aligned(tile, rowTop, rowBoxH)}
                     </>
                   ) : (
-                    <div className="placeholder" style={{ width: estimateW * zoom, height: boxH }}>
+                    <div className="placeholder" style={{ width: estimateW * zoom, height: rowBoxH }}>
                       m{index + 1}
                     </div>
                   )}
@@ -318,6 +400,11 @@ export default function App() {
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const zoomByDoc = useRef(new Map<number, number>());
   const mainRef = useRef<HTMLElement>(null);
+  // --- note input mode ---
+  const [entryMode, setEntryMode] = useState(false);
+  const [entryDur, setEntryDur] = useState("4");
+  const [entryDots, setEntryDots] = useState(0);
+  const lastEntered = useRef<string | null>(null);
 
   const active = docs.find((d) => d.id === activeId) ?? null;
   const session = active?.session ?? null;
@@ -336,6 +423,8 @@ export default function App() {
     anchor.current = null;
     setEditLatency(null);
     setNotice(null);
+    setEntryMode(false);
+    lastEntered.current = null;
   }, []);
 
   const openDoc = useCallback(
@@ -380,6 +469,22 @@ export default function App() {
     }
   };
 
+  const closeDoc = (id: number) => {
+    const remaining = docs.filter((d) => d.id !== id);
+    setDocs(remaining);
+    zoomByDoc.current.delete(id);
+    if (id === activeId) {
+      const next = remaining[remaining.length - 1] ?? null;
+      setActiveId(next?.id ?? null);
+      setZoom(next ? zoomByDoc.current.get(next.id) ?? DEFAULT_ZOOM : DEFAULT_ZOOM);
+      resetDocUiState();
+      if (next) {
+        if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__SESSION__ = next.session;
+        setVersion(next.session.version);
+      }
+    }
+  };
+
   const caretId = session && caret ? session.index.eventIdAt(caret) : undefined;
 
   /** ids an edit applies to: the selection, else the caret event. */
@@ -400,6 +505,51 @@ export default function App() {
       });
     },
     [],
+  );
+
+  /** Choose the octave that puts pname nearest the previous note (or oct 4). */
+  const nearestOctave = useCallback(
+    (pname: string, pos: CaretPosition): number => {
+      const PN = ["c", "d", "e", "f", "g", "a", "b"];
+      const prev = session?.pitchNear(pos);
+      if (!prev) return 4;
+      const prevAbs = prev.oct * 7 + PN.indexOf(prev.pname);
+      let best = 4;
+      let bestDist = Infinity;
+      for (let oct = prev.oct - 1; oct <= prev.oct + 1; oct++) {
+        const dist = Math.abs(oct * 7 + PN.indexOf(pname) - prevAbs);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = oct;
+        }
+      }
+      return best;
+    },
+    [session],
+  );
+
+  /** Overwrite-mode entry at the caret; advances the caret afterwards. */
+  const enterAtCaret = useCallback(
+    (spec: { kind: "note" | "rest"; pname?: string; oct?: number; accid?: string }) => {
+      if (!session || !caret || !caretId) return;
+      try {
+        const entered = session.enterEvent(caretId, {
+          kind: spec.kind,
+          ...(spec.pname !== undefined && { pname: spec.pname }),
+          ...(spec.oct !== undefined && { oct: spec.oct }),
+          ...(spec.accid !== undefined && { accid: spec.accid }),
+          dur: entryDur,
+          ...(entryDots > 0 && { dots: entryDots }),
+        });
+        lastEntered.current = entered;
+        afterCommand(session);
+        setCaret((c) => (c ? caretRight(session.index, session.score, c) ?? c : c));
+        setNotice(null);
+      } catch (err) {
+        setNotice(`entry refused: ${err instanceof Error ? err.message : err}`);
+      }
+    },
+    [session, caret, caretId, entryDur, entryDots, afterCommand],
   );
 
   // Keyboard: navigation, selection, edits, undo/redo.
@@ -458,6 +608,104 @@ export default function App() {
       }
       if (!caret) return;
 
+      // --- note input mode: letters enter, digits set duration ---
+      if (!entryMode && e.key === "i" && !mod) {
+        e.preventDefault();
+        setEntryMode(true);
+        setNotice("note input: a–g pitch · shift+A–G chord · r rest · 1–7 duration (5=quarter) · . dot · s/v/n sharp/flat/natural · t tie · , stacc · ; accent · shift+F/P dynamics · esc exit");
+        return;
+      }
+      if (entryMode && !mod) {
+        const DUR: Record<string, string> = { "7": "1", "6": "2", "5": "4", "4": "8", "3": "16", "2": "32", "1": "64" };
+        const applyTo = lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId;
+        if (e.key === "Escape") {
+          setEntryMode(false);
+          setNotice(null);
+          return;
+        }
+        if (DUR[e.key]) {
+          e.preventDefault();
+          setEntryDur(DUR[e.key]!);
+          return;
+        }
+        if (e.key === ".") {
+          e.preventDefault();
+          setEntryDots((d) => (d ? 0 : 1));
+          return;
+        }
+        if (/^[a-g]$/.test(e.key) && !e.altKey) {
+          e.preventDefault();
+          enterAtCaret({ kind: "note", pname: e.key, oct: nearestOctave(e.key, caret) });
+          return;
+        }
+        if (/^[A-G]$/.test(e.key) && applyTo) {
+          e.preventDefault();
+          const pname = e.key.toLowerCase();
+          try {
+            session.addChordNote(applyTo, pname, nearestOctave(pname, caret));
+            afterCommand(session);
+          } catch (err) {
+            setNotice(`chord refused: ${err instanceof Error ? err.message : err}`);
+          }
+          return;
+        }
+        if (e.key === "r") {
+          e.preventDefault();
+          enterAtCaret({ kind: "rest" });
+          return;
+        }
+        if (e.key === "t" && applyTo) {
+          e.preventDefault();
+          // Tie the last entered note back to its predecessor (the natural
+          // gesture while transcribing); fall back to tying it forward.
+          const ref = session.index.byId.get(applyTo);
+          const prevId = ref && ref.eventIndex > 0 ? session.index.eventsAt(ref.measureIndex, ref.staffN, ref.layerN)[ref.eventIndex - 1] : undefined;
+          try {
+            session.toggleTie(prevId && session.index.byId.get(prevId)?.tag === "note" ? prevId : applyTo);
+            afterCommand(session);
+          } catch (err) {
+            setNotice(`tie refused: ${err instanceof Error ? err.message : err}`);
+          }
+          return;
+        }
+        if ((e.key === "s" || e.key === "v" || e.key === "n") && applyTo) {
+          e.preventDefault();
+          session.toggleAccidental([applyTo], e.key === "v" ? "f" : (e.key as "s" | "n"));
+          afterCommand(session);
+          return;
+        }
+        if ((e.key === "," || e.key === ";") && applyTo) {
+          e.preventDefault();
+          session.toggleArtic([applyTo], e.key === "," ? "stacc" : "acc");
+          afterCommand(session);
+          return;
+        }
+        // Dynamics use Alt (shift+F/P would shadow chord-adding those pitches).
+        if (e.altKey && (e.key === "f" || e.key === "p") && applyTo) {
+          e.preventDefault();
+          session.toggleDynam(applyTo, e.key);
+          afterCommand(session);
+          return;
+        }
+        // arrows and everything else fall through to navigation
+      }
+
+      // merge with next / split in half — same-pitch cleanup for AMT output.
+      if ((e.key === "m" || e.key === "x") && !mod && !e.altKey) {
+        const target = entryMode && lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId;
+        if (!target) return;
+        e.preventDefault();
+        try {
+          if (e.key === "m") session.mergeWithNext(target);
+          else session.splitInHalf(target);
+          afterCommand(session);
+          setNotice(null);
+        } catch (err) {
+          setNotice(`${e.key === "m" ? "merge" : "split"} refused: ${err instanceof Error ? err.message : err}`);
+        }
+        return;
+      }
+
       if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
         e.preventDefault();
         if (e.altKey) return;
@@ -470,6 +718,7 @@ export default function App() {
           anchor.current = null;
           setSelection([]);
         }
+        lastEntered.current = null; // caret moved: post-entry modifiers follow it
         setCaret(next);
       } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
         e.preventDefault();
@@ -484,6 +733,7 @@ export default function App() {
           if (next) {
             anchor.current = null;
             setSelection([]);
+            lastEntered.current = null; // caret moved
             setCaret(next);
           }
         }
@@ -494,6 +744,23 @@ export default function App() {
         afterCommand(session);
       } else if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
+        // Backspace erases BACKWARD like a text editor: the previous event
+        // becomes a rest and the caret moves onto it. (With a selection it
+        // deletes the selection, same as Delete.)
+        if (e.key === "Backspace" && selection.length === 0) {
+          const prev = caretLeft(session.index, session.score, caret);
+          if (!prev) return;
+          const prevId = session.index.eventIdAt(prev);
+          const ref = prevId ? session.index.byId.get(prevId) : undefined;
+          if (ref && (ref.tag === "note" || ref.tag === "chord")) {
+            session.deleteToRests([prevId!]);
+            afterCommand(session);
+          }
+          anchor.current = null;
+          lastEntered.current = null; // caret moved
+          setCaret(prev); // steps back even over rests, like a cursor
+          return;
+        }
         const ids = editTargets();
         if (!ids.length) return;
         session.deleteToRests(ids);
@@ -506,7 +773,48 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [session, caret, block, editTargets, afterCommand]);
+  }, [session, caret, block, editTargets, afterCommand, entryMode, caretId, enterAtCaret, nearestOctave]);
+
+  // Web MIDI: note-on enters at the caret while input mode is active.
+  const midiEnter = useCallback(
+    (midiNote: number) => {
+      const PC = ["c", "c", "d", "d", "e", "f", "f", "g", "g", "a", "a", "b"] as const;
+      const SHARP = new Set([1, 3, 6, 8, 10]);
+      const pc = midiNote % 12;
+      enterAtCaret({ kind: "note", pname: PC[pc]!, oct: Math.floor(midiNote / 12) - 1, ...(SHARP.has(pc) && { accid: "s" }) });
+    },
+    [enterAtCaret],
+  );
+  const midiEnterRef = useRef(midiEnter);
+  midiEnterRef.current = midiEnter;
+  const entryModeRef = useRef(entryMode);
+  entryModeRef.current = entryMode;
+
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      (window as unknown as Record<string, unknown>).__MIDI_NOTE__ = (n: number) => entryModeRef.current && midiEnterRef.current(n);
+    }
+    const nav = navigator as Navigator & { requestMIDIAccess?: () => Promise<{ inputs: Map<string, { onmidimessage: ((e: { data: Uint8Array }) => void) | null }> }> };
+    if (!nav.requestMIDIAccess) return;
+    let closed = false;
+    nav
+      .requestMIDIAccess()
+      .then((access) => {
+        if (closed) return;
+        for (const input of access.inputs.values()) {
+          input.onmidimessage = (e) => {
+            const data = e.data;
+            if (!data) return;
+            const [status, note, velocity] = [data[0] ?? 0, data[1] ?? 0, data[2] ?? 0];
+            if ((status & 0xf0) === 0x90 && velocity > 0 && entryModeRef.current) midiEnterRef.current(note);
+          };
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      closed = true;
+    };
+  }, []);
 
   /** Resolve a pointer event to a (measure, staff) position for block drags. */
   const staffPosFromPoint = useCallback(
@@ -593,6 +901,7 @@ export default function App() {
       anchor.current = pos;
       setSelection([]);
     }
+    lastEntered.current = null; // caret moved: post-entry modifiers follow it
     setCaret(pos);
   };
 
@@ -641,11 +950,12 @@ export default function App() {
         (editLatency !== null ? ` · last edit → screen ${editLatency.toFixed(0)} ms` : "") +
         ` · undo ${session.stack.undoDepth}` +
         (clipInfo ? ` · clip ${clipInfo}` : "") +
-        (block ? ` · block m${block.measureFrom + 1}–${block.measureTo + 1} / staff ${block.staffFrom}–${block.staffTo}` : "");
+        (block ? ` · block m${block.measureFrom + 1}–${block.measureTo + 1} / staff ${block.staffFrom}–${block.staffTo}` : "") +
+        (entryMode ? ` · INPUT ${entryDur}${entryDots ? "." : ""}` : "");
 
   const saveDoc = () => {
     if (!session || !active) return;
-    const blob = new Blob([session.serializeForPageView()], { type: "application/xml" });
+    const blob = new Blob([session.saveDocument()], { type: "application/xml" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `${active.name}-edited.mei`;
@@ -700,6 +1010,16 @@ export default function App() {
           {docs.map((d) => (
             <button key={d.id} className={d.id === activeId ? "tab active" : "tab"} onClick={() => switchDoc(d.id)}>
               {d.name}
+              <span
+                className="tab-close"
+                title="close"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closeDoc(d.id);
+                }}
+              >
+                ×
+              </span>
             </button>
           ))}
         </span>
@@ -728,7 +1048,9 @@ export default function App() {
         </span>
       </header>
       <div style={{ color: "#999", fontSize: 12, marginBottom: 2 }}>
-        click note: caret · drag staves: block · ←→ move · ↑↓ staff · shift extend · alt+↑↓ transpose · s/f/n accidental · del → rest · ctrl+c/v copy/paste · ctrl+z undo
+        {entryMode
+          ? "INPUT · a–g pitch · shift+A–G chord · r rest · 7..1 duration (5=quarter) · . dot · s/v/n ♯/♭/♮ · t tie · , stacc · ; accent · shift+F/P dyn · esc exit"
+          : "click note: caret · drag staves: block · i input mode · ←→ move · ↑↓ staff · shift extend · alt+↑↓ transpose · s/f/n accidental · m merge · x split · del → rest · bksp erases previous · ctrl+c/v copy/paste · ctrl+z undo"}
       </div>
       <div style={{ color: notice?.startsWith("paste refused") ? "#c22" : "#276", fontSize: 12, marginBottom: 4, minHeight: 15 }} data-notice>
         {notice ?? ""}
@@ -748,6 +1070,8 @@ export default function App() {
         @keyframes blink { 50% { opacity: 0.15; } }
         .tabs .tab { border: 1px solid #ccc; background: #f6f6f6; padding: 2px 8px; cursor: pointer; }
         .tabs .tab.active { background: #fff; border-bottom-color: #fff; font-weight: 600; }
+        .tabs .tab-close { margin-left: 7px; color: #999; padding: 0 2px; }
+        .tabs .tab-close:hover { color: #c22; }
         ${caretCss}
         ${selectionCss}
         ${blockCss}
@@ -762,6 +1086,7 @@ export default function App() {
         data-caret={caretId ?? ""}
         data-selection={selection.length}
         data-block={block ? `${block.measureFrom}-${block.measureTo}/${block.staffFrom}-${block.staffTo}` : ""}
+        data-entry={entryMode ? `${entryDur}${entryDots ? "." : ""}` : ""}
       >
         {session && pool && view === "tiles" && <TileGrid key={activeId ?? -1} session={session} version={version} pool={pool} zoom={zoom} onRendered={onRendered} onSettled={onSettled} />}
         {session && pool && view === "pages" && <PageView key={`${activeId}-${version}`} session={session} pool={pool} />}

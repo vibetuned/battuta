@@ -76,7 +76,7 @@ check(`drag creates a block selection (${blockAttr})`, blockAttr === "1-2/1-1");
 
 // --- 2. copy ---
 await page.keyboard.press("Control+c");
-await page.waitForFunction(() => document.querySelector("header span:last-of-type").textContent.includes("clip"), null, { timeout: 5000 });
+await page.waitForFunction(() => document.querySelector("[data-status]").textContent.includes("clip"), null, { timeout: 5000 });
 check("ctrl+c stores the fragment (HUD shows clip 2m × 1s)", (await page.locator("header").textContent()).includes("clip 2m × 1s"));
 const clipText = await page.evaluate(() => navigator.clipboard.readText());
 check("system clipboard carries readable MEI text", clipText.includes("battuta clipboard: 2 measure(s)"));

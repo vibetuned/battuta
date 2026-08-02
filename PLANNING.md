@@ -28,6 +28,29 @@ This phase is the reason the project exists. Serialize selections to MEI clipboa
 
 Exit criteria: the target workflow works start to finish — open two files, block-select four measures of one staff in file A, paste into a different staff in file B, transpose, save, and the result opens correctly in Verovio and mei-friend.
 
+> **Progress note (2026-08-02) — Phases 0–3 delivered, plus view-layer work
+> beyond plan.** Phases 0–3 exit criteria all hold, verified by headless e2e
+> suites (`spikes/verify-*.mjs`) and 55 core tests including fast-check
+> properties (apply/revert identity, duration invariant, interleaved
+> undo/redo — all run against real corpus files). Beyond the plan:
+> the runner bake-off got a fourth candidate (persistent doc + `select()`:
+> rejected, O(document) floor) and a real Tauri IPC measurement (~1–2 ms);
+> control-event segmentation landed in Phase 1 (tstamp continuation stubs,
+> incoming stubs injected from a span index); the edit view gained a
+> real-score presentation layer: bare tiles (clef/keysig/meter/brackets
+> hidden via MEI visibility attrs, values in force; each re-drawn only where
+> it changes), editor-owned row layout with per-row system-start header
+> cells, joined tiles (margins 0, near-linear duration spacing), fixed
+> user-selectable zoom (staff size constant across documents — never derived
+> from tile height), and per-row uniform staff geometry via a two-pass
+> `spacingStaff` feedback loop (measure intrinsic needs unforced, force the
+> row max; pin to intrinsic top ink and crop the padding; pixel-exact staff
+> alignment verified). Multi-document tabs with close buttons and a shared
+> clipboard; save-to-MEI download. Known deferred items: splice-at-caret and
+> overlay-as-new-layer paste policies, split/merge measures, split view,
+> Tauri packaging bug (blank webview with embedded assets on WebKitGTK 2.52),
+> first `<mdiv>` only.
+
 ## Phase 4 — Note entry and MEI round-trip hardening (≈2–3 weeks)
 
 Keyboard note entry at the caret (pitch letters or MIDI input via Web MIDI, duration keys, chord building, rests, ties, tuplets — reusing midi-stroke's input handling where it fits). Dotted rhythms, articulations, basic dynamics. In parallel, harden serialization: preserve-unknown-verbatim round-trip tests over a corpus of third-party MEI files, id stability across save/load, and file-watching so external edits (e.g. from a text editor) reload cleanly.
