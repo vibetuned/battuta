@@ -37,7 +37,8 @@ const sharpsPerTile = await page.evaluate(() =>
   [...document.querySelectorAll(".tile")].map((t) => t.innerHTML.match(/E262/g)?.length ?? 0),
 );
 check("m1-m2 tiles show no key-signature sharps", sharpsPerTile[0] === 0 && sharpsPerTile[1] === 0);
-check("m3-m4 tiles show sharps after mid-piece keysig change", sharpsPerTile[2] >= 8 && sharpsPerTile[3] >= 8);
+check("m3 (context change) shows the new key signature", sharpsPerTile[2] >= 8);
+check("m4 is bare: keysig hidden but still in force", sharpsPerTile[3] === 0);
 const meterTile = await page.evaluate(() => document.querySelectorAll(".tile")[6].innerHTML);
 check("m7 tile reflects 6/8 meter change", meterTile.includes("meterSig"));
 const curveTiles = await page.evaluate(() => [0, 1].map((i) => {
@@ -46,10 +47,10 @@ const curveTiles = await page.evaluate(() => [0, 1].map((i) => {
 }));
 check("cross-tile slur+tie continuations drawn in both m1 and m2", curveTiles.every((t) => t.slur && t.tie));
 
-// --- 2. Click-to-select via ids ---
+// --- 2. Click places the caret via ids ---
 await page.locator('.tile g[class~="note"] use').first().click({ force: true });
-const selected = await page.locator("header span").nth(1).textContent();
-check(`notehead click selects an id (${selected})`, /selected: \S+/.test(selected ?? ""));
+const caretIdVal = await page.evaluate(() => document.querySelector("main").dataset.caret);
+check(`notehead click places the caret (${caretIdVal})`, !!caretIdVal);
 await page.screenshot({ path: `${scratch}/app-context-fixture.png` });
 
 // --- 3. Quartet: virtualized scroll to the end ---

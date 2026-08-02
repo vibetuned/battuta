@@ -17,12 +17,16 @@ export interface MeasureItem {
 export type ScoreItem = DefItem | MeasureItem;
 
 export interface CoreScore {
+  /** The <score> element — the walk root for rebuilds after edits. */
+  scoreEl: CoreElement;
   /** The initial <scoreDef> (staff structure, initial context). */
   scoreDef: CoreElement;
   /** Defs and measures in flow order, excluding the initial scoreDef. */
   items: ScoreItem[];
   /** Convenience view of just the measures, in order. */
   measures: CoreElement[];
+  /** Parent element of each measure (for structural splices). */
+  measureParent: Map<CoreElement, CoreElement>;
   /** Number of <mdiv>s found; only the first is loaded (Phase 1 limit). */
   mdivCount: number;
 }
@@ -33,16 +37,11 @@ export interface CoreScore {
  * present. Critical-apparatus containers contribute only their preferred
  * child (<lem> over first <rdg>; <corr>/<reg> over first child of <choice>).
  */
-export function buildScore(root: CoreElement): CoreScore {
-  let scope = root.tag === "music" || root.tag === "score" ? root : findFirst(root, "music") ?? root;
-  const mdivs = scope.tag === "score" ? [] : findAll(scope, "mdiv");
-  const mdivCount = mdivs.length;
-  if (mdivs.length > 0) scope = mdivs[0]!;
-  const score = scope.tag === "score" ? scope : findFirst(scope, "score");
-  if (!score) throw new Error("no <score> found");
-
+/** Re-walk the score flow: rebuild items/measures/parents from scoreEl. */
+export function refreshScore(score: CoreScore): void {
   const items: ScoreItem[] = [];
   const measures: CoreElement[] = [];
+  const measureParent = new Map<CoreElement, CoreElement>();
   let initialScoreDef: CoreElement | null = null;
 
   const walk = (el: CoreElement): void => {
@@ -51,6 +50,7 @@ export function buildScore(root: CoreElement): CoreScore {
         case "measure":
           items.push({ kind: "measure", el: child, index: measures.length });
           measures.push(child);
+          measureParent.set(child, el);
           break;
         case "scoreDef":
         case "staffDef":
@@ -74,8 +74,31 @@ export function buildScore(root: CoreElement): CoreScore {
       }
     }
   };
-  walk(score);
+  walk(score.scoreEl);
 
   if (!initialScoreDef) throw new Error("no <scoreDef> found in score");
-  return { scoreDef: initialScoreDef, items, measures, mdivCount };
+  score.scoreDef = initialScoreDef;
+  score.items = items;
+  score.measures = measures;
+  score.measureParent = measureParent;
+}
+
+export function buildScore(root: CoreElement): CoreScore {
+  let scope = root.tag === "music" || root.tag === "score" ? root : findFirst(root, "music") ?? root;
+  const mdivs = scope.tag === "score" ? [] : findAll(scope, "mdiv");
+  const mdivCount = mdivs.length;
+  if (mdivs.length > 0) scope = mdivs[0]!;
+  const scoreEl = scope.tag === "score" ? scope : findFirst(scope, "score");
+  if (!scoreEl) throw new Error("no <score> found");
+
+  const score: CoreScore = {
+    scoreEl,
+    scoreDef: scoreEl, // placeholder; refreshScore sets the real one
+    items: [],
+    measures: [],
+    measureParent: new Map(),
+    mdivCount,
+  };
+  refreshScore(score);
+  return score;
 }

@@ -1,0 +1,140 @@
+/**
+ * Property tests (PLANNING.md cross-cutting practices): every command must
+ * satisfy apply-then-revert identity. Random command sequences — including
+ * interleaved undo/redo — fully unwound must yield a byte-identical document.
+ * Runs against real corpus data (Bach chorale), not just synthetic scores.
+ */
+import { describe, it, expect } from "vitest";
+import fc from "fast-check";
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  buildEventIndex, serialize, ensureIds, resolveContexts, CommandStack, copyBlock, planPasteReplace,
+  TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, DeleteToRestsCommand,
+  PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand,
+  validateMeasureDurations,
+  type Command, type CommandContext, type CoreScore,
+} from "../src/index.js";
+import { scoreFrom } from "./helpers.js";
+
+const fixtures = join(dirname(fileURLToPath(import.meta.url)), "../../../fixtures");
+const choraleXml = readFileSync(join(fixtures, "Bach-JS_Ein_feste_Burg.mei"), "utf8");
+
+function freshChorale(): { score: CoreScore; snapshot: () => string } {
+  const { score } = scoreFrom(choraleXml);
+  ensureIds(score.scoreDef);
+  for (const m of score.measures) ensureIds(m);
+  return { score, snapshot: () => score.measures.map((m) => serialize(m)).join("\n") };
+}
+
+/** Descriptor -> concrete command against the CURRENT document state. */
+interface CmdDescriptor {
+  kind: number;
+  targetSeeds: number[];
+  param: number;
+}
+
+function makeCommand(ctx: CommandContext, d: CmdDescriptor): Command | null {
+  const candidates = [...ctx.index.byId.values()].filter((r) => r.tag === "note" || r.tag === "chord").map((r) => r.id);
+  if (candidates.length === 0) return null;
+  const ids = [...new Set(d.targetSeeds.map((s) => candidates[s % candidates.length]!))];
+  const nMeasures = ctx.score.measures.length;
+  const m = d.param % nMeasures;
+  switch (d.kind % 7) {
+    case 0: return new TransposeStepCommand(ids, (d.param % 5) - 2 || 1);
+    case 1: return new TransposeOctaveCommand(ids, d.param % 2 === 0 ? 1 : -1);
+    case 2: return new ToggleAccidentalCommand(ids, (["s", "f", "n"] as const)[d.param % 3]!);
+    case 3: return new DeleteToRestsCommand(ids);
+    case 4: return new InsertMeasuresCommand(m, (d.param % 2) + 1);
+    case 5: return nMeasures > 2 ? new DeleteMeasuresCommand(Math.min(m, nMeasures - 2), 1) : null;
+    case 6: {
+      // Copy a random block, paste it at a random valid target (replace).
+      const contexts = resolveContexts(ctx.score);
+      const seedA = d.targetSeeds[0] ?? 0;
+      const from = seedA % nMeasures;
+      const count = Math.min((d.param % 2) + 1, nMeasures - from);
+      const frag = copyBlock(ctx.score, contexts, { measureFrom: from, measureTo: from + count - 1, staffFrom: 1, staffTo: 1 });
+      if (!frag) return null;
+      const at = (d.targetSeeds[1] ?? 0) % Math.max(1, nMeasures - frag.measureCount + 1);
+      const staffN = ((d.targetSeeds[2] ?? 0) % 2) + 1;
+      const plan = planPasteReplace(ctx.score, contexts, frag, at, staffN);
+      return plan.ok ? new PasteReplaceMeasuresCommand(frag, at, staffN) : null;
+    }
+    default: return new DuplicateMeasuresCommand(m, 1);
+  }
+}
+
+const cmdArb = fc.record({
+  kind: fc.integer({ min: 0, max: 7 }),
+  targetSeeds: fc.array(fc.nat(), { minLength: 1, maxLength: 6 }),
+  param: fc.nat(),
+});
+
+describe("command properties (fast-check)", () => {
+  it("random command sequences fully unwound restore the document byte-identically", () => {
+    fc.assert(
+      fc.property(fc.array(cmdArb, { minLength: 1, maxLength: 12 }), (descriptors) => {
+        const { score, snapshot } = freshChorale();
+        const original = snapshot();
+        const stack = new CommandStack();
+        for (const d of descriptors) {
+          const ctx: CommandContext = { score, index: buildEventIndex(score) };
+          const cmd = makeCommand(ctx, d);
+          if (cmd) stack.execute(ctx, cmd);
+        }
+        while (stack.canUndo) stack.undo({ score, index: buildEventIndex(score) });
+        expect(snapshot()).toBe(original);
+      }),
+      { numRuns: 25 },
+    );
+  });
+
+  it("every command sequence preserves the duration invariant on every measure", () => {
+    fc.assert(
+      fc.property(fc.array(cmdArb, { minLength: 1, maxLength: 10 }), (descriptors) => {
+        const { score } = freshChorale();
+        const stack = new CommandStack();
+        for (const d of descriptors) {
+          const ctx: CommandContext = { score, index: buildEventIndex(score) };
+          const cmd = makeCommand(ctx, d);
+          if (cmd) stack.execute(ctx, cmd);
+          const contexts = resolveContexts(score);
+          score.measures.forEach((m, i) => {
+            for (const [staffN, staffCtx] of contexts[i]!) {
+              const problems = validateMeasureDurations(m, staffCtx.meter, staffN);
+              expect(problems).toHaveLength(0);
+            }
+          });
+        }
+      }),
+      { numRuns: 15 },
+    );
+  });
+
+  it("interleaved execute/undo/redo sequences unwind to the original document", () => {
+    const opArb = fc.oneof(
+      fc.record({ op: fc.constant("execute" as const), cmd: cmdArb }),
+      fc.record({ op: fc.constant("undo" as const) }),
+      fc.record({ op: fc.constant("redo" as const) }),
+    );
+    fc.assert(
+      fc.property(fc.array(opArb, { minLength: 2, maxLength: 20 }), (ops) => {
+        const { score, snapshot } = freshChorale();
+        const original = snapshot();
+        const stack = new CommandStack();
+        for (const op of ops) {
+          const ctx: CommandContext = { score, index: buildEventIndex(score) };
+          if (op.op === "execute") {
+            const cmd = makeCommand(ctx, op.cmd);
+            if (cmd) stack.execute(ctx, cmd);
+          } else if (op.op === "undo") stack.undo(ctx);
+          else stack.redo(ctx);
+        }
+        while (stack.canUndo) stack.undo({ score, index: buildEventIndex(score) });
+        expect(snapshot()).toBe(original);
+      }),
+      { numRuns: 25 },
+    );
+  });
+});

@@ -11,20 +11,28 @@ export const CORE_VERSION = "0.1.0";
 export { fromDom, serialize, deepClone, findFirst, findAll, childElements, hashString } from "./xml.js";
 export type { CoreElement, DomLikeElement, DomLikeNode } from "./xml.js";
 
-export { buildScore } from "./score.js";
+export { buildScore, refreshScore } from "./score.js";
 export type { CoreScore, ScoreItem, DefItem, MeasureItem } from "./score.js";
+
+export { frac, fAdd, fMul, fEq, fCmp, F0, eventDuration, layerDuration, meterCapacity, validateMeasureDurations } from "./durations.js";
+export type { Fraction, LayerDuration, DurationProblem } from "./durations.js";
+
+export { normalizeBlock, copyBlock, fragmentToText, materializeStaff, findStaffInMeasure } from "./clipboard.js";
+export type { BlockSelection, ClipboardFragment, ClipboardStaff } from "./clipboard.js";
+
+export { planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, emptyMeasureLike } from "./arrange.js";
+export type { PastePlan } from "./arrange.js";
 
 export { resolveContexts, contextHash } from "./context.js";
 export type { MeasureContext, StaffContext, ClefContext, MeterContext } from "./context.js";
 
-export { synthesizeTile, synthesizeScoreDef } from "./tile.js";
-export type { TileSlice } from "./tile.js";
+export { synthesizeTile, synthesizeScoreDef, synthesizeRowHeader } from "./tile.js";
+export type { TileSlice, TileHeader, TileHeaderSpec } from "./tile.js";
 
-/** Model coordinates used across the whole system (never pixels). */
-export interface CaretPosition {
-  measureId: string;
-  staffN: number;
-  layerN: number;
-  /** Index of the event in the layer, or a gap position between events. */
-  eventIndex: number;
-}
+export { newId, ensureIds } from "./ids.js";
+
+export { EVENT_TAGS, EventIndex, buildEventIndex, caretLeft, caretRight, caretVertical, eventRange } from "./events.js";
+export type { CaretPosition, EventRef } from "./events.js";
+
+export { CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, DeleteToRestsCommand } from "./commands.js";
+export type { Command, CommandContext, DirtyRegion } from "./commands.js";

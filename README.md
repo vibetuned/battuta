@@ -40,6 +40,76 @@ Phase 1 in progress (2026-08-02):
   (results in BENCHMARKS.md); desktop packaging has one open WebKitGTK
   issue, see Native/Tauri notes below
 
+Phase 2 in progress (2026-08-02): caret, selection, command engine.
+
+- `@battuta/core`: event index (chords are events, beams/tuplets are
+  transparent), caret navigation (left/right across measures, staff
+  up/down), event ranges for shift-selection; command engine with
+  apply/revert + dirty-region reporting, undo/redo stack; first edits:
+  transpose by step/octave, toggle accidental, delete-to-rests.
+  40 tests including fast-check properties: random command sequences —
+  with interleaved undo/redo — fully unwound restore the document
+  byte-identically (run against real corpus files).
+- Editor: click/keyboard caret (blinking bar projected from model position),
+  shift-click / shift-arrow selection, keymap (see in-app hint line),
+  edit-latency HUD. Dirty tiles re-render via cache-key change alone:
+  measured 19 ms edit→screen with exactly 1 tile re-rendered; undo/redo hit
+  the tile cache (~4 ms). Verify: `node spikes/verify-phase2.mjs` (16 checks).
+- Still open in Phase 2: block selection (measure-range × staff-range) —
+  model + drag UI; lands with its consumer (Phase 3 copy/paste).
+
+Phase 3 in progress (2026-08-02): copy/paste and arranging — the reason the
+project exists.
+
+- Edit view renders **bare tiles**: clef, key signature, meter, and
+  staff-group brackets are hidden (their values stay in force for pitch
+  spelling and staff positions). Symbols appear only on the first measure;
+  clef/keysig/meter are each re-drawn only on the tile where they *change*.
+  Done with MEI visibility attributes (`clef.visible`, `keysig.visible`,
+  `meter.form="invis"`, `system.leftline`), not CSS — Verovio reclaims the
+  space, so bare tiles are also narrower.
+- Tiles join into a **continuous system**: zero side margins, near-linear
+  duration spacing (`spacingLinear: 0.03`, `spacingNonLinear: 1.0`) so equal
+  durations get equal widths across tiles. Display zoom is a fixed,
+  user-selectable factor (header control, per document) — staff size is
+  constant across documents and a big ensemble is simply taller, like a real
+  score; zoom is never derived from tile height (lesson learned: deriving it
+  shrank orchestral staves). Verovio's per-tile measure numbers are
+  suppressed (each tile is a "system start").
+- **Row layout like a real score**: the editor owns the flow layout (greedy
+  fill by rendered tile widths). Each row starts with a synthesized
+  **system-start header** (clef + key signature + brackets over an invisible
+  measure, cached by context); tiles themselves draw only *changes* plus the
+  opening meter. Every tile displays in a uniform box with its **top staff
+  line pinned to a shared baseline** (max extents above/below the staff over
+  the document — ledger lines, lyrics, fermatas included).
+- Known limitation, noted for later: Verovio adapts **inter-staff** spacing
+  per tile (lyrics between staves), so lower staves can wobble a few px
+  between neighbors; `spacingStaff` is only a minimum and cannot force it.
+  The complete fix is **rows-as-single-slices** — render each row as one
+  multi-measure Verovio system (DESIGN.md's measure-window idea), which
+  makes all internal spacing consistent by construction at the cost of
+  row-level (instead of measure-level) re-render on edit (~15–60 ms, still
+  within budget). Revisit when polishing the edit view.
+- `@battuta/core`: exact-rational **duration model** (dots, tuplets, mRest,
+  grace, meter capacity) powering the paste validator; **block selection**
+  (measure-range × staff-range) and **clipboard fragments** (plain data +
+  readable MEI text for the system clipboard); `planPasteReplace` returns
+  typed refusals/warnings; `PasteReplaceMeasuresCommand` (replace-measures
+  policy) plus insert/delete/duplicate-measures commands. 54 tests; the
+  property suite fuzzes paste + structural commands against the corpus and
+  asserts byte-identical unwind AND the duration invariant after every step.
+- Editor: document **tabs** with a shared clipboard, **drag block selection**
+  across tiles/staves, ctrl+c/ctrl+v (paste refusals surface the validator's
+  reason; warnings ask), structural buttons (+m/−m/⧉m), save-to-MEI download.
+- E2E (`node spikes/verify-phase3.mjs`): the target workflow start to
+  finish — block-copy chorale measures, paste into another document's other
+  staff, validator refuses a short measure into a full one, save, and the
+  exported file re-parses with zero duration problems and renders in a fresh
+  Verovio toolkit.
+- Still open in Phase 3: splice-at-caret and overlay-as-new-layer paste
+  policies; split/merge measure commands; side-by-side split view.
+
 ## Layout
 
 ```

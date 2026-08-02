@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { synthesizeTile, synthesizeScoreDef, serialize } from "../src/index.js";
+import { synthesizeTile, synthesizeScoreDef, synthesizeRowHeader, serialize } from "../src/index.js";
 import { scoreFrom, mei, measure } from "./helpers.js";
 
 describe("synthesizeTile", () => {
@@ -48,6 +48,42 @@ describe("synthesizeTile", () => {
   it("cache key is stable across repeated synthesis", () => {
     const { score, contexts } = scoreFrom(mei(measure(1)));
     expect(synthesizeTile(score, contexts, 0).key).toBe(synthesizeTile(score, contexts, 0).key);
+  });
+
+  it("bare header hides clef/keysig/meter/brackets but keeps their values in force", () => {
+    const { score, contexts } = scoreFrom(mei(measure(1), `meter.count="3" meter.unit="4" keysig="2s"`));
+    const bare = synthesizeTile(score, contexts, 0, 1, "bare");
+    expect(bare.xml).toContain(`keysig="2s"`); // value stays for pitch spelling
+    expect(bare.xml).toContain(`clef.shape="G"`); // value stays for staff positions
+    expect(bare.xml).toContain(`clef.visible="false"`);
+    expect(bare.xml).toContain(`keysig.visible="false"`);
+    expect(bare.xml).toContain(`meter.form="invis"`);
+    expect(bare.xml).toContain(`system.leftline="false"`);
+    expect(bare.xml).not.toContain(`symbol="brace"`);
+    const full = synthesizeTile(score, contexts, 0, 1, "full");
+    expect(full.xml).toContain(`symbol="brace"`);
+    expect(full.xml).not.toContain("keysig.visible");
+    expect(full.xml).not.toContain("clef.visible");
+    expect(full.key).not.toBe(bare.key); // variants cache separately
+    const clefOnly = synthesizeTile(score, contexts, 0, 1, { clef: true, keysig: false, meter: false, symbols: false });
+    expect(clefOnly.xml).not.toContain("clef.visible");
+    expect(clefOnly.xml).toContain(`keysig.visible="false"`);
+  });
+});
+
+describe("synthesizeRowHeader", () => {
+  it("emits clef+keysig+symbols over one invisible measure, keyed by context", () => {
+    const { score, contexts } = scoreFrom(mei(`${measure(1)} <scoreDef keysig="3s"/> ${measure(2)}`));
+    const h0 = synthesizeRowHeader(score, contexts, 0);
+    expect(h0.xml).toContain(`symbol="brace"`);
+    expect(h0.xml).toContain(`meter.form="invis"`);
+    expect(h0.xml).not.toContain("keysig.visible");
+    expect(h0.xml).toContain(`right="invis"`);
+    expect(h0.xml).toContain("<mSpace/>");
+    const h1 = synthesizeRowHeader(score, contexts, 1);
+    expect(h1.xml).toContain(`keysig="3s"`);
+    expect(h1.key).not.toBe(h0.key); // context change -> different header
+    expect(synthesizeRowHeader(score, contexts, 0).key).toBe(h0.key); // stable
   });
 });
 

@@ -18,8 +18,34 @@ function stripCosmetics(el: CoreElement): void {
   for (const c of childElements(el)) stripCosmetics(c);
 }
 
+/**
+ * Tile header: which orientation elements the tile draws besides the clef.
+ * Hidden elements keep their VALUES in force (a hidden key signature still
+ * spells pitches) — only the display is suppressed, so a bare tile reads
+ * like a mid-system measure. The editor shows symbols (brackets/braces +
+ * system line) only on the very first tile, the key signature only where it
+ * changes, and the meter only where it changes.
+ */
+export interface TileHeaderSpec {
+  clef: boolean;
+  keysig: boolean;
+  meter: boolean;
+  symbols: boolean;
+}
+export type TileHeader = "full" | "bare" | TileHeaderSpec;
+
+const headerSpec = (header: TileHeader): TileHeaderSpec =>
+  header === "full"
+    ? { clef: true, keysig: true, meter: true, symbols: true }
+    : header === "bare"
+      ? { clef: false, keysig: false, meter: false, symbols: false }
+      : header;
+
+const headerKey = (s: TileHeaderSpec): string => `c${s.clef ? 1 : 0}k${s.keysig ? 1 : 0}m${s.meter ? 1 : 0}s${s.symbols ? 1 : 0}`;
+
 /** Build the tile's <scoreDef>: original staffGrp skeleton + effective attrs. */
-export function synthesizeScoreDef(score: CoreScore, ctx: MeasureContext): CoreElement {
+export function synthesizeScoreDef(score: CoreScore, ctx: MeasureContext, header: TileHeader = "full"): CoreElement {
+  const spec = headerSpec(header);
   const def = deepClone(score.scoreDef);
   stripCosmetics(def);
   // Score-level keysig/meter would fight the per-staff values; remove them.
@@ -46,11 +72,16 @@ export function synthesizeScoreDef(score: CoreScore, ctx: MeasureContext): CoreE
         if (staff.meter.sym) el.attrs["meter.sym"] = staff.meter.sym;
         if (staff.transSemi !== undefined) el.attrs["trans.semi"] = String(staff.transSemi);
         if (staff.transDiat !== undefined) el.attrs["trans.diat"] = String(staff.transDiat);
+        if (!spec.clef) el.attrs["clef.visible"] = "false";
+        if (!spec.keysig) el.attrs["keysig.visible"] = "false";
+        if (!spec.meter) el.attrs["meter.form"] = "invis";
       }
     }
+    if (!spec.symbols && el.tag === "staffGrp") delete el.attrs["symbol"];
     for (const c of childElements(el)) apply(c);
   };
   apply(def);
+  if (!spec.symbols) def.attrs["system.leftline"] = "false";
   return def;
 }
 
@@ -176,11 +207,37 @@ function segmentControlEvents(measures: CoreElement[], beatsPerMeasure: number, 
   }
 }
 
+/**
+ * Synthesize a "system start" header cell for a row beginning at the given
+ * measure: clef + key signature + staff-group symbols (no meter — real
+ * scores re-print clef/key per system, meter only at changes), carried by a
+ * single invisible measure (mSpace, invisible barline).
+ */
+export function synthesizeRowHeader(score: CoreScore, contexts: MeasureContext[], measureIndex: number): TileSlice {
+  const ctx = contexts[measureIndex];
+  if (!ctx) throw new Error(`no context for measure index ${measureIndex}`);
+  const scoreDefXml = serialize(synthesizeScoreDef(score, ctx, { clef: true, keysig: true, meter: false, symbols: true }));
+  const staves = [...ctx.keys()]
+    .sort((a, b) => a - b)
+    .map((n) => `<staff n="${n}"><layer n="1"><mSpace/></layer></staff>`)
+    .join("");
+  const xml = [
+    `<?xml version="1.0" encoding="UTF-8"?>`,
+    `<mei xmlns="${MEI_NS}" meiversion="5.0">`,
+    `<music><body><mdiv><score>`,
+    scoreDefXml,
+    `<section><measure n="" right="invis">${staves}</measure></section>`,
+    `</score></mdiv></body></music>`,
+    `</mei>`,
+  ].join("\n");
+  return { xml, key: `rowhdr-${contextHash(ctx)}`, measureIds: [] };
+}
+
 /** Synthesize the slice document for measures [from, from+count). */
-export function synthesizeTile(score: CoreScore, contexts: MeasureContext[], from: number, count = 1): TileSlice {
+export function synthesizeTile(score: CoreScore, contexts: MeasureContext[], from: number, count = 1, header: TileHeader = "full"): TileSlice {
   const ctx = contexts[from];
   if (!ctx) throw new Error(`no context for measure index ${from}`);
-  const scoreDefXml = serialize(synthesizeScoreDef(score, ctx));
+  const scoreDefXml = serialize(synthesizeScoreDef(score, ctx, header));
   const measures = score.measures.slice(from, from + count).map(deepClone);
   const firstStaff = ctx.values().next().value;
   const incoming = getSpanEndIndex(score).filter((s) => s.measureIndex < from);
@@ -197,7 +254,7 @@ export function synthesizeTile(score: CoreScore, contexts: MeasureContext[], fro
     `</score></mdiv></body></music>`,
     `</mei>`,
   ].join("\n");
-  const key = `${contextHash(ctx)}-${hashString(measuresXml)}`;
+  const key = `${contextHash(ctx)}-${hashString(measuresXml)}-${headerKey(headerSpec(header))}`;
   const measureIds = measures.map((m) => m.attrs["xml:id"] ?? "");
   return { xml, key, measureIds };
 }

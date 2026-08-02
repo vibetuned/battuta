@@ -9,4 +9,7 @@ export default defineConfig({
   server: {
     fs: { allow: [resolve(__dirname, "../..")] },
   },
+  // Never prebundle the workspace core: a running dev server must pick up
+  // `npm run build -w @battuta/core` without a restart/cache clear.
+  optimizeDeps: { exclude: ["@battuta/core"] },
 });

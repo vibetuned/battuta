@@ -17,12 +17,18 @@ const TILE_OPTIONS = {
   adjustPageHeight: true,
   header: "none",
   footer: "none",
-  pageMarginLeft: 20,
-  pageMarginRight: 20,
-  pageMarginTop: 20,
+  // Tiles butt against each other horizontally: no side margins; generous
+  // top margin absorbs tall elements (fermatas, ottavas) so staves align.
+  pageMarginLeft: 0,
+  pageMarginRight: 0,
+  pageMarginTop: 100,
   pageMarginBottom: 20,
   svgViewBox: true,
   scale: 40,
+  // Near-proportional duration spacing: equal durations get equal widths
+  // across tiles, so joined measures read like one continuous system.
+  spacingLinear: 0.03,
+  spacingNonLinear: 1.0,
 };
 const PAGE_OPTIONS = {
   breaks: "auto",
