@@ -1,0 +1,21 @@
+{
+  "name": "battuta",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Local-first MEI score editor — semantic document editing, Verovio rendering",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "spikes"
+  ],
+  "scripts": {
+    "spike:a": "node spikes/spike-a-slice-ids.mjs",
+    "spike:b": "node spikes/spike-b-timing.mjs",
+    "spike:c": "node spikes/spike-c-persistent-select.mjs",
+    "bench:browser": "node spikes/browser-bench/run.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

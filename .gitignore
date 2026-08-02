@@ -1,0 +1,8 @@
+node_modules/
+dist/
+fixtures/
+spikes/out/
+spikes/native-bench/bench
+apps/editor/src-tauri/target
+*.log
+.DS_Store
