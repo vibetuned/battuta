@@ -122,7 +122,16 @@ Phase 4 in progress (2026-08-02): note entry + round-trip hardening.
   loudly at beam/tuplet/measure boundaries); a–g pitches with
   nearest-octave guessing, shift+A–G chord building, `r` rests, 7..1
   durations (5 = quarter), `.` dot, s/v/n accidentals, `t` tie (back to the
-  predecessor; pitch-checked), `,`/`;` staccato/accent, alt+f/p dynamics.
+  predecessor; pitch-checked), `,` staccato, `;`/`!` accent, and `p` cycling
+  dynamics (none → p → f → none). **Keyboard-layout independent**: duration
+  digits also match by physical key position (`e.code`), so AZERTY's
+  unshifted number row works without Shift; the dot is `.` or `:` (both
+  character-based — `:` is unshifted on AZERTY), accent is `;` — no physical
+  key serves two different actions on any layout. The dot always applies to
+  a real event — the just-entered note, or the note/rest at the caret (in
+  or out of input mode) — re-entered in place with the duration difference
+  consumed from / released to the following rests; subsequent entries
+  inherit the resulting dot state (no separate prospective toggle).
   **Web MIDI** note-on enters at the caret while in input mode.
 - **Round-trip hardening**: the session now keeps the FULL document tree —
   `meiHead`, unknown elements/attributes, comments, `<?xml-model?>` PIs —

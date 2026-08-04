@@ -27,7 +27,7 @@ const check = (label, ok) => {
 const server = await createServer({
   configFile: "/home/flux/projects/battuta/apps/editor/vite.config.ts",
   root: "/home/flux/projects/battuta/apps/editor",
-  server: { port: 5177, strictPort: true },
+  server: { port: 0 },
   logLevel: "warn",
 });
 await server.listen();
@@ -38,7 +38,7 @@ await context.grantPermissions(["clipboard-read", "clipboard-write"]);
 const page = await context.newPage();
 page.on("pageerror", (e) => console.error("[pageerror]", e.message));
 page.on("dialog", (d) => d.accept());
-await page.goto("http://localhost:5177/");
+await page.goto(server.resolvedUrls.local[0]);
 const waitTiles = (n) => page.waitForFunction((n) => document.querySelectorAll(".tile .ms").length >= n, n, { timeout: 60000 });
 await waitTiles(10);
 

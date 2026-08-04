@@ -24,7 +24,7 @@ const check = (label, ok) => {
 const server = await createServer({
   configFile: "/home/flux/projects/battuta/apps/editor/vite.config.ts",
   root: "/home/flux/projects/battuta/apps/editor",
-  server: { port: 5177, strictPort: true },
+  server: { port: 0 },
   logLevel: "warn",
 });
 await server.listen();
@@ -32,7 +32,7 @@ const browser = await chromium.launch({ executablePath: "/usr/bin/google-chrome"
 const context = await browser.newContext({ viewport: { width: 1500, height: 950 }, acceptDownloads: true });
 const page = await context.newPage();
 page.on("pageerror", (e) => console.error("[pageerror]", e.message));
-await page.goto("http://localhost:5177/");
+await page.goto(server.resolvedUrls.local[0]);
 await page.waitForFunction(() => document.querySelectorAll(".tile .ms").length >= 10, null, { timeout: 60000 });
 
 const staffContent = (m, n) =>
@@ -125,12 +125,65 @@ check(`shift+E builds a chord or is safely refused (${afterChord.join(" ")})`, t
 await page.keyboard.press("s"); // sharp on last entered
 const withAccid = await staffContent(1, 1);
 check("accidental toggles on the last entered event", JSON.stringify(withAccid).includes("s") || true);
-await page.keyboard.press("Alt+f");
-const dynam = await page.evaluate(() => {
+await page.keyboard.press("p"); // cycle: none -> p
+const dynVal = () => page.evaluate(() => {
   const m = window.__SESSION__.score.measures[1];
-  return m.children.filter((c) => typeof c !== "string" && c.tag === "dynam").length;
+  return m.children.filter((c) => typeof c !== "string" && c.tag === "dynam").map((d) => d.children[0]);
 });
-check("alt+f anchors a forte dynam in the measure", dynam === 1);
+check("p anchors a piano dynam", JSON.stringify(await dynVal()) === JSON.stringify(["p"]));
+await page.keyboard.press("p"); // p -> f
+check("second p cycles to forte", JSON.stringify(await dynVal()) === JSON.stringify(["f"]));
+await page.keyboard.press("p"); // f -> none
+check("third p removes the dynamic", JSON.stringify(await dynVal()) === JSON.stringify([]));
+await page.keyboard.press("p"); // leave one for the undo count parity: none -> p
+check("fourth p re-adds piano", JSON.stringify(await dynVal()) === JSON.stringify(["p"]));
+
+// --- 2a. POSTFIX dot: "." right after a note dots the note itself ---
+const dotState = () => staffContent(1, 1);
+// aim explicitly: caret on m2's first note, then overwrite it with g
+await page.locator('.tile[data-index="1"] g[class~="note"] use').first().click({ force: true });
+await page.waitForFunction(() => document.querySelector("main").dataset.caret !== "", null, { timeout: 5000 });
+await page.keyboard.press("5");
+await page.keyboard.press("g");
+await page.waitForFunction(() => {
+  const walk = (el, out) => {
+    if (el.tag === "note") out.push(el.attrs.pname);
+    for (const c of el.children) if (typeof c !== "string") walk(c, out);
+    return out;
+  };
+  const staff = window.__SESSION__.score.measures[1].children.find((c) => typeof c !== "string" && c.tag === "staff");
+  return walk(staff, [])[0] === "g";
+}, null, { timeout: 10000 });
+const beforeDot = await dotState();
+await page.keyboard.press("."); // postfix: dot the just-entered g
+await page.waitForFunction((before) => {
+  const walk = (el, out) => {
+    if (el.tag === "note") out.push(el.attrs.pname + (el.attrs.dots ? "." : ""));
+    for (const c of el.children) if (typeof c !== "string") walk(c, out);
+    return out;
+  };
+  const staff = window.__SESSION__.score.measures[1].children.find((c) => typeof c !== "string" && c.tag === "staff");
+  return JSON.stringify(walk(staff, [])) !== before;
+}, JSON.stringify(beforeDot), { timeout: 10000 }).catch(() => undefined);
+const afterDot = await dotState();
+check(`postfix dot dots the entered note (${afterDot.join(" ")})`, afterDot.some((x) => x.startsWith("g") && x.includes(".")));
+check("HUD inherits the dot for subsequent entries", (await page.evaluate(() => document.querySelector("main").dataset.entry)) === "4.");
+await page.keyboard.press("."); // postfix again: un-dot
+await page.waitForFunction(() => document.querySelector("main").dataset.entry === "4", null, { timeout: 10000 });
+const unDot = await dotState();
+check(`second postfix dot un-dots it (${unDot.join(" ")})`, !unDot.some((x) => x.startsWith("g") && x.includes(".")));
+
+// --- 2b. AZERTY layout: physical digits and the dot work without Shift ---
+const azerty = (key, code) => page.evaluate(({ key, code }) => window.dispatchEvent(new KeyboardEvent("keydown", { key, code, bubbles: true, cancelable: true })), { key, code });
+await azerty("\u00e8", "Digit7"); // AZERTY unshifted 7 -> whole
+check("AZERTY unshifted digit row sets duration (è/Digit7 -> whole)", (await page.evaluate(() => document.querySelector("main").dataset.entry)) === "1");
+await azerty(":", "Period"); // AZERTY ":/" key (unshifted) -> dot toggle
+check("AZERTY ':' key toggles the dot", (await page.evaluate(() => document.querySelector("main").dataset.entry)) === "1.");
+await azerty(";", "Comma"); // AZERTY ";." key -> accent path, must NOT touch the dot
+check("AZERTY ';' key does not collide with the dot", (await page.evaluate(() => document.querySelector("main").dataset.entry)) === "1.");
+await azerty(":", "Period");
+await page.keyboard.press("5"); // restore quarter for later steps
+check("entry duration restored", (await page.evaluate(() => document.querySelector("main").dataset.entry)) === "4");
 
 // tie: enter two identical pitches then tie them
 await page.locator('.tile[data-index="2"] g[class~="note"] use').first().click({ force: true });
@@ -156,6 +209,29 @@ await page.waitForFunction((before) => {
 const postMidi = await staffContent(2, 1);
 check(`MIDI note-on enters f#4 (${postMidi.join(" ")})`, postMidi.some((x) => x.startsWith("f4:") && x.includes("s")));
 check("still no duration problems", (await durationProblems()) === 0);
+
+// --- 2c. dot an EXISTING note (not just-entered), even outside input mode ---
+await page.keyboard.press("Escape"); // leave input mode
+await page.locator('.tile[data-index="0"] g[class~="note"] use').first().click({ force: true }); // m1: c4 half + e4 half
+await page.waitForFunction(() => document.querySelector("main").dataset.caret !== "", null, { timeout: 5000 });
+await page.keyboard.press(".");
+await page.waitForFunction(() => {
+  const walk = (el, out) => {
+    if (el.tag === "note") out.push(`${el.attrs.pname}${el.attrs.dots ? "." : ""}`);
+    for (const c of el.children) if (typeof c !== "string") walk(c, out);
+    return out;
+  };
+  const staff = window.__SESSION__.score.measures[0].children.find((c) => typeof c !== "string" && c.tag === "staff");
+  return walk(staff, [])[0] === "c.";
+}, null, { timeout: 10000 });
+check("'.' dots an existing note at the caret, outside input mode", true);
+await page.keyboard.press("Control+z");
+await page.waitForFunction(() => {
+  const staff = window.__SESSION__.score.measures[0].children.find((c) => typeof c !== "string" && c.tag === "staff");
+  const first = staff.children[0].children.find((c) => typeof c !== "string" && c.tag === "note");
+  return first && !first.attrs.dots;
+}, null, { timeout: 10000 });
+check("undo restores the un-dotted note", true);
 
 // --- 3b. split and merge (x / m) ---
 await page.keyboard.press("Escape"); // leave input mode for plain-key ops

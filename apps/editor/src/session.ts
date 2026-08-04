@@ -8,7 +8,7 @@ import {
   buildScore, resolveContexts, buildEventIndex, ensureIds, fromDom, serialize, serializeDocument, childElements, findAll, meterCapacity, frac,
   CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, DeleteToRestsCommand,
   copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand,
-  ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand,
+  ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand,
   type CoreScore, type MeasureContext, type EventIndex, type Command, type DirtyRegion, type DomLikeElement, type DomLikeNode,
   type BlockSelection, type ClipboardFragment, type PastePlan, type EntrySpec, type CoreElement, type CaretPosition,
 } from "@battuta/core";
@@ -158,9 +158,40 @@ export class DocumentSession {
   toggleDynam(targetId: string, value: string): DirtyRegion[] {
     return this.execute(new ToggleDynamCommand(targetId, value));
   }
+  /**
+   * Toggle the dot on an already-entered note/rest by re-entering it in
+   * place with the dot flipped (the overwrite machinery consumes/releases
+   * the duration difference). Returns the new event id, or throws.
+   */
+  toggleDot(targetId: string): { id: string | null; dots: number } {
+    const ref = this.index.byId.get(targetId);
+    if (!ref || (ref.tag !== "note" && ref.tag !== "rest")) throw new Error("dot applies to a note or rest");
+    const measure = this.score.measures[ref.measureIndex];
+    const el = measure && findAll(measure, ref.tag).find((e) => e.attrs["xml:id"] === targetId);
+    if (!el || !el.attrs["dur"]) throw new Error("dot target has no written duration");
+    const dots = el.attrs["dots"] ? 0 : 1;
+    const carry: Record<string, string> = {};
+    for (const [k, v] of Object.entries(el.attrs)) {
+      if (!["xml:id", "dur", "dots", "pname", "oct", "accid"].includes(k)) carry[k] = v;
+    }
+    const id = this.enterEvent(targetId, {
+      kind: ref.tag,
+      ...(el.attrs["pname"] !== undefined && { pname: el.attrs["pname"] }),
+      ...(el.attrs["oct"] !== undefined && { oct: Number(el.attrs["oct"]) }),
+      ...(el.attrs["accid"] !== undefined && { accid: el.attrs["accid"] }),
+      dur: el.attrs["dur"],
+      ...(dots ? { dots } : {}),
+      carry,
+    });
+    return { id, dots };
+  }
+
   private capacityAt(targetId: string) {
     const ref = this.index.byId.get(targetId);
     return (ref && meterCapacity(this.contexts[ref.measureIndex]?.get(ref.staffN)?.meter ?? {})) || frac(4, 4);
+  }
+  cycleDynam(targetId: string): DirtyRegion[] {
+    return this.execute(new CycleDynamCommand(targetId));
   }
   mergeWithNext(targetId: string): DirtyRegion[] {
     return this.execute(new MergeEventsCommand(targetId, this.capacityAt(targetId)));

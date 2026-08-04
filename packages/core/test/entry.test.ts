@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildEventIndex, serialize, frac, fEq, decomposeDuration, validateMeasureDurations, findAll,
   ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ToggleArticCommand, ToggleDynamCommand,
-  MergeEventsCommand, SplitEventCommand,
+  MergeEventsCommand, SplitEventCommand, CycleDynamCommand,
   type CommandContext,
 } from "../src/index.js";
 import { scoreFrom, mei } from "./helpers.js";
@@ -85,6 +85,17 @@ describe("ReplaceEntryCommand", () => {
     expect(findAll(staff2, "rest").map((r) => `${r.attrs["dur"]}${r.attrs["dots"] ?? ""}`)).toEqual(["21"]);
     validAll(score);
     expect(cmd.enteredId).toBeTruthy();
+  });
+
+  it("carry attributes survive re-entry (postfix dot keeps artic/tie)", () => {
+    const { score } = scoreFrom(mei(BODY));
+    new ToggleArticCommand(["q1"], "stacc").apply(ctxFor(score));
+    const cmd = new ReplaceEntryCommand("q1", { kind: "note", pname: "c", oct: 4, dur: "8", carry: { artic: "stacc" } }, CAP);
+    cmd.apply(ctxFor(score));
+    const entered = findAll(score.measures[0]!, "note").find((n) => n.attrs["xml:id"] === cmd.enteredId)!;
+    expect(entered.attrs["artic"]).toBe("stacc");
+    expect(entered.attrs["dur"]).toBe("8");
+    validAll(score);
   });
 
   it("apply-then-revert restores the document byte-identically", () => {
@@ -279,6 +290,26 @@ describe("artic + dynam", () => {
     expect(noteOf().attrs["artic"]).toBe("stacc acc");
     new ToggleArticCommand(["q1"], "stacc").apply(ctxFor(score));
     expect(noteOf().attrs["artic"]).toBe("acc");
+  });
+
+  it("cycles a dynam none -> p -> f -> none with clean reverts", () => {
+    const { score } = scoreFrom(mei(BODY));
+    const dynams = () => findAll(score.measures[0]!, "dynam").map((d) => d.children[0]);
+    const c1 = new CycleDynamCommand("q1");
+    c1.apply(ctxFor(score));
+    expect(dynams()).toEqual(["p"]);
+    const c2 = new CycleDynamCommand("q1");
+    c2.apply(ctxFor(score));
+    expect(dynams()).toEqual(["f"]);
+    const c3 = new CycleDynamCommand("q1");
+    c3.apply(ctxFor(score));
+    expect(dynams()).toEqual([]);
+    c3.revert(ctxFor(score));
+    expect(dynams()).toEqual(["f"]);
+    c2.revert(ctxFor(score));
+    expect(dynams()).toEqual(["p"]);
+    c1.revert(ctxFor(score));
+    expect(dynams()).toEqual([]);
   });
 
   it("adds and removes a dynam anchored to the note", () => {

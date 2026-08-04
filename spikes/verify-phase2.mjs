@@ -21,7 +21,7 @@ const check = (label, ok) => {
 const server = await createServer({
   configFile: "/home/flux/projects/battuta/apps/editor/vite.config.ts",
   root: "/home/flux/projects/battuta/apps/editor",
-  server: { port: 5177, strictPort: true },
+  server: { port: 0 },
   logLevel: "warn",
 });
 await server.listen();
@@ -29,7 +29,7 @@ await server.listen();
 const browser = await chromium.launch({ executablePath: "/usr/bin/google-chrome", headless: true });
 const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
 page.on("pageerror", (e) => console.error("[pageerror]", e.message));
-await page.goto("http://localhost:5177/");
+await page.goto(server.resolvedUrls.local[0]);
 await page.selectOption("select", "Bach-JS_Ein_feste_Burg.mei");
 await page.waitForFunction(() => document.querySelectorAll(".tile .ms").length >= 14, null, { timeout: 60000 });
 

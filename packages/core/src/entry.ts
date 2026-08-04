@@ -21,6 +21,9 @@ export interface EntrySpec {
   accid?: string;
   dur: string;
   dots?: number;
+  /** Extra attributes copied onto the created event (artic, tie, stem.dir —
+   * used when re-entering an event to change its duration in place). */
+  carry?: Record<string, string>;
 }
 
 const specDuration = (spec: { dur: string; dots?: number }): Fraction => {
@@ -30,11 +33,13 @@ const specDuration = (spec: { dur: string; dots?: number }): Fraction => {
 };
 
 const makeEvent = (spec: EntrySpec): CoreElement => {
-  const attrs: Record<string, string> = { "xml:id": newId(), dur: spec.dur };
+  const attrs: Record<string, string> = { ...(spec.carry ?? {}), "xml:id": newId(), dur: spec.dur };
+  delete attrs["dots"];
   if (spec.dots) attrs["dots"] = String(spec.dots);
   if (spec.kind === "note") {
     attrs["pname"] = spec.pname ?? "c";
     attrs["oct"] = String(spec.oct ?? 4);
+    delete attrs["accid"];
     if (spec.accid) attrs["accid"] = spec.accid;
   }
   return { tag: spec.kind, attrs, children: [] };
@@ -426,6 +431,47 @@ export class ToggleArticCommand implements Command {
       if (m.before === undefined) delete m.el.attrs["artic"];
       else m.el.attrs["artic"] = m.before;
     }
+    return [];
+  }
+}
+
+/** Cycle the <dynam> anchored at the event: none -> p -> f -> none. */
+export class CycleDynamCommand implements Command {
+  readonly label = "cycle dynamic";
+  private memento: { measure: CoreElement; at: number; before: CoreElement | null; after: CoreElement | null } | null = null;
+
+  constructor(private readonly targetId: string) {}
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    const ref = ctx.index.byId.get(this.targetId);
+    if (!ref) throw new Error("dynamic target not found");
+    const measure = ctx.score.measures[ref.measureIndex];
+    if (!measure) throw new Error("measure not found");
+    const existing = childElements(measure).find((c) => c.tag === "dynam" && c.attrs["startid"] === `#${this.targetId}`) ?? null;
+    const value = existing?.children[0];
+    if (!existing) {
+      const dynam: CoreElement = { tag: "dynam", attrs: { "xml:id": newId(), staff: String(ref.staffN), startid: `#${this.targetId}` }, children: ["p"] };
+      measure.children.push(dynam);
+      this.memento = { measure, at: measure.children.length - 1, before: null, after: dynam };
+    } else if (value === "p") {
+      const at = measure.children.indexOf(existing);
+      const next: CoreElement = { ...existing, attrs: { ...existing.attrs }, children: ["f"] };
+      measure.children[at] = next;
+      this.memento = { measure, at, before: existing, after: next };
+    } else {
+      const at = measure.children.indexOf(existing);
+      measure.children.splice(at, 1);
+      this.memento = { measure, at, before: existing, after: null };
+    }
+    return [{ measureIndex: ref.measureIndex, staffN: ref.staffN }];
+  }
+
+  revert(_ctx: CommandContext): DirtyRegion[] {
+    if (!this.memento) return [];
+    const m = this.memento;
+    if (m.before === null && m.after) m.measure.children.splice(m.measure.children.indexOf(m.after), 1);
+    else if (m.after === null && m.before) m.measure.children.splice(m.at, 0, m.before);
+    else if (m.before) m.measure.children[m.at] = m.before;
     return [];
   }
 }

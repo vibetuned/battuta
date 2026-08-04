@@ -623,14 +623,16 @@ export default function App() {
           setNotice(null);
           return;
         }
-        if (DUR[e.key]) {
+        // Layout-independence: digits and the dot are matched by PHYSICAL key
+        // (e.code) too — on AZERTY the number row and "." need Shift, but the
+        // physical positions are the same on every layout.
+        // The physical fallback applies only unshifted: AZERTY's shifted
+        // digits already arrive as "1".."7", and QWERTY's shift+1 ("!") must
+        // stay available as the accent key.
+        const digit = /^[1-7]$/.test(e.key) ? e.key : !e.shiftKey ? /^(?:Digit|Numpad)([1-7])$/.exec(e.code)?.[1] : undefined;
+        if (digit && DUR[digit]) {
           e.preventDefault();
-          setEntryDur(DUR[e.key]!);
-          return;
-        }
-        if (e.key === ".") {
-          e.preventDefault();
-          setEntryDots((d) => (d ? 0 : 1));
+          setEntryDur(DUR[digit]!);
           return;
         }
         if (/^[a-g]$/.test(e.key) && !e.altKey) {
@@ -680,7 +682,14 @@ export default function App() {
           afterCommand(session);
           return;
         }
-        // Dynamics use Alt (shift+F/P would shadow chord-adding those pitches).
+        // Dynamics: plain "p" cycles none -> p -> f -> none (layout-proof;
+        // alt+f/p kept as a secondary, though browsers may steal alt+F).
+        if (!e.altKey && e.key === "p" && applyTo) {
+          e.preventDefault();
+          session.cycleDynam(applyTo);
+          afterCommand(session);
+          return;
+        }
         if (e.altKey && (e.key === "f" || e.key === "p") && applyTo) {
           e.preventDefault();
           session.toggleDynam(applyTo, e.key);
@@ -688,6 +697,28 @@ export default function App() {
           return;
         }
         // arrows and everything else fall through to navigation
+      }
+
+      // Dot: "." (QWERTY) or ":" (AZERTY's dedicated unshifted key). Always
+      // applies to a real event — the just-entered note, or the note/rest at
+      // the caret (existing notes includable). Subsequent entries inherit
+      // the resulting dot state; there is no separate prospective toggle.
+      if ((e.key === "." || e.key === ":" || e.code === "NumpadDecimal") && !mod && !e.altKey) {
+        const target = entryMode && lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId;
+        if (!target) return;
+        e.preventDefault();
+        try {
+          const result = session.toggleDot(target);
+          if (entryMode) {
+            lastEntered.current = result.id;
+            setEntryDots(result.dots);
+          }
+          afterCommand(session);
+          setNotice(null);
+        } catch (err) {
+          setNotice(`dot refused: ${err instanceof Error ? err.message : err}`);
+        }
+        return;
       }
 
       // merge with next / split in half — same-pitch cleanup for AMT output.
