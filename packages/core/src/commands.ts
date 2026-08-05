@@ -147,6 +147,58 @@ export class ToggleAccidentalCommand extends AttrCommand {
   }
 }
 
+/** The notes of a chord, in document order — chord children are not in the
+ * event index, so pickers resolve them through the chord's own id. */
+export function chordNotes(score: CoreScore, index: EventIndex, chordId: string): { id: string; pname: string; oct: string; accid?: string }[] {
+  const ref = index.byId.get(chordId);
+  if (!ref || ref.tag !== "chord") return [];
+  const measure = score.measures[ref.measureIndex];
+  const chord = measure && locateById(measure, chordId)?.el;
+  if (!chord) return [];
+  return childElements(chord)
+    .filter((c) => c.tag === "note")
+    .map((n) => ({ id: n.attrs["xml:id"] ?? "", pname: n.attrs["pname"] ?? "", oct: n.attrs["oct"] ?? "", ...(n.attrs["accid"] ? { accid: n.attrs["accid"] } : {}) }));
+}
+
+/**
+ * Toggle an accidental on ONE note of a chord (an all-notes accidental is
+ * rarely what's meant — the chord id anchors the lookup because chord
+ * children are not indexed events).
+ */
+export class ChordNoteAccidentalCommand implements Command {
+  readonly label: string;
+  private memento: { el: CoreElement; before: Record<string, string> } | null = null;
+  private region: DirtyRegion[] = [];
+
+  constructor(
+    private readonly chordId: string,
+    private readonly noteId: string,
+    private readonly accid: "s" | "f" | "n",
+  ) {
+    this.label = `toggle accidental ${accid} on chord note`;
+  }
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    const ref = ctx.index.byId.get(this.chordId);
+    const measure = ref && ctx.score.measures[ref.measureIndex];
+    const chord = measure ? locateById(measure, this.chordId)?.el : undefined;
+    if (!ref || !chord || chord.tag !== "chord") throw new Error("chord not found");
+    const note = childElements(chord).find((c) => c.tag === "note" && c.attrs["xml:id"] === this.noteId);
+    if (!note) throw new Error("note not found in the chord");
+    this.memento = { el: note, before: { ...note.attrs } };
+    if (note.attrs["accid"] === this.accid) delete note.attrs["accid"];
+    else note.attrs["accid"] = this.accid;
+    delete note.attrs["accid.ges"];
+    this.region = [{ measureIndex: ref.measureIndex, staffN: ref.staffN }];
+    return this.region;
+  }
+
+  revert(_ctx: CommandContext): DirtyRegion[] {
+    if (this.memento) this.memento.el.attrs = { ...this.memento.before };
+    return this.region;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 
 interface ReplaceMemento {

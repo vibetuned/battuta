@@ -9,6 +9,7 @@
  * mRest targets are replaced against the measure capacity.
  */
 import { CoreElement, childElements } from "./xml.js";
+import { refreshScore } from "./score.js";
 import { Command, CommandContext, DirtyRegion } from "./commands.js";
 import { EVENT_TAGS } from "./events.js";
 import { Fraction, fAdd, fCmp, frac, eventDuration, decomposeDuration } from "./durations.js";
@@ -456,6 +457,140 @@ export class ToggleTieCommand implements Command {
     if (before[1] === undefined) delete next.attrs["tie"];
     else next.attrs["tie"] = before[1];
     return [];
+  }
+}
+
+/**
+ * Toggle a tie CHAIN over a run of same-pitch notes, any number of measures
+ * apart (a note held across measures is a chain of ties, never one curve
+ * skipping content). Uses proper MEI @tie values: i (initial), m (medial),
+ * t (terminal) — and merges with ties continuing beyond the run's edges.
+ * One command = one undo step for the whole chain.
+ */
+export class ChainTieCommand implements Command {
+  readonly label = "toggle tie chain";
+  private mementos: { el: CoreElement; before: string | undefined }[] = [];
+  private region: DirtyRegion[] = [];
+
+  constructor(private readonly ids: string[]) {}
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    if (this.ids.length < 2) throw new Error("a tie chain needs at least two notes");
+    const refs = this.ids.map((id) => {
+      const r = ctx.index.byId.get(id);
+      if (!r) throw new Error("tie target not found");
+      return r;
+    });
+    const els = refs.map((r, i) => {
+      const m = ctx.score.measures[r.measureIndex];
+      const el = m && locateWithParent(m, this.ids[i]!)?.el;
+      if (!el) throw new Error("tie target not found");
+      if (el.tag !== "note") throw new Error("ties connect single notes");
+      return el;
+    });
+    for (let i = 1; i < refs.length; i++) {
+      const a = refs[i - 1]!, b = refs[i]!;
+      if (a.staffN !== b.staffN || a.layerN !== b.layerN) throw new Error("a tie chain stays in one staff and layer");
+      const consecutive =
+        (b.measureIndex === a.measureIndex && b.eventIndex === a.eventIndex + 1) ||
+        (b.measureIndex === a.measureIndex + 1 && b.eventIndex === 0 && a.eventIndex === ctx.index.eventsAt(a.measureIndex, a.staffN, a.layerN).length - 1);
+      if (!consecutive) throw new Error(`tie chain must be consecutive notes (gap after note ${i})`);
+      if (els[i - 1]!.attrs["pname"] !== els[i]!.attrs["pname"] || els[i - 1]!.attrs["oct"] !== els[i]!.attrs["oct"]) {
+        throw new Error(`tie requires the same pitch along the chain (note ${i + 1} differs)`);
+      }
+    }
+    this.mementos = els.map((el) => ({ el, before: el.attrs["tie"] }));
+    this.region = refs.map((r) => ({ measureIndex: r.measureIndex, staffN: r.staffN }));
+    const tiedIn = (v: string | undefined) => v === "t" || v === "m";
+    const tiedOut = (v: string | undefined) => v === "i" || v === "m";
+    const fullyTied = els.every((el, i) => (i === 0 || tiedIn(el.attrs["tie"])) && (i === els.length - 1 || tiedOut(el.attrs["tie"])));
+    els.forEach((el, i) => {
+      const before = el.attrs["tie"];
+      const first = i === 0, last = i === els.length - 1;
+      if (fullyTied) {
+        // Untie the run, preserving ties that continue past its edges.
+        if (first && tiedIn(before)) el.attrs["tie"] = "t";
+        else if (last && before === "m") el.attrs["tie"] = "i";
+        else delete el.attrs["tie"];
+      } else {
+        if (first) el.attrs["tie"] = tiedIn(before) ? "m" : "i";
+        else if (last) el.attrs["tie"] = before === "m" || before === "i" ? "m" : "t";
+        else el.attrs["tie"] = "m";
+      }
+    });
+    return this.region;
+  }
+
+  revert(_ctx: CommandContext): DirtyRegion[] {
+    for (const m of [...this.mementos].reverse()) {
+      if (m.before === undefined) delete m.el.attrs["tie"];
+      else m.el.attrs["tie"] = m.before;
+    }
+    return this.region;
+  }
+}
+
+/**
+ * Toggle a slur between two events, any number of measures apart. The
+ * <slur> control event lives in the START event's measure (standard MEI) —
+ * tile synthesis segments boundary-crossing curves into continuation stubs,
+ * so the document keeps the real element and save stays a plain serialize.
+ */
+export class ToggleSlurCommand implements Command {
+  readonly label = "toggle slur";
+  private memento: { measure: CoreElement; at: number; el: CoreElement; added: boolean } | null = null;
+  private region: DirtyRegion[] = [];
+
+  constructor(
+    private readonly startId: string,
+    private readonly endId: string,
+  ) {}
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    const deref = (v: string | undefined) => (v ? v.replace(/^#/, "") : undefined);
+    let a = ctx.index.byId.get(this.startId);
+    let b = ctx.index.byId.get(this.endId);
+    if (!a || !b) throw new Error("slur endpoints not found");
+    if (a.id === b.id) throw new Error("a slur needs two different events");
+    if (a.staffN !== b.staffN || a.layerN !== b.layerN) throw new Error("slur endpoints must share a staff and layer");
+    if (a.tag === "rest" || a.tag === "mRest" || b.tag === "rest" || b.tag === "mRest") throw new Error("slurs connect notes or chords");
+    if (a.measureIndex > b.measureIndex || (a.measureIndex === b.measureIndex && a.eventIndex > b.eventIndex)) [a, b] = [b, a];
+    const measure = ctx.score.measures[a.measureIndex];
+    if (!measure) throw new Error("start measure not found");
+    this.region = [];
+    for (let m = a.measureIndex; m <= b.measureIndex; m++) this.region.push({ measureIndex: m, staffN: a.staffN });
+    const at = measure.children.findIndex(
+      (c) => typeof c !== "string" && c.tag === "slur" && deref(c.attrs["startid"]) === a!.id && deref(c.attrs["endid"]) === b!.id,
+    );
+    if (at >= 0) {
+      this.memento = { measure, at, el: measure.children[at] as CoreElement, added: false };
+      measure.children.splice(at, 1);
+    } else {
+      const el: CoreElement = {
+        tag: "slur",
+        attrs: { "xml:id": newId(), startid: `#${a.id}`, endid: `#${b.id}`, staff: String(a.staffN) },
+        children: [],
+      };
+      measure.children.push(el);
+      this.memento = { measure, at: measure.children.length - 1, el, added: true };
+    }
+    // New measures array -> the tile span-end index rebuilds (it caches per
+    // score.measures identity; a stale index would drop the incoming stub).
+    refreshScore(ctx.score);
+    return this.region;
+  }
+
+  revert(ctx: CommandContext): DirtyRegion[] {
+    if (!this.memento) return [];
+    const { measure, at, el, added } = this.memento;
+    if (added) {
+      const i = measure.children.indexOf(el);
+      if (i >= 0) measure.children.splice(i, 1);
+    } else {
+      measure.children.splice(at, 0, el);
+    }
+    refreshScore(ctx.score);
+    return this.region;
   }
 }
 

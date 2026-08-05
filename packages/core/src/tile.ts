@@ -125,11 +125,13 @@ interface SpanEnd {
  * Index of span events (slur/tie/…) by their end reference, built once per
  * score: a tile needs to know about curves that START in an earlier measure
  * and END inside the tile, because the event element lives with its start.
+ * Keyed on score.measures (refreshScore replaces the array), so commands
+ * that add/remove/move span elements invalidate it by refreshing the score.
  */
-const spanEndIndexCache = new WeakMap<CoreScore, SpanEnd[]>();
+const spanEndIndexCache = new WeakMap<CoreElement[], SpanEnd[]>();
 
 function getSpanEndIndex(score: CoreScore): SpanEnd[] {
-  let index = spanEndIndexCache.get(score);
+  let index = spanEndIndexCache.get(score.measures);
   if (index) return index;
   index = [];
   score.measures.forEach((measure, measureIndex) => {
@@ -139,7 +141,7 @@ function getSpanEndIndex(score: CoreScore): SpanEnd[] {
       if (endRef) index.push({ el: child, measureIndex, endRef });
     }
   });
-  spanEndIndexCache.set(score, index);
+  spanEndIndexCache.set(score.measures, index);
   return index;
 }
 
@@ -205,6 +207,60 @@ function segmentControlEvents(measures: CoreElement[], beatsPerMeasure: number, 
     ensureStaff(stub, candidate.endRef);
     measures[k]!.children.push(stub);
   }
+
+  stubEdgeTies(measures, beatsPerMeasure);
+}
+
+const LEAF_EVENT_TAGS = new Set(["note", "chord", "rest", "mRest", "space", "mSpace"]);
+
+function collectLeafEvents(el: CoreElement, out: CoreElement[]): void {
+  for (const c of childElements(el)) {
+    if (LEAF_EVENT_TAGS.has(c.tag)) out.push(c);
+    else collectLeafEvents(c, out); // beam, tuplet, …
+  }
+}
+
+/**
+ * Attribute ties (@tie) crossing the slice edge: Verovio SKIPS an unmatched
+ * @tie half ("Unable to match @tie"), so a note held across the boundary
+ * lost its curve on both tiles. Inject explicit <tie> continuation stubs for
+ * the edge notes — incoming (tie t/m on the first event of a layer in the
+ * first measure) and outgoing (tie i/m on the last event in the last
+ * measure). Interior @tie pairs match inside the slice; edges never do.
+ */
+function stubEdgeTies(measures: CoreElement[], beatsPerMeasure: number): void {
+  const tieNotes = (event: CoreElement | undefined): CoreElement[] => {
+    if (!event) return [];
+    if (event.tag === "note") return [event];
+    if (event.tag === "chord") return childElements(event).filter((c) => c.tag === "note");
+    return [];
+  };
+  const eachEdgeNote = (measure: CoreElement, pick: (events: CoreElement[]) => CoreElement | undefined, fn: (note: CoreElement, staffN: string) => void): void => {
+    for (const staff of childElements(measure).filter((c) => c.tag === "staff")) {
+      const staffN = staff.attrs["n"] ?? "1";
+      for (const layer of childElements(staff).filter((c) => c.tag === "layer")) {
+        const events: CoreElement[] = [];
+        collectLeafEvents(layer, events);
+        for (const note of tieNotes(pick(events))) fn(note, staffN);
+      }
+    }
+  };
+  const first = measures[0]!;
+  eachEdgeNote(first, (ev) => ev[0], (note, staffN) => {
+    const tie = note.attrs["tie"];
+    const id = note.attrs["xml:id"];
+    if ((tie === "t" || tie === "m") && id) {
+      first.children.push({ tag: "tie", attrs: { endid: `#${id}`, tstamp: "0", staff: staffN }, children: [] });
+    }
+  });
+  const last = measures[measures.length - 1]!;
+  eachEdgeNote(last, (ev) => ev[ev.length - 1], (note, staffN) => {
+    const tie = note.attrs["tie"];
+    const id = note.attrs["xml:id"];
+    if ((tie === "i" || tie === "m") && id) {
+      last.children.push({ tag: "tie", attrs: { startid: `#${id}`, tstamp2: `0m+${beatsPerMeasure + 1}`, staff: staffN }, children: [] });
+    }
+  });
 }
 
 /**

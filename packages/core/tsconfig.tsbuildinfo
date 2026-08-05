@@ -1,0 +1,1 @@
+{"root":["./src/arrange.ts","./src/clipboard.ts","./src/commands.ts","./src/context-edit.ts","./src/context.ts","./src/durations.ts","./src/entry.ts","./src/events.ts","./src/ids.ts","./src/index.ts","./src/score.ts","./src/tile.ts","./src/xml.ts"],"version":"5.9.3"}

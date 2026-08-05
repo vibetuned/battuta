@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { synthesizeTile, synthesizeScoreDef, synthesizeRowHeader, serialize } from "../src/index.js";
+import { synthesizeTile, synthesizeScoreDef, synthesizeRowHeader, serialize, buildEventIndex, ToggleSlurCommand, ChainTieCommand } from "../src/index.js";
 import { scoreFrom, mei, measure } from "./helpers.js";
 
 describe("synthesizeTile", () => {
@@ -139,5 +139,60 @@ describe("control-event segmentation at tile boundaries", () => {
     synthesizeTile(score, contexts, 0, 1);
     const again = synthesizeTile(score, contexts, 0, 2);
     expect(again.xml).toContain(`endid="#n2"`); // original slur still whole
+  });
+});
+
+describe("span segmentation after edits", () => {
+  it("a slur added by command reaches the end tile (span index must not go stale)", () => {
+    const { score, contexts } = scoreFrom(mei(`${measure(1)} ${measure(2)} ${measure(3)}`));
+    // Warm the span-end index with a render of the future end tile.
+    const endBefore = synthesizeTile(score, contexts, 2);
+    expect(endBefore.xml).not.toContain("<slur");
+    const cmd = new ToggleSlurCommand("m1s1n1", "m3s1n1");
+    cmd.apply({ score, index: buildEventIndex(score) });
+    const start = synthesizeTile(score, contexts, 0);
+    const middle = synthesizeTile(score, contexts, 1);
+    const end = synthesizeTile(score, contexts, 2);
+    // start: outgoing stub — endid dropped, tstamp2 to the slice edge
+    expect(start.xml).toContain("<slur");
+    expect(start.xml).toContain('tstamp2=');
+    expect(start.xml).not.toContain('endid="#m3s1n1"');
+    // middle: the curve passes entirely over -> not drawn (accepted)
+    expect(middle.xml).not.toContain("<slur");
+    // end: injected incoming stub — tstamp-anchored, no duplicate id
+    expect(end.xml).toContain("<slur");
+    expect(end.xml).toContain('tstamp="0"');
+    expect(end.xml).not.toContain('startid=');
+    expect(end.key).not.toBe(endBefore.key); // cache key must change too
+    // undo: stub disappears again (index invalidated on revert as well)
+    cmd.revert({ score, index: buildEventIndex(score) });
+    const endAfter = synthesizeTile(score, contexts, 2);
+    expect(endAfter.xml).not.toContain("<slur");
+    expect(endAfter.key).toBe(endBefore.key);
+  });
+});
+
+describe("edge tie stubs", () => {
+  it("attribute ties crossing the tile edge get explicit <tie> stubs both sides", () => {
+    const body = `
+      <measure n="1" xml:id="m1">
+        <staff n="1"><layer n="1"><note pname="c" oct="4" dur="1" xml:id="t1"/></layer></staff>
+        <staff n="2"><layer n="1"><note pname="c" oct="3" dur="1" xml:id="u1"/></layer></staff>
+      </measure>
+      <measure n="2" xml:id="m2">
+        <staff n="1"><layer n="1"><note pname="c" oct="4" dur="1" xml:id="t2"/></layer></staff>
+        <staff n="2"><layer n="1"><note pname="c" oct="3" dur="1" xml:id="u2"/></layer></staff>
+      </measure>`;
+    const { score, contexts } = scoreFrom(mei(body));
+    new ChainTieCommand(["t1", "t2"]).apply({ score, index: buildEventIndex(score) });
+    const start = synthesizeTile(score, contexts, 0);
+    expect(start.xml).toContain('<tie startid="#t1" tstamp2="0m+5" staff="1"');
+    const end = synthesizeTile(score, contexts, 1);
+    expect(end.xml).toContain('<tie endid="#t2" tstamp="0" staff="1"');
+    // untouched staff 2 gets no stubs
+    expect(start.xml).not.toContain('staff="2"/>');
+    // interior pairs in a wider slice match by themselves — no stubs inside
+    const both = synthesizeTile(score, contexts, 0, 2);
+    expect(both.xml).not.toContain("<tie ");
   });
 });

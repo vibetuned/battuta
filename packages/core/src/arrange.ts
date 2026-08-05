@@ -4,7 +4,7 @@
  * invariant BEFORE a command is created — planPasteReplace returns a typed
  * verdict so the UI can explain refusals; the command itself is mechanical.
  */
-import { CoreElement, childElements, deepClone } from "./xml.js";
+import { CoreElement, childElements, deepClone, findAll } from "./xml.js";
 import { CoreScore, refreshScore } from "./score.js";
 import { MeasureContext } from "./context.js";
 import { Command, CommandContext, DirtyRegion } from "./commands.js";
@@ -159,7 +159,16 @@ function insertMeasuresAt(score: CoreScore, at: number, els: CoreElement[]): voi
   const anchor = score.measures[at] ?? null;
   if (anchor) {
     const parent = score.measureParent.get(anchor)!;
-    parent.children.splice(parent.children.indexOf(anchor), 0, ...els);
+    let i = parent.children.indexOf(anchor);
+    // Interleaved defs bind to the measure they precede: new measures go
+    // BEFORE them, staying in the PREVIOUS measure's context — a duplicate
+    // must keep its source's meter, not adopt the next section's.
+    while (i > 0) {
+      const prev = parent.children[i - 1];
+      if (prev === undefined || typeof prev === "string" || (prev.tag !== "scoreDef" && prev.tag !== "staffDef")) break;
+      i--;
+    }
+    parent.children.splice(i, 0, ...els);
   } else {
     const last = score.measures[score.measures.length - 1];
     if (!last) throw new Error("cannot insert into an empty score");
@@ -274,5 +283,139 @@ export class DuplicateMeasuresCommand implements Command {
     }
     refreshScore(ctx.score);
     return ctx.score.measures.slice(this.at).map((_, i) => ({ measureIndex: this.at + i, staffN: 0 }));
+  }
+}
+
+/* ------------------------------------------------------------------ */
+
+interface RemovedChild {
+  parent: CoreElement;
+  at: number;
+  el: CoreElement;
+}
+
+const allDirty = (ctx: CommandContext): DirtyRegion[] => ctx.score.measures.map((_, i) => ({ measureIndex: i, staffN: 0 }));
+
+/**
+ * Add a staff below the existing ones: a staffDef (treble, 5 lines) after
+ * the last one in the initial defs, and an mRest staff in every measure —
+ * duration-invariant under any meter by construction.
+ */
+export class AddStaffCommand implements Command {
+  readonly label = "add staff";
+  /** The new staff's number, set by apply (max existing + 1). */
+  staffN = 0;
+  private added: RemovedChild[] = [];
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    this.added = [];
+    const defs = findAll(ctx.score.scoreDef, "staffDef");
+    const last = defs[defs.length - 1];
+    if (!last) throw new Error("no staff definitions to extend");
+    this.staffN = Math.max(...defs.map((d) => Number(d.attrs["n"] ?? "1"))) + 1;
+    const def: CoreElement = { tag: "staffDef", attrs: { n: String(this.staffN), lines: "5", "clef.shape": "G", "clef.line": "2" }, children: [] };
+    ensureIds(def);
+    const grp = (function findParent(el: CoreElement): CoreElement | null {
+      for (const c of childElements(el)) {
+        if (c === last) return el;
+        const hit = findParent(c);
+        if (hit) return hit;
+      }
+      return null;
+    })(ctx.score.scoreDef);
+    if (!grp) throw new Error("staffDef parent not found");
+    const at = grp.children.indexOf(last) + 1;
+    grp.children.splice(at, 0, def);
+    this.added.push({ parent: grp, at, el: def });
+    for (const measure of ctx.score.measures) {
+      const staff: CoreElement = {
+        tag: "staff",
+        attrs: { n: String(this.staffN) },
+        children: [{ tag: "layer", attrs: { n: "1" }, children: [{ tag: "mRest", attrs: {}, children: [] }] }],
+      };
+      ensureIds(staff);
+      // After the last staff, before the measure's control events.
+      const staves = measure.children.filter((c) => typeof c !== "string" && c.tag === "staff") as CoreElement[];
+      const lastStaff = staves[staves.length - 1];
+      const staffAt = lastStaff ? measure.children.indexOf(lastStaff) + 1 : 0;
+      measure.children.splice(staffAt, 0, staff);
+      this.added.push({ parent: measure, at: staffAt, el: staff });
+    }
+    return allDirty(ctx);
+  }
+
+  revert(ctx: CommandContext): DirtyRegion[] {
+    for (const a of [...this.added].reverse()) {
+      const i = a.parent.children.indexOf(a.el);
+      if (i >= 0) a.parent.children.splice(i, 1);
+    }
+    return allDirty(ctx);
+  }
+}
+
+/**
+ * Remove one staff everywhere: its initial staffDef, interleaved staffDefs,
+ * the staff element in every measure, and control events anchored to it
+ * (@staff exactly equal). Refuses to remove the last staff. Undo restores
+ * every element at its exact position.
+ */
+export class RemoveStaffCommand implements Command {
+  readonly label: string;
+  private removed: RemovedChild[] = [];
+
+  constructor(private readonly staffN: number) {
+    this.label = `remove staff ${staffN}`;
+  }
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    this.removed = [];
+    const n = String(this.staffN);
+    const defs = findAll(ctx.score.scoreDef, "staffDef");
+    if (defs.length <= 1) throw new Error("cannot remove the last staff");
+    const def = defs.find((d) => (d.attrs["n"] ?? "1") === n);
+    if (!def) throw new Error(`no staff ${n} in the score definitions`);
+    const take = (parent: CoreElement, el: CoreElement) => {
+      const at = parent.children.indexOf(el);
+      this.removed.push({ parent, at, el });
+      parent.children.splice(at, 1);
+    };
+    const defParent = (function findParent(el: CoreElement): CoreElement | null {
+      for (const c of childElements(el)) {
+        if (c === def) return el;
+        const hit = findParent(c);
+        if (hit) return hit;
+      }
+      return null;
+    })(ctx.score.scoreDef);
+    if (!defParent) throw new Error("staffDef parent not found");
+    take(defParent, def);
+    // Interleaved per-staff defs (mid-piece clef changes for this staff).
+    for (const item of ctx.score.items) {
+      if (item.kind === "def" && item.el.tag === "staffDef" && (item.el.attrs["n"] ?? "1") === n) {
+        const parent = (function findIn(el: CoreElement): CoreElement | null {
+          for (const c of childElements(el)) {
+            if (c === item.el) return el;
+            const hit = findIn(c);
+            if (hit) return hit;
+          }
+          return null;
+        })(ctx.score.scoreEl);
+        if (parent) take(parent, item.el);
+      }
+    }
+    for (const measure of ctx.score.measures) {
+      for (const child of [...childElements(measure)]) {
+        if (child.tag === "staff" && (child.attrs["n"] ?? "1") === n) take(measure, child);
+        else if (child.tag !== "staff" && child.attrs["staff"] === n) take(measure, child); // control events on this staff
+      }
+    }
+    refreshScore(ctx.score); // interleaved defs left the tree
+    return allDirty(ctx);
+  }
+
+  revert(ctx: CommandContext): DirtyRegion[] {
+    for (const r of [...this.removed].reverse()) r.parent.children.splice(r.at, 0, r.el);
+    refreshScore(ctx.score);
+    return allDirty(ctx);
   }
 }

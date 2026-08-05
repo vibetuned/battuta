@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildEventIndex, serialize, CommandStack,
-  TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, DeleteToRestsCommand,
+  TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, findAll, DeleteToRestsCommand,
   type CommandContext,
 } from "../src/index.js";
 import { scoreFrom, mei } from "./helpers.js";
@@ -130,5 +130,48 @@ describe("CommandStack", () => {
     expect(snapshot()).toBe(s1);
     stack.execute(ctx, new TransposeOctaveCommand(["n1"], 1));
     expect(stack.canRedo).toBe(false); // redo history cleared
+  });
+});
+
+describe("ChordNoteAccidentalCommand", () => {
+  const body = `
+    <measure n="1" xml:id="m1">
+      <staff n="1"><layer n="1">
+        <chord dur="2" xml:id="ch1"><note pname="c" oct="4" xml:id="cn1"/><note pname="e" oct="4" xml:id="cn2"/><note pname="g" oct="4" xml:id="cn3"/></chord>
+        <note pname="d" oct="4" dur="2" xml:id="pl1"/>
+      </layer></staff>
+      <staff n="2"><layer n="1"><note pname="c" oct="3" dur="1" xml:id="b1"/></layer></staff>
+    </measure>`;
+
+  it("lists chord notes in document order (children are not indexed events)", () => {
+    const { score } = scoreFrom(mei(body));
+    const index = buildEventIndex(score);
+    expect(chordNotes(score, index, "ch1").map((n) => `${n.pname}${n.oct}`)).toEqual(["c4", "e4", "g4"]);
+    expect(chordNotes(score, index, "pl1")).toEqual([]); // notes have no picker
+    expect(index.byId.has("cn2")).toBe(false); // the reason this API exists
+  });
+
+  it("toggles the accidental on ONE chord note, leaving siblings alone", () => {
+    const { score } = scoreFrom(mei(body));
+    const ctx = () => ({ score, index: buildEventIndex(score) });
+    const before = serialize(score.scoreEl);
+    new ChordNoteAccidentalCommand("ch1", "cn2", "s").apply(ctx());
+    const attrs = (id: string) => findAll(score.scoreEl, "note").find((n) => n.attrs["xml:id"] === id)!.attrs["accid"];
+    expect([attrs("cn1"), attrs("cn2"), attrs("cn3")]).toEqual([undefined, "s", undefined]);
+    // same accid again -> off; document byte-identical
+    new ChordNoteAccidentalCommand("ch1", "cn2", "s").apply(ctx());
+    expect(serialize(score.scoreEl)).toBe(before);
+    // apply + revert is byte-identical too
+    const cmd = new ChordNoteAccidentalCommand("ch1", "cn3", "f");
+    cmd.apply(ctx());
+    cmd.revert(ctx());
+    expect(serialize(score.scoreEl)).toBe(before);
+  });
+
+  it("refuses unknown chords and foreign notes", () => {
+    const { score } = scoreFrom(mei(body));
+    const ctx = () => ({ score, index: buildEventIndex(score) });
+    expect(() => new ChordNoteAccidentalCommand("pl1", "cn1", "s").apply(ctx())).toThrow(/chord not found/);
+    expect(() => new ChordNoteAccidentalCommand("ch1", "b1", "s").apply(ctx())).toThrow(/not found in the chord/);
   });
 });

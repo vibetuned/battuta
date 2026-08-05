@@ -29,7 +29,8 @@ await server.listen();
 const browser = await chromium.launch({ executablePath: "/usr/bin/google-chrome", headless: true });
 const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
 page.on("pageerror", (e) => console.error("[pageerror]", e.message));
-await page.goto(server.resolvedUrls.local[0]);
+await page.goto(server.resolvedUrls.local[0] + "?pool=2");
+try {
 await page.selectOption("select", "Bach-JS_Ein_feste_Burg.mei");
 await page.waitForFunction(() => document.querySelectorAll(".tile .ms").length >= 14, null, { timeout: 60000 });
 
@@ -139,6 +140,8 @@ await page.waitForFunction((id) => !!document.querySelector(`g[id="${CSS.escape(
 check("undo restores the backspaced note", true);
 
 await page.screenshot({ path: `${scratch}/phase2-editing.png` });
-await browser.close();
-await server.close();
+} finally {
+  await browser.close();
+  await server.close();
+}
 process.exit(failures ? 1 : 0);

@@ -89,6 +89,43 @@ const SPACING_STAFF_MAX = 48;
  * simply taller, like a real score. Never derived from tile height (that
  * would shrink orchestral staves to fit). User-adjustable in the header.
  */
+/** Blank score for the tabs' "+" button: one treble staff, 4/4, four
+ * empty measures — everything else is a context/structural edit away. */
+const blankScore = (): string => `<?xml version="1.0" encoding="UTF-8"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.0">
+  <meiHead><fileDesc><titleStmt><title>Untitled</title></titleStmt><pubStmt/></fileDesc></meiHead>
+  <music><body><mdiv><score>
+    <scoreDef meter.count="4" meter.unit="4" keysig="0">
+      <staffGrp><staffDef n="1" lines="5" clef.shape="G" clef.line="2"/></staffGrp>
+    </scoreDef>
+    <section>
+${Array.from({ length: 4 }, (_, i) => `      <measure n="${i + 1}"><staff n="1"><layer n="1"><mRest/></layer></staff></measure>`).join("\n")}
+    </section>
+  </score></mdiv></body></music></mei>
+`;
+
+/** Status-bar select chrome (dark, borderless like VSCode indicators). */
+const STATUSBAR_SELECT: React.CSSProperties = { background: "transparent", color: "#cdd", border: "1px solid #3a4656", borderRadius: 3, fontSize: 12, padding: "0 2px" };
+
+/** Clefs offered by the status-bar context select. */
+const CLEFS: Record<string, { shape: string; line: number; dis?: number; disPlace?: "above" | "below" }> = {
+  G2: { shape: "G", line: 2 },
+  F4: { shape: "F", line: 4 },
+  C3: { shape: "C", line: 3 },
+  C4: { shape: "C", line: 4 },
+  G2v: { shape: "G", line: 2, dis: 8, disPlace: "below" },
+};
+const CLEF_LABELS: Record<string, string> = { G2: "\u{1D11E} treble", F4: "\u{1D122} bass", C3: "\u{1D121} alto", C4: "\u{1D121} tenor", G2v: "\u{1D11E} octave down" };
+
+/** Status-bar entry indicator: "1/8 ♪ (4)" = duration, glyph, digit key. */
+const DUR_GLYPHS: Record<string, string> = { breve: "\u{1D15C}", "1": "\u{1D15D}", "2": "\u{1D15E}", "4": "\u2669", "8": "\u266A", "16": "\u{1D161}", "32": "\u{1D162}", "64": "\u{1D163}", "128": "\u{1D164}" };
+const DUR_KEYS: Record<string, string> = { "1": "7", "2": "6", "4": "5", "8": "4", "16": "3", "32": "2", "64": "1" };
+const durIndicator = (dur: string, dots: number): string => {
+  const dot = dots ? "." : "";
+  const key = DUR_KEYS[dur];
+  return `${dur === "breve" ? "2/1" : `1/${dur}`}${dot} ${DUR_GLYPHS[dur] ?? dur}${dot}${key ? ` (${key})` : ""}`;
+};
+
 export const ZOOM_LEVELS = [0.3, 0.4, 0.5, 0.7, 0.9, 1.1, 1.3] as const;
 export const DEFAULT_ZOOM = 0.9;
 
@@ -385,6 +422,8 @@ export default function App() {
   const [version, setVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /** Chord accidental picker: which note of the chord gets the accidental. */
+  const [accidPick, setAccidPick] = useState<{ accid: "s" | "f" | "n"; chordId: string; notes: { id: string; pname: string; oct: string; accid?: string }[]; x: number; y: number } | null>(null);
   const [caret, setCaret] = useState<CaretPosition | null>(null);
   const [selection, setSelection] = useState<string[]>([]);
   const [block, setBlock] = useState<BlockSelection | null>(null);
@@ -427,24 +466,54 @@ export default function App() {
     lastEntered.current = null;
   }, []);
 
+  /** Open a document from raw MEI text (fixtures and disk files alike). */
+  const openXml = useCallback(
+    (name: string, xml: string) => {
+      setError(null);
+      try {
+        const s = new DocumentSession(xml);
+        if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__SESSION__ = s;
+        const doc: OpenDoc = { id: nextDocId++, name, session: s };
+        setDocs((ds) => [...ds, doc]);
+        setActiveId(doc.id);
+        resetDocUiState();
+        setStats({ rendered: 0, freshMs: 0, fresh: 0 });
+      } catch (e) {
+        setError(String(e));
+      }
+    },
+    [resetDocUiState],
+  );
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const openDoc = useCallback(
     (fixture: string) => {
       setError(null);
       fetch("/" + fixture)
         .then((r) => r.text())
-        .then((xml) => {
-          const s = new DocumentSession(xml);
-          if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__SESSION__ = s;
-          const doc: OpenDoc = { id: nextDocId++, name: fixture.replace(/\.mei$/, ""), session: s };
-          setDocs((ds) => [...ds, doc]);
-          setActiveId(doc.id);
-          resetDocUiState();
-          setStats({ rendered: 0, freshMs: 0, fresh: 0 });
-        })
+        .then((xml) => openXml(fixture.replace(/\.mei$/, ""), xml))
         .catch((e) => setError(String(e)));
     },
-    [resetDocUiState],
+    [openXml],
   );
+
+  /** "+" tab: a fresh blank score, named untitled-1, -2, … */
+  const newDoc = useCallback(() => {
+    try {
+      const s = new DocumentSession(blankScore());
+      if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__SESSION__ = s;
+      const id = nextDocId++;
+      setDocs((ds) => {
+        const n = ds.filter((d) => d.name.startsWith("untitled-")).length + 1;
+        return [...ds, { id, name: `untitled-${n}`, session: s }];
+      });
+      setActiveId(id);
+      resetDocUiState();
+      setStats({ rendered: 0, freshMs: 0, fresh: 0 });
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [resetDocUiState]);
 
   // Open the default document on startup (ref-guarded: StrictMode runs
   // mount effects twice, and two fetches would open two tabs).
@@ -556,20 +625,18 @@ export default function App() {
   /** Apply a clef/key/meter change at the caret's measure (clef: staff). */
   const applyContext = useCallback(
     (kind: "clef" | "key" | "meter", value: string) => {
-      if (!session || !caret || !value) return;
+      if (!session || !value) return;
+      if (!caret) {
+        setNotice("place the caret first");
+        return;
+      }
       try {
         if (kind === "key") session.changeContext(caret.measureIndex, { keysig: value });
         else if (kind === "meter") {
           const [count, unit] = value.split("/");
           session.changeContext(caret.measureIndex, { meter: { count: count!, unit: unit! } });
         } else {
-          const CLEFS: Record<string, { shape: string; line: number; dis?: number; disPlace?: "above" | "below" }> = {
-            G2: { shape: "G", line: 2 },
-            F4: { shape: "F", line: 4 },
-            C3: { shape: "C", line: 3 },
-            C4: { shape: "C", line: 4 },
-            G2v: { shape: "G", line: 2, dis: 8, disPlace: "below" },
-          };
+          if (!CLEFS[value]) return;
           session.changeContext(caret.measureIndex, { clef: CLEFS[value]!, staffN: caret.staffN });
         }
         afterCommand(session);
@@ -618,6 +685,20 @@ export default function App() {
       setCaret(next);
     },
     [session, block, caret, afterCommand],
+  );
+
+  /** Chord accidentals are per-note (an all-notes sharp is rarely meant):
+   * for a chord target, open a picker near the glyph instead of applying. */
+  const openAccidPicker = useCallback(
+    (chordId: string, accid: "s" | "f" | "n"): boolean => {
+      if (!session || session.index.byId.get(chordId)?.tag !== "chord") return false;
+      const notes = session.chordNotes(chordId);
+      if (notes.length === 0) return false;
+      const r = document.querySelector(`g[id="${CSS.escape(chordId)}"]`)?.getBoundingClientRect();
+      setAccidPick({ accid, chordId, notes, x: r ? r.left : window.innerWidth / 2, y: r ? r.bottom + 6 : window.innerHeight / 3 });
+      return true;
+    },
+    [session],
   );
 
   // Keyboard: navigation, selection, edits, undo/redo.
@@ -689,6 +770,86 @@ export default function App() {
         setNotice("note input: a–g pitch · shift+A–G chord · r rest · 1–7 duration (5=quarter) · . dot · s/v/n sharp/flat/natural · t tie · , stacc · ; accent · shift+F/P dynamics · esc exit");
         return;
       }
+      if (accidPick) {
+        // The picker owns the keyboard: letter (or number) picks the chord
+        // note, anything else cancels.
+        e.preventDefault();
+        const pick = /^[1-9]$/.test(e.key)
+          ? accidPick.notes[Number(e.key) - 1]
+          : /^[a-g]$/i.test(e.key)
+            ? accidPick.notes.find((n) => n.pname === e.key.toLowerCase())
+            : undefined;
+        setAccidPick(null);
+        if (pick) {
+          try {
+            session.chordNoteAccidental(accidPick.chordId, pick.id, accidPick.accid);
+            afterCommand(session);
+            setNotice(null);
+          } catch (err) {
+            setNotice(`accidental refused: ${err instanceof Error ? err.message : err}`);
+          }
+        }
+        return;
+      }
+      if (e.key === "S") {
+        e.preventDefault();
+        // Slur between the ends of the note selection (shift+click or
+        // shift+arrows build one, across measures too); with just the
+        // caret, slur to the next event. Same pair again removes it.
+        const targets = editTargets();
+        const startId = targets[0];
+        const ref = startId ? session.index.byId.get(startId) : undefined;
+        const endId =
+          targets.length >= 2
+            ? targets[targets.length - 1]
+            : ref
+              ? session.index.eventsAt(ref.measureIndex, ref.staffN, ref.layerN)[ref.eventIndex + 1] ??
+                session.index.eventsAt(ref.measureIndex + 1, ref.staffN, ref.layerN)[0]
+              : undefined;
+        if (!startId || !endId) return;
+        try {
+          session.toggleSlur(startId, endId);
+          afterCommand(session);
+          setNotice("slur toggled");
+        } catch (err) {
+          setNotice(`slur refused: ${err instanceof Error ? err.message : err}`);
+        }
+        return;
+      }
+      if (e.key === "t" && !mod && selection.length >= 2) {
+        e.preventDefault();
+        // Multi-measure tie: the selected run becomes one tie chain
+        // (i/m/t), one undo step; same selection again unties it.
+        try {
+          session.tieChain(selection);
+          afterCommand(session);
+          setNotice("tie chain toggled");
+        } catch (err) {
+          setNotice(`tie refused: ${err instanceof Error ? err.message : err}`);
+        }
+        return;
+      }
+      if (e.key === "t" && !mod) {
+        // Tie the note back to its predecessor — ACROSS the barline when it
+        // opens the measure (same gesture everywhere); only with no previous
+        // note at all (piece start, rest before) does it tie forward.
+        const applyTo = entryMode && lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId;
+        if (!applyTo) return;
+        e.preventDefault();
+        const ref = session.index.byId.get(applyTo);
+        const prevId = ref
+          ? ref.eventIndex > 0
+            ? session.index.eventsAt(ref.measureIndex, ref.staffN, ref.layerN)[ref.eventIndex - 1]
+            : session.index.eventsAt(ref.measureIndex - 1, ref.staffN, ref.layerN).at(-1)
+          : undefined;
+        try {
+          session.toggleTie(prevId && session.index.byId.get(prevId)?.tag === "note" ? prevId : applyTo);
+          afterCommand(session);
+        } catch (err) {
+          setNotice(`tie refused: ${err instanceof Error ? err.message : err}`);
+        }
+        return;
+      }
       if (entryMode && !mod) {
         const DUR: Record<string, string> = { "7": "1", "6": "2", "5": "4", "4": "8", "3": "16", "2": "32", "1": "64" };
         const applyTo = lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId;
@@ -731,23 +892,11 @@ export default function App() {
           enterAtCaret({ kind: "rest" });
           return;
         }
-        if (e.key === "t" && applyTo) {
-          e.preventDefault();
-          // Tie the last entered note back to its predecessor (the natural
-          // gesture while transcribing); fall back to tying it forward.
-          const ref = session.index.byId.get(applyTo);
-          const prevId = ref && ref.eventIndex > 0 ? session.index.eventsAt(ref.measureIndex, ref.staffN, ref.layerN)[ref.eventIndex - 1] : undefined;
-          try {
-            session.toggleTie(prevId && session.index.byId.get(prevId)?.tag === "note" ? prevId : applyTo);
-            afterCommand(session);
-          } catch (err) {
-            setNotice(`tie refused: ${err instanceof Error ? err.message : err}`);
-          }
-          return;
-        }
         if ((e.key === "s" || e.key === "v" || e.key === "n") && applyTo) {
           e.preventDefault();
-          session.toggleAccidental([applyTo], e.key === "v" ? "f" : (e.key as "s" | "n"));
+          const accid = e.key === "v" ? "f" : (e.key as "s" | "n");
+          if (openAccidPicker(applyTo, accid)) return;
+          session.toggleAccidental([applyTo], accid);
           afterCommand(session);
           return;
         }
@@ -865,6 +1014,7 @@ export default function App() {
       } else if (e.key === "s" || e.key === "f" || e.key === "n") {
         const ids = editTargets();
         if (!ids.length) return;
+        if (ids.length === 1 && openAccidPicker(ids[0]!, e.key as "s" | "f" | "n")) return;
         session.toggleAccidental(ids, e.key as "s" | "f" | "n");
         afterCommand(session);
       } else if (e.key === "Delete" || e.key === "Backspace") {
@@ -898,12 +1048,13 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [session, caret, block, editTargets, afterCommand, entryMode, caretId, enterAtCaret, nearestOctave, structural]);
+  }, [session, caret, block, editTargets, afterCommand, entryMode, caretId, enterAtCaret, nearestOctave, structural, selection, accidPick, openAccidPicker]);
 
   // --- Web MIDI: note-ons enter at the caret while input mode is active;
   // keys held together build a CHORD (like MuseScore). Devices hot-plug via
   // onstatechange, and the HUD shows what is connected.
-  const [midiStatus, setMidiStatus] = useState<string | null>(null);
+  const [midiDevices, setMidiDevices] = useState<string[]>([]);
+  const [midiPanel, setMidiPanel] = useState(false);
   const heldNotes = useRef(new Set<number>());
   const entryModeRef = useRef(entryMode);
   entryModeRef.current = entryMode;
@@ -1004,6 +1155,7 @@ export default function App() {
   useEffect(() => {
     if (import.meta.env.DEV) {
       (window as unknown as Record<string, unknown>).__MIDI_NOTE__ = (n: number, on = true) => (on ? midiNoteOnRef.current(n) : midiNoteOff(n));
+      (window as unknown as Record<string, unknown>).__MIDI_DEVS__ = (names: string[]) => setMidiDevices(names);
     }
     interface MidiInput {
       name?: string;
@@ -1035,12 +1187,12 @@ export default function App() {
             input.onmidimessage = onMessage;
             names.push(input.name || "device");
           }
-          setMidiStatus(names.length ? names.join(", ") : null);
+          setMidiDevices(names);
         };
         attach();
         access.onstatechange = attach; // hot-plug: (re)attach and update HUD
       })
-      .catch(() => setMidiStatus(null));
+      .catch(() => setMidiDevices([]));
     return () => {
       closed = true;
     };
@@ -1132,6 +1284,7 @@ export default function App() {
       setSelection([]);
     }
     lastEntered.current = null; // caret moved: post-entry modifiers follow it
+    setAccidPick(null);
     setCaret(pos);
   };
 
@@ -1169,6 +1322,13 @@ export default function App() {
     }
   }, [session]);
 
+  // Current context at the caret (score opening when there is no caret) —
+  // the status-bar selects display it and apply changes at the caret.
+  const shownCtx = session ? (caret ? session.contexts[caret.measureIndex]?.get(caret.staffN) : undefined) ?? session.contexts[0]?.values().next().value : undefined;
+  const shownClef = shownCtx?.clef ? `${shownCtx.clef.shape}${shownCtx.clef.line}${shownCtx.clef.dis === 8 && shownCtx.clef.disPlace === "below" ? "v" : ""}` : "";
+  const shownKeysig = shownCtx?.keysig ?? "";
+  const shownMeter = shownCtx?.meter?.count ? `${shownCtx.meter.count}/${shownCtx.meter.unit}` : shownCtx?.meter?.sym ?? "";
+
   const contextChanges = session ? session.contexts.reduce((n, c, i) => (i > 0 && contextHash(c) !== contextHash(session.contexts[i - 1]!) ? n + 1 : n), 0) : 0;
 
   const status = error
@@ -1181,8 +1341,7 @@ export default function App() {
         ` · undo ${session.stack.undoDepth}` +
         (clipInfo ? ` · clip ${clipInfo}` : "") +
         (block ? ` · block m${block.measureFrom + 1}–${block.measureTo + 1} / staff ${block.staffFrom}–${block.staffTo}` : "") +
-        (entryMode ? ` · INPUT ${entryDur}${entryDots ? "." : ""}` : "") +
-        (midiStatus ? ` · midi: ${midiStatus}` : "");
+        "";
 
   const saveDoc = () => {
     if (!session || !active) return;
@@ -1214,7 +1373,7 @@ export default function App() {
   }
 
   return (
-    <div style={{ fontFamily: "system-ui, sans-serif", padding: 12 }}>
+    <div style={{ fontFamily: "system-ui, sans-serif", padding: 12, paddingBottom: 36 }}>
       <header style={{ display: "flex", gap: 10, alignItems: "baseline", marginBottom: 4, flexWrap: "wrap" }}>
         <strong>battuta</strong>
         <span className="tabs">
@@ -1233,6 +1392,9 @@ export default function App() {
               </span>
             </button>
           ))}
+          <button className="tab tab-new" title="new score" onClick={newDoc}>
+            +
+          </button>
         </span>
         <select value="" onChange={(e) => { e.target.blur(); if (e.target.value) openDoc(e.target.value); }}>
           <option value="">open…</option>
@@ -1242,6 +1404,21 @@ export default function App() {
             </option>
           ))}
         </select>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".mei,.xml"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = ""; // allow re-opening the same file
+            if (!f) return;
+            f.text()
+              .then((xml) => openXml(f.name.replace(/\.(mei|xml)$/, ""), xml))
+              .catch((err) => setError(String(err)));
+          }}
+        />
+        <button onClick={() => fileInputRef.current?.click()}>open file…</button>
         <button onClick={() => setView(view === "tiles" ? "pages" : "tiles")}>{view === "tiles" ? "page view" : "edit view"}</button>
         <select value={zoom} onChange={(e) => { e.target.blur(); setZoom(Number(e.target.value)); }} title="zoom (staff size)">
           {ZOOM_LEVELS.map((z) => (
@@ -1253,30 +1430,6 @@ export default function App() {
         <button onClick={() => structural("insert")}>+m</button>
         <button onClick={() => structural("delete")}>−m</button>
         <button onClick={() => structural("duplicate")}>⧉m</button>
-        {/* Blur on change: a focused select swallows the editor keyboard
-            (arrows would re-fire the dropdown, not move the caret). */}
-        <select value="" title="clef at caret (staff-local)" onChange={(e) => { e.target.blur(); applyContext("clef", e.target.value); }}>
-          <option value="">clef…</option>
-          <option value="G2">𝄞 treble</option>
-          <option value="F4">𝄢 bass</option>
-          <option value="C3">𝄡 alto</option>
-          <option value="C4">𝄡 tenor</option>
-          <option value="G2v">𝄞 octave down</option>
-        </select>
-        <select value="" title="key signature at caret (score-wide)" onChange={(e) => { e.target.blur(); applyContext("key", e.target.value); }}>
-          <option value="">key…</option>
-          {["7f", "6f", "5f", "4f", "3f", "2f", "1f", "0", "1s", "2s", "3s", "4s", "5s", "6s", "7s"].map((k) => (
-            <option key={k} value={k}>
-              {k === "0" ? "C / a (0)" : k.endsWith("s") ? `${k[0]}♯` : `${k[0]}♭`}
-            </option>
-          ))}
-        </select>
-        <select value="" title="meter at caret (score-wide; refuses if content no longer fits)" onChange={(e) => { e.target.blur(); applyContext("meter", e.target.value); }}>
-          <option value="">meter…</option>
-          {["4/4", "3/4", "2/4", "2/2", "6/8", "9/8", "12/8", "5/4", "7/8", "5/8", "3/8"].map((m) => (
-            <option key={m}>{m}</option>
-          ))}
-        </select>
         <button onClick={saveDoc}>save</button>
         <span style={{ color: "#666", fontSize: 13 }} data-status>
           {status}
@@ -1290,6 +1443,13 @@ export default function App() {
       <div style={{ color: notice?.startsWith("paste refused") ? "#c22" : "#276", fontSize: 12, marginBottom: 4, minHeight: 15 }} data-notice>
         {notice ?? ""}
       </div>
+      {accidPick && (
+        <div data-accid-pick style={{ position: "fixed", left: accidPick.x, top: accidPick.y, background: "#233", color: "#fff", padding: "4px 8px", borderRadius: 4, fontSize: 12, zIndex: 40, pointerEvents: "none", boxShadow: "0 2px 8px rgba(0,0,0,.35)" }}>
+          {accidPick.accid === "s" ? "♯" : accidPick.accid === "f" ? "♭" : "♮"} on{" "}
+          {accidPick.notes.map((n, k) => `${k + 1}:${n.pname}${n.accid === "s" ? "♯" : n.accid === "f" ? "♭" : n.accid === "n" ? "♮" : ""}${n.oct}`).join("  ")}
+          {"  ·  a–g / 1–9 pick, esc"}
+        </div>
+      )}
       <style>{`
         .score-row { display: flex; align-items: flex-start; margin: 10px 0; }
         .tile, .rowhdr { position: relative; flex: none; }
@@ -1307,6 +1467,7 @@ export default function App() {
         .tabs .tab.active { background: #fff; border-bottom-color: #fff; font-weight: 600; }
         .tabs .tab-close { margin-left: 7px; color: #999; padding: 0 2px; }
         .tabs .tab-close:hover { color: #c22; }
+        .tabs .tab-new { font-weight: 700; color: #494; }
         ${caretCss}
         ${selectionCss}
         ${blockCss}
@@ -1327,6 +1488,96 @@ export default function App() {
         {session && pool && view === "pages" && <PageView key={`${activeId}-${version}`} session={session} pool={pool} />}
         {caretRect && view === "tiles" && <div className="caret" style={caretRect} />}
       </main>
+      <footer data-statusbar style={{ position: "fixed", left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", gap: 12, background: "#1f2733", color: "#aab", fontSize: 12, lineHeight: "20px", padding: "2px 10px", zIndex: 30 }}>
+        <button
+          data-input-indicator
+          title="note input mode (i)"
+          onClick={() => { setEntryMode((m) => !m); setNotice(null); }}
+          style={{ border: "none", cursor: "pointer", borderRadius: 3, padding: "1px 8px", fontSize: 12, fontFamily: "inherit", background: entryMode ? "#2d7d46" : "transparent", color: entryMode ? "#fff" : "#aab" }}
+        >
+          {entryMode ? durIndicator(entryDur, entryDots) : "INPUT (i)"}
+        </button>
+        <span style={{ flex: 1 }} />
+        {/* Current context at the caret; picking a value applies the change
+            there. Blur on change: a focused select swallows the keyboard. */}
+        <select
+          value=""
+          title="staves (add below / remove the caret's)"
+          style={STATUSBAR_SELECT}
+          disabled={!session}
+          onChange={(e) => {
+            const op = e.target.value;
+            e.target.blur();
+            if (!session || !op) return;
+            try {
+              if (op === "add") {
+                const n = session.addStaff();
+                afterCommand(session);
+                setNotice(`staff ${n} added below`);
+              } else {
+                if (!caret) {
+                  setNotice("place the caret on the staff to remove");
+                  return;
+                }
+                const n = caret.staffN;
+                session.removeStaff(n);
+                setCaret(null);
+                setSelection([]);
+                setBlock(null);
+                anchor.current = null;
+                lastEntered.current = null;
+                afterCommand(session);
+                setNotice(`staff ${n} removed (ctrl+z restores it)`);
+              }
+            } catch (err) {
+              setNotice(`staves: ${err instanceof Error ? err.message : err}`);
+            }
+          }}
+        >
+          <option value="">{session ? `staves (${session.staffCount})` : "staves"}</option>
+          <option value="add">add staff below</option>
+          <option value="remove">remove caret staff</option>
+        </select>
+        <select value={shownClef} title="clef at caret (staff-local)" style={STATUSBAR_SELECT} disabled={!session} onChange={(e) => { e.target.blur(); applyContext("clef", e.target.value); }}>
+          {shownClef && !CLEFS[shownClef] && <option value={shownClef}>{shownClef}</option>}
+          {!shownClef && <option value="">clef</option>}
+          {Object.keys(CLEFS).map((k) => (
+            <option key={k} value={k}>
+              {CLEF_LABELS[k]}
+            </option>
+          ))}
+        </select>
+        <select value={shownKeysig} title="key signature at caret (score-wide)" style={STATUSBAR_SELECT} disabled={!session} onChange={(e) => { e.target.blur(); applyContext("key", e.target.value); }}>
+          {!shownKeysig && <option value="">key</option>}
+          {["7f", "6f", "5f", "4f", "3f", "2f", "1f", "0", "1s", "2s", "3s", "4s", "5s", "6s", "7s"].map((k) => (
+            <option key={k} value={k}>
+              {k === "0" ? "♮ (0)" : k.endsWith("s") ? `${k[0]}♯` : `${k[0]}♭`}
+            </option>
+          ))}
+        </select>
+        <select value={shownMeter} title="meter at caret (score-wide; refuses if content no longer fits)" style={STATUSBAR_SELECT} disabled={!session} onChange={(e) => { e.target.blur(); applyContext("meter", e.target.value); }}>
+          {shownMeter && !["4/4", "3/4", "2/4", "2/2", "6/8", "9/8", "12/8", "5/4", "7/8", "5/8", "3/8"].includes(shownMeter) && <option value={shownMeter}>{shownMeter}</option>}
+          {!shownMeter && <option value="">meter</option>}
+          {["4/4", "3/4", "2/4", "2/2", "6/8", "9/8", "12/8", "5/4", "7/8", "5/8", "3/8"].map((m) => (
+            <option key={m}>{m}</option>
+          ))}
+        </select>
+        <span style={{ position: "relative" }}>
+          {midiPanel && (
+            <div data-midi-list style={{ position: "absolute", right: 0, bottom: 26, background: "#233040", color: "#dde", padding: "6px 10px", borderRadius: 4, whiteSpace: "nowrap", boxShadow: "0 2px 10px rgba(0,0,0,.4)" }}>
+              {midiDevices.length ? midiDevices.map((n, i) => <div key={`${n}${i}`}>🎹 {n}</div>) : <div>no MIDI devices connected</div>}
+            </div>
+          )}
+          <button
+            data-midi-indicator
+            title={midiDevices.length ? midiDevices.join(", ") : "no MIDI device connected"}
+            onClick={() => setMidiPanel((o) => !o)}
+            style={{ border: "none", cursor: "pointer", borderRadius: 3, padding: "1px 8px", fontSize: 12, fontFamily: "inherit", background: "transparent", color: midiDevices.length ? "#6fbf73" : "#778" }}
+          >
+            MIDI {midiDevices.length ? `<>${midiDevices.length > 1 ? ` ${midiDevices.length}` : ""}` : "><"}
+          </button>
+        </span>
+      </footer>
     </div>
   );
 }

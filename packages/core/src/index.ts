@@ -17,7 +17,7 @@ export type { CoreScore, ScoreItem, DefItem, MeasureItem } from "./score.js";
 export { frac, fAdd, fMul, fEq, fCmp, F0, eventDuration, layerDuration, meterCapacity, validateMeasureDurations, decomposeDuration } from "./durations.js";
 export type { Fraction, LayerDuration, DurationProblem } from "./durations.js";
 
-export { ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, ChangeDurationCommand } from "./entry.js";
+export { ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, ChangeDurationCommand } from "./entry.js";
 export type { EntrySpec } from "./entry.js";
 
 export { normalizeBlock, copyBlock, fragmentToText, materializeStaff, findStaffInMeasure } from "./clipboard.js";
@@ -26,7 +26,7 @@ export type { BlockSelection, ClipboardFragment, ClipboardStaff } from "./clipbo
 export { planContextChange, ChangeContextCommand } from "./context-edit.js";
 export type { ContextChangeSpec, ClefSpec, ContextPlan } from "./context-edit.js";
 
-export { planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, emptyMeasureLike } from "./arrange.js";
+export { planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, emptyMeasureLike } from "./arrange.js";
 export type { PastePlan } from "./arrange.js";
 
 export { resolveContexts, contextHash } from "./context.js";
@@ -40,5 +40,5 @@ export { newId, ensureIds } from "./ids.js";
 export { EVENT_TAGS, EventIndex, buildEventIndex, caretLeft, caretRight, caretVertical, eventRange } from "./events.js";
 export type { CaretPosition, EventRef } from "./events.js";
 
-export { CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, DeleteToRestsCommand } from "./commands.js";
+export { CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand } from "./commands.js";
 export type { Command, CommandContext, DirtyRegion } from "./commands.js";

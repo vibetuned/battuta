@@ -122,7 +122,8 @@ Phase 4 in progress (2026-08-02): note entry + round-trip hardening.
   loudly at beam/tuplet/measure boundaries); a–g pitches with
   nearest-octave guessing, shift+A–G chord building, `r` rests, 7..1
   durations (5 = quarter), `.` dot, s/v/n accidentals, `t` tie (back to the
-  predecessor; pitch-checked), `,` staccato, `;`/`!` accent, and `p` cycling
+  predecessor — across the barline when the note opens the measure; works
+  outside input mode too, on the caret note; pitch-checked), `,` staccato, `;`/`!` accent, and `p` cycling
   dynamics (none → p → f → none). **Web MIDI is a first-class input**: in
   input mode, note-ons enter at the caret, keys held together build chords
   (note-off tracking), devices hot-plug via `onstatechange`, the HUD shows
@@ -144,7 +145,12 @@ Phase 4 in progress (2026-08-02): note entry + round-trip hardening.
   zero new ids. Compatibility note: Verovio rejects comments before the
   root element (PIs are fine), so prologue comments are preserved by moving
   them just inside `<mei>`.
-- 97 core tests (property suite fuzzes entry and context commands too);
+- 114 core tests; the property fuzzer covers the whole command pool (a
+  stale modulo had silenced part of it) and promptly caught a real bug:
+  measures inserted or duplicated at a mid-piece context change landed
+  AFTER the interleaved def, adopting the next section's meter — a
+  duplicated 4/4 measure inside a fresh 7/8 region. Structural inserts now
+  stay in their source region (defs bind to the measure they precede);
   `node spikes/verify-phase4.mjs` covers the exit criterion: transcribe a
   passage from scratch by keyboard, no XML touched, durations always valid.
 - **Merge/split** (`m` / `x`): merge the caret event with the next — same
@@ -171,8 +177,57 @@ Phase 4 in progress (2026-08-02): note entry + round-trip hardening.
   Downstream tiles re-render (context propagates), and the changed-context
   header policy makes the new key/meter visible exactly where it changes.
   One undo step each.
+- **Cross-measure slurs** (`S`): select notes with shift+click/shift+arrows
+  (any number of measures apart) — or just place the caret to slur to the
+  next event — and press `S`; the same pair again removes it. The `<slur>`
+  control event lives in the START measure of the real MEI document (no
+  shadow state, save stays a plain serialize): per-measure tiles render it
+  through the existing span segmentation — the start tile draws an outgoing
+  curve to the slice edge, the end tile an incoming stub, and measures the
+  curve merely passes over stay untouched. Staff-local, one undo step,
+  fully covered by the property fuzzer. (Verovio occasionally draws an
+  exuberant curve on a continuation stub — cosmetic, upstream.)
+- **Chord accidentals are per-note**: pressing s/v/n (or s/f/n outside
+  input mode) on a chord no longer sharps every note — a small picker pops
+  up at the chord listing its notes (`1:c4 2:e4 3:g4`); press the note's
+  letter or number to apply the accidental to just that note, esc to
+  cancel. One undo step. (MIDI entry is untouched — it knows exact
+  pitches.) Chord children aren't indexed events, so this rides a
+  dedicated `ChordNoteAccidentalCommand` anchored on the chord's id.
+- **Multi-measure ties** (`t` on a selection): a note held across measures
+  is a chain of ties, so selecting the same-pitch run and pressing `t`
+  ties every consecutive pair in one undo step, with proper MEI `@tie`
+  values (`i`/`m`/`t`, merging with ties that continue past the run's
+  edges); the same selection unties it. Refuses loudly on pitch changes or
+  gaps. Rendering fix underneath: Verovio *skips* an unmatched `@tie` half
+  in an isolated slice, so boundary-crossing ties never drew their curves
+  on either tile — the segmenter now injects explicit `<tie>` continuation
+  stubs for edge notes (incoming and outgoing), which also fixes the
+  plain cross-barline `t` tie from note entry.
 - Still open in Phase 4: tuplet entry; file-watching for external edits
   (needs the Tauri shell or the File System Access API).
+
+Phase 5 in progress (2026-08-05): polish.
+
+- **Status bar** (VSCode-style, bottom): `INPUT (i)` toggles note input on
+  click and becomes `1/8 ♪ (4)` while active — current duration, its
+  glyph (dot included), and the digit key that selects it, updating live;
+  the clef / key / meter selects live here too and always display the
+  **context in force at the caret** (clef per staff — stepping onto a
+  tenor-clef staff flips the indicator; key and meter score-wide), with
+  picking a value still applying the change at the caret's measure;
+  `MIDI ><` flips to a green `MIDI <>` with a device count when
+  controllers are present (hot-plug aware) and clicking it lists the
+  connected devices. A **staves select** sits beside the context ones,
+  showing the staff count: *add staff below* appends a treble staffDef and
+  an mRest staff to every measure (valid under any meter by construction);
+  *remove caret staff* takes out the caret's staff everywhere — its
+  staffDef, mid-piece staffDefs, and staff-anchored control events — one
+  undo step each, last staff refused.
+- **Tabs**: a `+` button opens a fresh blank score (one treble staff, 4/4,
+  four empty measures, named untitled-1, -2, …) ready for note entry, and
+  **open file…** loads any `.mei`/`.xml` from disk into a new tab named
+  after the file. `node spikes/verify-phase5.mjs` (37 checks).
 
 ## Layout
 

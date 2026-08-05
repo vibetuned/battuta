@@ -6,9 +6,9 @@
  */
 import {
   buildScore, resolveContexts, buildEventIndex, ensureIds, fromDom, serialize, serializeDocument, childElements, findAll, meterCapacity, frac,
-  CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, DeleteToRestsCommand,
-  copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand,
-  ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, ChangeDurationCommand, ChangeContextCommand, planContextChange,
+  CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand,
+  copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand,
+  ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, ChangeDurationCommand, ChangeContextCommand, planContextChange,
   type CoreScore, type MeasureContext, type EventIndex, type Command, type DirtyRegion, type DomLikeElement, type DomLikeNode,
   type BlockSelection, type ClipboardFragment, type PastePlan, type EntrySpec, type CoreElement, type CaretPosition, type ContextChangeSpec,
 } from "@battuta/core";
@@ -115,6 +115,12 @@ export class DocumentSession {
   toggleAccidental(ids: string[], accid: "s" | "f" | "n"): DirtyRegion[] {
     return this.execute(new ToggleAccidentalCommand(ids, accid));
   }
+  chordNotes(chordId: string): { id: string; pname: string; oct: string; accid?: string }[] {
+    return chordNotes(this.score, this.index, chordId);
+  }
+  chordNoteAccidental(chordId: string, noteId: string, accid: "s" | "f" | "n"): DirtyRegion[] {
+    return this.execute(new ChordNoteAccidentalCommand(chordId, noteId, accid));
+  }
   deleteToRests(ids: string[]): DirtyRegion[] {
     return this.execute(new DeleteToRestsCommand(ids));
   }
@@ -137,6 +143,18 @@ export class DocumentSession {
   duplicateMeasures(at: number, count = 1): DirtyRegion[] {
     return this.execute(new DuplicateMeasuresCommand(at, count));
   }
+  /** Adds a staff below the existing ones; returns its number. */
+  addStaff(): number {
+    const cmd = new AddStaffCommand();
+    this.execute(cmd);
+    return cmd.staffN;
+  }
+  removeStaff(staffN: number): DirtyRegion[] {
+    return this.execute(new RemoveStaffCommand(staffN));
+  }
+  get staffCount(): number {
+    return this.index.stavesPerMeasure.get(0)?.length ?? 0;
+  }
 
   /** Overwrite-mode entry at the event; returns the entered event's id. */
   enterEvent(targetId: string, spec: EntrySpec): string | null {
@@ -154,6 +172,12 @@ export class DocumentSession {
   }
   toggleTie(targetId: string): DirtyRegion[] {
     return this.execute(new ToggleTieCommand(targetId));
+  }
+  toggleSlur(startId: string, endId: string): DirtyRegion[] {
+    return this.execute(new ToggleSlurCommand(startId, endId));
+  }
+  tieChain(ids: string[]): DirtyRegion[] {
+    return this.execute(new ChainTieCommand(ids));
   }
   toggleArtic(ids: string[], artic: string): DirtyRegion[] {
     return this.execute(new ToggleArticCommand(ids, artic));

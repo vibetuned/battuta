@@ -67,6 +67,21 @@ Exit criteria: transcribe a short passage from scratch by keyboard/MIDI without 
 
 Preferences, keymap customization, session restore, crash-safe autosave (command log replay), MusicXML import via Verovio's converter, export (MEI, MusicXML, per-page SVG/PDF via Verovio), packaging for Linux/macOS/Windows through Tauri, docs and sample corpus. Only after real usage: evaluate whether the core's hot paths (context hashing, duration arithmetic, fragment splicing) justify the Rust/WASM rewrite behind the existing interface.
 
+> **Progress note (2026-08-05) — Phase 5 started.** VSCode-style bottom
+> status bar: left, an INPUT indicator — `INPUT (i)` idle, `1/8 ♪ (4)`
+> (duration · glyph · digit key, dots included) while input mode is
+> active, click toggles the mode; right, a MIDI square — `MIDI ><`
+> disconnected, `MIDI <>` (+ count) connected, click opens the device
+> list, live on hot-plug. The clef/key/meter selects moved from the
+> header into the bar and now display the context in force at the caret
+> (staff-local clef), doubling as the change controls.
+> `node spikes/verify-phase5.mjs` covers it. Also landed: "+" tab (blank
+> score), open file… from disk, staves select (add below / remove at
+> caret, full undo).
+> Landed late in Phase 4 alongside: context editing (clef/key/meter
+> dropdowns), cross-measure slurs (selection + S), tie chains (selection
+> + t), per-note chord accidental picker, edge-tie render stubs.
+
 ## Phase 6 — Reference layers for transcription (≈2–3 weeks)
 
 Import MIDI (and a JSON sidecar format emitted by sound2midi) as reference tracks. Per-tile timemap extraction, ghost piano-roll rendering on the overlay aligned to the tile's clef-based pitch axis, per-track solo/mute/color, beat-aligned by default with an optional section offset map. Add selection playback via timemap → Tone.js so an edit can be auditioned instantly against the reference audio grid.

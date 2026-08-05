@@ -76,7 +76,10 @@ export class RenderPool {
 
   constructor(size?: number) {
     const hw = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 4 : 4;
-    this.size = size ?? Math.min(6, Math.max(2, hw - 2));
+    // ?pool=N caps the fleet (e2e uses 2 so parallel suite runs + the dev
+    // server can't exhaust the machine; each worker holds a Verovio WASM).
+    const override = typeof location !== "undefined" ? Number(new URLSearchParams(location.search).get("pool")) : NaN;
+    this.size = size ?? (Number.isFinite(override) && override >= 1 ? Math.min(16, override) : Math.min(4, Math.max(2, hw - 2)));
     for (let i = 0; i < this.size; i++) this.workers.push(new PoolWorker());
   }
 

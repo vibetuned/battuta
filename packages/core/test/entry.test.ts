@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildEventIndex, serialize, frac, fEq, decomposeDuration, validateMeasureDurations, findAll,
-  ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ToggleArticCommand, ToggleDynamCommand,
+  ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand,
   MergeEventsCommand, SplitEventCommand, CycleDynamCommand, ChangeDurationCommand,
   type CommandContext,
 } from "../src/index.js";
@@ -356,5 +356,112 @@ describe("artic + dynam", () => {
     expect(dynam.children[0]).toBe("f");
     new ToggleDynamCommand("q1", "f").apply(ctxFor(score));
     expect(findAll(score.measures[0]!, "dynam")).toHaveLength(0);
+  });
+});
+
+describe("ToggleSlurCommand", () => {
+  const body = `
+    <measure n="1" xml:id="m1">
+      <staff n="1"><layer n="1"><note pname="c" oct="4" dur="2" xml:id="a1"/><note pname="d" oct="4" dur="2" xml:id="a2"/></layer></staff>
+      <staff n="2"><layer n="1"><note pname="c" oct="3" dur="1" xml:id="b1"/></layer></staff>
+    </measure>
+    <measure n="2" xml:id="m2">
+      <staff n="1"><layer n="1"><rest dur="2" xml:id="r1"/><note pname="e" oct="4" dur="2" xml:id="a3"/></layer></staff>
+      <staff n="2"><layer n="1"><note pname="d" oct="3" dur="1" xml:id="b2"/></layer></staff>
+    </measure>
+    <measure n="3" xml:id="m3">
+      <staff n="1"><layer n="1"><note pname="f" oct="4" dur="1" xml:id="a4"/></layer></staff>
+      <staff n="2"><layer n="1"><note pname="e" oct="3" dur="1" xml:id="b3"/></layer></staff>
+    </measure>`;
+
+  it("adds a cross-measure slur in the START measure, toggles off byte-identically", () => {
+    const { score } = scoreFrom(mei(body));
+    const before = serialize(score.scoreEl);
+    const cmd = new ToggleSlurCommand("a1", "a4");
+    const dirty = cmd.apply(ctxFor(score));
+    const slurs = findAll(score.measures[0]!, "slur");
+    expect(slurs).toHaveLength(1);
+    expect(slurs[0]!.attrs["startid"]).toBe("#a1");
+    expect(slurs[0]!.attrs["endid"]).toBe("#a4");
+    expect(slurs[0]!.attrs["staff"]).toBe("1");
+    expect(findAll(score.measures[2]!, "slur")).toHaveLength(0); // element lives with its start
+    expect(dirty.map((d) => d.measureIndex)).toEqual([0, 1, 2]); // every measure the curve passes over
+    // same pair again -> removes (via a fresh command, like the UI would)
+    new ToggleSlurCommand("a1", "a4").apply(ctxFor(score));
+    expect(serialize(score.scoreEl)).toBe(before);
+  });
+
+  it("normalizes reversed endpoints and revert restores removals in place", () => {
+    const { score } = scoreFrom(mei(body));
+    new ToggleSlurCommand("a4", "a1").apply(ctxFor(score)); // reversed
+    expect(findAll(score.measures[0]!, "slur")[0]!.attrs["startid"]).toBe("#a1");
+    const snap = serialize(score.scoreEl);
+    const off = new ToggleSlurCommand("a1", "a4");
+    off.apply(ctxFor(score)); // removes
+    off.revert(ctxFor(score)); // puts it back at the same index
+    expect(serialize(score.scoreEl)).toBe(snap);
+  });
+
+  it("refuses rests, mixed staves, and self-slurs", () => {
+    const { score } = scoreFrom(mei(body));
+    expect(() => new ToggleSlurCommand("a2", "r1").apply(ctxFor(score))).toThrow(/notes or chords/);
+    expect(() => new ToggleSlurCommand("a1", "b2").apply(ctxFor(score))).toThrow(/share a staff/);
+    expect(() => new ToggleSlurCommand("a1", "a1").apply(ctxFor(score))).toThrow(/two different/);
+  });
+});
+
+describe("ChainTieCommand", () => {
+  const held = `
+    <measure n="1" xml:id="m1">
+      <staff n="1"><layer n="1"><note pname="d" oct="4" dur="2" xml:id="h0"/><note pname="c" oct="4" dur="2" xml:id="h1"/></layer></staff>
+      <staff n="2"><layer n="1"><note pname="c" oct="3" dur="1" xml:id="k1"/></layer></staff>
+    </measure>
+    <measure n="2" xml:id="m2">
+      <staff n="1"><layer n="1"><note pname="c" oct="4" dur="1" xml:id="h2"/></layer></staff>
+      <staff n="2"><layer n="1"><note pname="c" oct="3" dur="1" xml:id="k2"/></layer></staff>
+    </measure>
+    <measure n="3" xml:id="m3">
+      <staff n="1"><layer n="1"><note pname="c" oct="4" dur="2" xml:id="h3"/><note pname="e" oct="4" dur="2" xml:id="h4"/></layer></staff>
+      <staff n="2"><layer n="1"><note pname="c" oct="3" dur="1" xml:id="k3"/></layer></staff>
+    </measure>`;
+
+  it("ties a run across measures with i/m/t and unties byte-identically", () => {
+    const { score } = scoreFrom(mei(held));
+    const before = serialize(score.scoreEl);
+    new ChainTieCommand(["h1", "h2", "h3"]).apply(ctxFor(score));
+    const attr = (id: string) => findAll(score.scoreEl, "note").find((n) => n.attrs["xml:id"] === id)!.attrs["tie"];
+    expect([attr("h1"), attr("h2"), attr("h3")]).toEqual(["i", "m", "t"]);
+    // same run again -> untie
+    new ChainTieCommand(["h1", "h2", "h3"]).apply(ctxFor(score));
+    expect(serialize(score.scoreEl)).toBe(before);
+  });
+
+  it("merges with ties continuing beyond the run's edges", () => {
+    const { score } = scoreFrom(mei(held));
+    new ChainTieCommand(["h1", "h2"]).apply(ctxFor(score)); // h1=i h2=t
+    new ChainTieCommand(["h2", "h3"]).apply(ctxFor(score)); // h2 continues both ways
+    const attr = (id: string) => findAll(score.scoreEl, "note").find((n) => n.attrs["xml:id"] === id)!.attrs["tie"];
+    expect([attr("h1"), attr("h2"), attr("h3")]).toEqual(["i", "m", "t"]);
+    // untying the middle pair preserves the outer halves
+    new ChainTieCommand(["h2", "h3"]).apply(ctxFor(score));
+    expect([attr("h1"), attr("h2"), attr("h3")]).toEqual(["i", "t", undefined]);
+  });
+
+  it("refuses pitch changes, gaps, and non-notes", () => {
+    const { score } = scoreFrom(mei(held));
+    expect(() => new ChainTieCommand(["h3", "h4"]).apply(ctxFor(score))).toThrow(/same pitch/);
+    expect(() => new ChainTieCommand(["h1", "h3"]).apply(ctxFor(score))).toThrow(/consecutive/);
+    expect(() => new ChainTieCommand(["h1", "k2"]).apply(ctxFor(score))).toThrow(/one staff/);
+    expect(() => new ChainTieCommand(["h1"]).apply(ctxFor(score))).toThrow(/at least two/);
+  });
+
+  it("revert restores prior tie attrs exactly", () => {
+    const { score } = scoreFrom(mei(held));
+    new ChainTieCommand(["h1", "h2"]).apply(ctxFor(score));
+    const snap = serialize(score.scoreEl);
+    const cmd = new ChainTieCommand(["h2", "h3"]);
+    cmd.apply(ctxFor(score));
+    cmd.revert(ctxFor(score));
+    expect(serialize(score.scoreEl)).toBe(snap);
   });
 });

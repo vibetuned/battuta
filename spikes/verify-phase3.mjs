@@ -38,7 +38,8 @@ await context.grantPermissions(["clipboard-read", "clipboard-write"]);
 const page = await context.newPage();
 page.on("pageerror", (e) => console.error("[pageerror]", e.message));
 page.on("dialog", (d) => d.accept());
-await page.goto(server.resolvedUrls.local[0]);
+await page.goto(server.resolvedUrls.local[0] + "?pool=2");
+try {
 const waitTiles = (n) => page.waitForFunction((n) => document.querySelectorAll(".tile .ms").length >= n, n, { timeout: 60000 });
 await waitTiles(10);
 
@@ -118,13 +119,23 @@ await waitTiles(14);
 // m2..m3 (indexes 1-2): full 4/4 measures — the chorale also contains short
 // phrase-upbeat measures (metcon=false) which the validator rightly refuses
 // to paste into full measures (that refusal is itself covered below).
-const cFrom = await staffCenter(1, 0);
-const cTo = await staffCenter(2, 0);
-await page.mouse.move(cFrom.x, cFrom.y);
-await page.mouse.down();
-await page.mouse.move(cTo.x, cTo.y, { steps: 5 });
-await page.mouse.up();
-check("chorale block selected", (await page.evaluate(() => document.querySelector("main").dataset.block)) === "1-2/1-1");
+// rows keep reflowing while the two-pass renders settle — recompute the
+// drag coordinates and retry until the block takes (stale-coords flake).
+let choraleBlock = "";
+for (let tries = 0; tries < 5 && choraleBlock !== "1-2/1-1"; tries++) {
+  const cFrom = await staffCenter(1, 0);
+  const cTo = await staffCenter(2, 0);
+  await page.mouse.move(cFrom.x, cFrom.y);
+  await page.mouse.down();
+  await page.mouse.move(cTo.x, cTo.y, { steps: 5 });
+  await page.mouse.up();
+  choraleBlock = await page
+    .waitForFunction(() => document.querySelector("main").dataset.block === "1-2/1-1", null, { timeout: 1500 })
+    .then(() => "1-2/1-1")
+    .catch(() => await_block());
+  function await_block() { return page.evaluate(() => document.querySelector("main").dataset.block); }
+}
+check("chorale block selected", choraleBlock === "1-2/1-1");
 await page.keyboard.press("Control+c");
 const choraleNotes = await Promise.all([notesIn(1, 1), notesIn(2, 1)]);
 await page.locator(".tabs .tab").first().click(); // back to doc 1
@@ -235,6 +246,8 @@ const toolkit = new VerovioToolkit(VerovioModule);
 check("saved file renders in a fresh Verovio toolkit", toolkit.loadData(savedXml) && toolkit.getPageCount() >= 1);
 
 await page.screenshot({ path: `${scratch}/phase3-arranging.png` });
-await browser.close();
-await server.close();
+} finally {
+  await browser.close();
+  await server.close();
+}
 process.exit(failures ? 1 : 0);

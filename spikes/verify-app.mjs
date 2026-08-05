@@ -27,7 +27,8 @@ await server.listen();
 const browser = await chromium.launch({ executablePath: "/usr/bin/google-chrome", headless: true });
 const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
 page.on("pageerror", (e) => console.error("[pageerror]", e.message));
-await page.goto(server.resolvedUrls.local[0]);
+await page.goto(server.resolvedUrls.local[0] + "?pool=2");
+try {
 
 // --- 1. Context fixture (default): all 10 tiles render, m3+ carry sharps ---
 // NB: count .ms labels, not "svg" elements — Verovio nests an inner <svg>,
@@ -133,6 +134,8 @@ await page.waitForFunction(() => document.querySelectorAll(".pages .page svg").l
 check("page view renders full Verovio pages", true);
 await page.screenshot({ path: `${scratch}/app-page-view.png` });
 
-await browser.close();
-await server.close();
+} finally {
+  await browser.close();
+  await server.close();
+}
 process.exit(failures ? 1 : 0);

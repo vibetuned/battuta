@@ -12,9 +12,9 @@ import { fileURLToPath } from "node:url";
 import {
   buildEventIndex, serialize, ensureIds, resolveContexts, CommandStack, copyBlock, planPasteReplace,
   TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, DeleteToRestsCommand,
-  PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand,
-  ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ToggleArticCommand, ToggleDynamCommand,
-  MergeEventsCommand, SplitEventCommand, ChangeContextCommand, planContextChange,
+  PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand,
+  ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand,
+  ChainTieCommand, ChordNoteAccidentalCommand, chordNotes, MergeEventsCommand, SplitEventCommand, ChangeContextCommand, planContextChange,
   validateMeasureDurations, frac,
   type Command, type CommandContext, type CoreScore,
 } from "../src/index.js";
@@ -44,7 +44,9 @@ function makeCommand(ctx: CommandContext, d: CmdDescriptor): Command | null {
   const nMeasures = ctx.score.measures.length;
   const m = d.param % nMeasures;
   const PNAMES = ["c", "d", "e", "f", "g", "a", "b"] as const;
-  switch (d.kind % 12) {
+  // Modulo must cover every case + default, or the tail of the pool is
+  // silently never fuzzed (this was % 12 for a while: cases 12+ were dead).
+  switch (d.kind % 20) {
     case 0: return new TransposeStepCommand(ids, (d.param % 5) - 2 || 1);
     case 1: return new TransposeOctaveCommand(ids, d.param % 2 === 0 ? 1 : -1);
     case 2: return new ToggleAccidentalCommand(ids, (["s", "f", "n"] as const)[d.param % 3]!);
@@ -89,6 +91,29 @@ function makeCommand(ctx: CommandContext, d: CmdDescriptor): Command | null {
       const plan = planContextChange(ctx.score, contexts, m, spec);
       return plan.ok ? new ChangeContextCommand(m, spec) : null;
     }
+    case 15: {
+      const other = candidates[(d.targetSeeds[1] ?? 1) % candidates.length]!;
+      return new ToggleSlurCommand(ids[0]!, other); // invalid pairs throw -> no-op
+    }
+    case 16: {
+      // A run of consecutive events from a random start (mostly refused —
+      // pitch/kind rules — which is exactly what the no-op fuzz wants).
+      const all = [...ctx.index.byId.values()].map((r) => r.id);
+      const at = (d.targetSeeds[0] ?? 0) % all.length;
+      return new ChainTieCommand(all.slice(at, at + 2 + (d.param % 3)));
+    }
+    case 17: {
+      const chords = [...ctx.index.byId.values()].filter((r) => r.tag === "chord").map((r) => r.id);
+      if (chords.length === 0) return null;
+      const chordId = chords[(d.targetSeeds[0] ?? 0) % chords.length]!;
+      const notes = chordNotes(ctx.score, ctx.index, chordId);
+      if (notes.length === 0) return null;
+      const note = notes[(d.targetSeeds[1] ?? 0) % notes.length]!;
+      return new ChordNoteAccidentalCommand(chordId, note.id, (["s", "f", "n"] as const)[d.param % 3]!);
+    }
+    case 18:
+      // add/remove staff; removing staff 1 or the last staff throws -> no-op
+      return d.param % 2 === 0 ? new AddStaffCommand() : new RemoveStaffCommand((d.param % 4) + 1);
     default: {
       const allEvents = [...ctx.index.byId.values()].map((r) => r.id);
       return new SplitEventCommand(allEvents[(d.targetSeeds[0] ?? 0) % allEvents.length]!);
@@ -97,7 +122,7 @@ function makeCommand(ctx: CommandContext, d: CmdDescriptor): Command | null {
 }
 
 const cmdArb = fc.record({
-  kind: fc.integer({ min: 0, max: 15 }),
+  kind: fc.integer({ min: 0, max: 19 }),
   targetSeeds: fc.array(fc.nat(), { minLength: 1, maxLength: 6 }),
   param: fc.nat(),
 });
