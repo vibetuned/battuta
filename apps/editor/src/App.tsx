@@ -553,6 +553,34 @@ export default function App() {
     [session, caret, caretId, entryDur, entryDots, afterCommand],
   );
 
+  /** Apply a clef/key/meter change at the caret's measure (clef: staff). */
+  const applyContext = useCallback(
+    (kind: "clef" | "key" | "meter", value: string) => {
+      if (!session || !caret || !value) return;
+      try {
+        if (kind === "key") session.changeContext(caret.measureIndex, { keysig: value });
+        else if (kind === "meter") {
+          const [count, unit] = value.split("/");
+          session.changeContext(caret.measureIndex, { meter: { count: count!, unit: unit! } });
+        } else {
+          const CLEFS: Record<string, { shape: string; line: number; dis?: number; disPlace?: "above" | "below" }> = {
+            G2: { shape: "G", line: 2 },
+            F4: { shape: "F", line: 4 },
+            C3: { shape: "C", line: 3 },
+            C4: { shape: "C", line: 4 },
+            G2v: { shape: "G", line: 2, dis: 8, disPlace: "below" },
+          };
+          session.changeContext(caret.measureIndex, { clef: CLEFS[value]!, staffN: caret.staffN });
+        }
+        afterCommand(session);
+        setNotice(`${kind} changed at m${caret.measureIndex + 1}${kind === "clef" ? ` (staff ${caret.staffN})` : ""}`);
+      } catch (err) {
+        setNotice(`${kind} change refused: ${err instanceof Error ? err.message : err}`);
+      }
+    },
+    [session, caret, afterCommand],
+  );
+
   const structural = useCallback(
     (op: "insert" | "delete" | "duplicate") => {
       if (!session) return;
@@ -1206,7 +1234,7 @@ export default function App() {
             </button>
           ))}
         </span>
-        <select value="" onChange={(e) => e.target.value && openDoc(e.target.value)}>
+        <select value="" onChange={(e) => { e.target.blur(); if (e.target.value) openDoc(e.target.value); }}>
           <option value="">open…</option>
           {FIXTURES.map((f) => (
             <option key={f} value={f}>
@@ -1215,7 +1243,7 @@ export default function App() {
           ))}
         </select>
         <button onClick={() => setView(view === "tiles" ? "pages" : "tiles")}>{view === "tiles" ? "page view" : "edit view"}</button>
-        <select value={zoom} onChange={(e) => setZoom(Number(e.target.value))} title="zoom (staff size)">
+        <select value={zoom} onChange={(e) => { e.target.blur(); setZoom(Number(e.target.value)); }} title="zoom (staff size)">
           {ZOOM_LEVELS.map((z) => (
             <option key={z} value={z}>
               {Math.round(z * 100)}%
@@ -1225,6 +1253,30 @@ export default function App() {
         <button onClick={() => structural("insert")}>+m</button>
         <button onClick={() => structural("delete")}>−m</button>
         <button onClick={() => structural("duplicate")}>⧉m</button>
+        {/* Blur on change: a focused select swallows the editor keyboard
+            (arrows would re-fire the dropdown, not move the caret). */}
+        <select value="" title="clef at caret (staff-local)" onChange={(e) => { e.target.blur(); applyContext("clef", e.target.value); }}>
+          <option value="">clef…</option>
+          <option value="G2">𝄞 treble</option>
+          <option value="F4">𝄢 bass</option>
+          <option value="C3">𝄡 alto</option>
+          <option value="C4">𝄡 tenor</option>
+          <option value="G2v">𝄞 octave down</option>
+        </select>
+        <select value="" title="key signature at caret (score-wide)" onChange={(e) => { e.target.blur(); applyContext("key", e.target.value); }}>
+          <option value="">key…</option>
+          {["7f", "6f", "5f", "4f", "3f", "2f", "1f", "0", "1s", "2s", "3s", "4s", "5s", "6s", "7s"].map((k) => (
+            <option key={k} value={k}>
+              {k === "0" ? "C / a (0)" : k.endsWith("s") ? `${k[0]}♯` : `${k[0]}♭`}
+            </option>
+          ))}
+        </select>
+        <select value="" title="meter at caret (score-wide; refuses if content no longer fits)" onChange={(e) => { e.target.blur(); applyContext("meter", e.target.value); }}>
+          <option value="">meter…</option>
+          {["4/4", "3/4", "2/4", "2/2", "6/8", "9/8", "12/8", "5/4", "7/8", "5/8", "3/8"].map((m) => (
+            <option key={m}>{m}</option>
+          ))}
+        </select>
         <button onClick={saveDoc}>save</button>
         <span style={{ color: "#666", fontSize: 13 }} data-status>
           {status}

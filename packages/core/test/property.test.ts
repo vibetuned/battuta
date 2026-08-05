@@ -14,7 +14,7 @@ import {
   TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, DeleteToRestsCommand,
   PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand,
   ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ToggleArticCommand, ToggleDynamCommand,
-  MergeEventsCommand, SplitEventCommand,
+  MergeEventsCommand, SplitEventCommand, ChangeContextCommand, planContextChange,
   validateMeasureDurations, frac,
   type Command, type CommandContext, type CoreScore,
 } from "../src/index.js";
@@ -79,6 +79,16 @@ function makeCommand(ctx: CommandContext, d: CmdDescriptor): Command | null {
       const allEvents = [...ctx.index.byId.values()].map((r) => r.id);
       return new MergeEventsCommand(allEvents[(d.targetSeeds[0] ?? 0) % allEvents.length]!);
     }
+    case 14: {
+      const spec = d.param % 3 === 0
+        ? { keysig: ["0", "2s", "3f", "5s"][d.param % 4]! }
+        : d.param % 3 === 1
+          ? { clef: { shape: ["G", "F", "C"][d.param % 3]!, line: [2, 4, 3][d.param % 3]! }, staffN: (d.param % 2) + 1 }
+          : { meter: { count: String((d.param % 6) + 2), unit: ["4", "8"][d.param % 2]! } };
+      const contexts = resolveContexts(ctx.score);
+      const plan = planContextChange(ctx.score, contexts, m, spec);
+      return plan.ok ? new ChangeContextCommand(m, spec) : null;
+    }
     default: {
       const allEvents = [...ctx.index.byId.values()].map((r) => r.id);
       return new SplitEventCommand(allEvents[(d.targetSeeds[0] ?? 0) % allEvents.length]!);
@@ -87,7 +97,7 @@ function makeCommand(ctx: CommandContext, d: CmdDescriptor): Command | null {
 }
 
 const cmdArb = fc.record({
-  kind: fc.integer({ min: 0, max: 14 }),
+  kind: fc.integer({ min: 0, max: 15 }),
   targetSeeds: fc.array(fc.nat(), { minLength: 1, maxLength: 6 }),
   param: fc.nat(),
 });

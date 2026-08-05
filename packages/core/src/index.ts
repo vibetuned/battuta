@@ -23,6 +23,9 @@ export type { EntrySpec } from "./entry.js";
 export { normalizeBlock, copyBlock, fragmentToText, materializeStaff, findStaffInMeasure } from "./clipboard.js";
 export type { BlockSelection, ClipboardFragment, ClipboardStaff } from "./clipboard.js";
 
+export { planContextChange, ChangeContextCommand } from "./context-edit.js";
+export type { ContextChangeSpec, ClefSpec, ContextPlan } from "./context-edit.js";
+
 export { planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, emptyMeasureLike } from "./arrange.js";
 export type { PastePlan } from "./arrange.js";
 

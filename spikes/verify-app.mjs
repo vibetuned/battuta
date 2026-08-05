@@ -53,6 +53,64 @@ const caretIdVal = await page.evaluate(() => document.querySelector("main").data
 check(`notehead click places the caret (${caretIdVal})`, !!caretIdVal);
 await page.screenshot({ path: `${scratch}/app-context-fixture.png` });
 
+// --- 2b. context editing: clef / key / meter dropdowns at the caret ---
+const ctxAt = (m, n) => page.evaluate(({ m, n }) => {
+  const c = window.__SESSION__.contexts[m].get(n);
+  return { keysig: c.keysig, clef: c.clef, meter: c.meter };
+}, { m, n });
+// key change at m4 (score-wide from there on)
+await page.locator('.tile[data-index="3"] g[class~="note"] use').first().click({ force: true });
+await page.waitForFunction(() => document.querySelector("main").dataset.caret !== "", null, { timeout: 5000 });
+await page.focus('select[title*="key signature"]');
+await page.selectOption('select[title*="key signature"]', "2f");
+await page.waitForFunction(() => window.__SESSION__.contexts[3].get(1).keysig === "2f", null, { timeout: 10000 });
+check("key dropdown changes the key at the caret measure", (await ctxAt(3, 1)).keysig === "2f");
+check("dropdown releases focus back to the editor", await page.evaluate(() => document.activeElement?.tagName !== "SELECT"));
+const caretBeforeArrow = await page.evaluate(() => document.querySelector("main").dataset.caret);
+await page.keyboard.press("ArrowRight");
+await page.waitForFunction((prev) => document.querySelector("main").dataset.caret !== prev, caretBeforeArrow, { timeout: 5000 });
+check("arrows move the caret after a dropdown apply (no re-fire)", await page.evaluate(() => window.__SESSION__.stack.undoDepth === 1));
+await page.keyboard.press("ArrowLeft");
+await page.waitForFunction((prev) => document.querySelector("main").dataset.caret === prev, caretBeforeArrow, { timeout: 5000 });
+check("key change propagates downstream", (await ctxAt(5, 1)).keysig === "2f");
+check("earlier measures keep their key", (await ctxAt(2, 1)).keysig === "4s");
+await page.waitForFunction(() => {
+  const t = document.querySelector('.tile[data-index="3"]');
+  return t && ((t.innerHTML.match(/E260/g) ?? []).length >= 2); // flat glyphs drawn
+}, null, { timeout: 15000 });
+check("the tile shows the new flats (context-change header policy)", true);
+// clef change, staff-local
+await page.locator('.tile[data-index="1"] g[class~="note"] use').first().click({ force: true });
+await page.waitForFunction(() => document.querySelector("main").dataset.caret !== "", null, { timeout: 5000 });
+const clefStaff = await page.evaluate(() => window.__SESSION__.index.byId.get(document.querySelector("main").dataset.caret)?.staffN);
+const otherStaff = clefStaff === 1 ? 2 : 1;
+const otherClefBefore = JSON.stringify((await ctxAt(1, otherStaff)).clef);
+await page.selectOption('select[title*="clef"]', "C3");
+await page.waitForFunction((n) => {
+  const c = window.__SESSION__.contexts[1].get(n)?.clef;
+  return c && c.shape === "C" && c.line === 3;
+}, clefStaff, { timeout: 10000 });
+const otherClefAfter = JSON.stringify((await ctxAt(1, otherStaff)).clef);
+check(`clef change is staff-local (staff ${clefStaff} -> C3, staff ${otherStaff} unchanged)`, otherClefAfter === otherClefBefore);
+// meter: refused on full measures, allowed on an empty one
+await page.locator('.tile[data-index="0"] g[class~="note"] use').first().click({ force: true });
+await page.selectOption('select[title*="meter"]', "3/4");
+await page.waitForFunction(() => document.querySelector("[data-notice]").textContent.includes("refused"), null, { timeout: 5000 });
+check("meter change refuses when content no longer fits", true);
+await page.locator("button", { hasText: "+m" }).click(); // caret lands in the new empty measure
+await page.waitForFunction(() => window.__SESSION__.score.measures.length === 11, null, { timeout: 10000 });
+await page.selectOption('select[title*="meter"]', "3/4");
+await page.waitForFunction(() => {
+  const i = window.__SESSION__.index.byId.get(document.querySelector("main").dataset.caret)?.measureIndex;
+  const c = i !== undefined && window.__SESSION__.contexts[i]?.get(1)?.meter;
+  return c && c.count === "3" && c.unit === "4";
+}, null, { timeout: 10000 });
+check("meter change succeeds on an empty measure", true);
+// unwind everything from this block
+for (let i = 0; i < 4; i++) await page.keyboard.press("Control+z");
+await page.waitForFunction(() => window.__SESSION__.stack.undoDepth === 0 && window.__SESSION__.contexts[3].get(1).keysig === "4s", null, { timeout: 10000 });
+check("undo chain restores all context changes", true);
+
 // --- 3. Quartet: virtualized scroll to the end ---
 await page.selectOption("select", "Beethoven_StringQuartet_Op18_No1.mei");
 await page.waitForFunction(() => document.querySelectorAll(".tile").length > 300, null, { timeout: 60000 });

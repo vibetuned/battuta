@@ -144,7 +144,7 @@ Phase 4 in progress (2026-08-02): note entry + round-trip hardening.
   zero new ids. Compatibility note: Verovio rejects comments before the
   root element (PIs are fine), so prologue comments are preserved by moving
   them just inside `<mei>`.
-- 79 core tests (property suite now fuzzes entry commands too);
+- 97 core tests (property suite fuzzes entry and context commands too);
   `node spikes/verify-phase4.mjs` covers the exit criterion: transcribe a
   passage from scratch by keyboard, no XML touched, durations always valid.
 - **Merge/split** (`m` / `x`): merge the caret event with the next — same
@@ -158,6 +158,19 @@ Phase 4 in progress (2026-08-02): note entry + round-trip hardening.
   quarters), and merging rests back up to the full measure collapses them
   into an mRest — so the shortcuts work in freshly inserted measures. Backspace erases the *previous* note and steps back
   (text-editor semantics); Delete stays at the caret.
+- **Context editing** (clef… / key… / meter… header dropdowns): change or
+  add a clef, key signature, or meter at the caret's measure, MEI-natively.
+  At measure 1 the initial `scoreDef`/`staffDef` attributes are edited in
+  place (conflicting child elements and per-staff overrides removed);
+  mid-piece an interleaved `scoreDef` (key/meter, score-wide) or
+  `staffDef n` (clef, staff-local) is inserted before the measure — or
+  merged into one already sitting there, so repeated changes never stack
+  defs. Meter changes are validated against every measure up to the next
+  meter change and refused naming the first measure that no longer fits;
+  whole-measure rests always fit, so preparing empty sections works freely.
+  Downstream tiles re-render (context propagates), and the changed-context
+  header policy makes the new key/meter visible exactly where it changes.
+  One undo step each.
 - Still open in Phase 4: tuplet entry; file-watching for external edits
   (needs the Tauri shell or the File System Access API).
 

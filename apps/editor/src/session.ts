@@ -8,9 +8,9 @@ import {
   buildScore, resolveContexts, buildEventIndex, ensureIds, fromDom, serialize, serializeDocument, childElements, findAll, meterCapacity, frac,
   CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, DeleteToRestsCommand,
   copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand,
-  ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, ChangeDurationCommand,
+  ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, ChangeDurationCommand, ChangeContextCommand, planContextChange,
   type CoreScore, type MeasureContext, type EventIndex, type Command, type DirtyRegion, type DomLikeElement, type DomLikeNode,
-  type BlockSelection, type ClipboardFragment, type PastePlan, type EntrySpec, type CoreElement, type CaretPosition,
+  type BlockSelection, type ClipboardFragment, type PastePlan, type EntrySpec, type CoreElement, type CaretPosition, type ContextChangeSpec,
 } from "@battuta/core";
 
 export class DocumentSession {
@@ -202,6 +202,13 @@ export class DocumentSession {
     const dots = Number(el.attrs["dots"] ?? 0);
     this.execute(new ChangeDurationCommand(targetId, next, dots, this.capacityAt(targetId)));
     return { dur: next, dots };
+  }
+
+  /** Change/add clef, key signature, or meter at a measure (validated). */
+  changeContext(measureIndex: number, spec: ContextChangeSpec): void {
+    const plan = planContextChange(this.score, this.contexts, measureIndex, spec);
+    if (!plan.ok) throw new Error(plan.reason);
+    this.execute(new ChangeContextCommand(measureIndex, spec));
   }
 
   private capacityAt(targetId: string) {
