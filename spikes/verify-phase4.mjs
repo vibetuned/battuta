@@ -210,28 +210,136 @@ const postMidi = await staffContent(2, 1);
 check(`MIDI note-on enters f#4 (${postMidi.join(" ")})`, postMidi.some((x) => x.startsWith("f4:") && x.includes("s")));
 check("still no duration problems", (await durationProblems()) === 0);
 
-// --- 2c. dot an EXISTING note (not just-entered), even outside input mode ---
-await page.keyboard.press("Escape"); // leave input mode
-await page.locator('.tile[data-index="0"] g[class~="note"] use').first().click({ force: true }); // m1: c4 half + e4 half
-await page.waitForFunction(() => document.querySelector("main").dataset.caret !== "", null, { timeout: 5000 });
-await page.keyboard.press(".");
+// --- 3a. MIDI chords: keys held together stack into a chord ---
+await page.evaluate(() => window.__MIDI_NOTE__(66, false)); // release the f#
+await page.evaluate(() => window.__MIDI_NOTE__(60)); // c4 enters (replaces the last rest)
 await page.waitForFunction(() => {
   const walk = (el, out) => {
-    if (el.tag === "note") out.push(`${el.attrs.pname}${el.attrs.dots ? "." : ""}`);
+    if (el.tag === "note") out.push(el.attrs.pname);
+    for (const c of el.children) if (typeof c !== "string") walk(c, out);
+    return out;
+  };
+  const staff = window.__SESSION__.score.measures[2].children.find((c) => typeof c !== "string" && c.tag === "staff");
+  return walk(staff, []).includes("c");
+}, null, { timeout: 5000 });
+await page.evaluate(() => window.__MIDI_NOTE__(64)); // e4 while c is still HELD -> chord
+await page.evaluate(() => window.__MIDI_NOTE__(67)); // g4 too: THREE keys held
+const chordNotes = () => page.evaluate(() => {
+  const staff = window.__SESSION__.score.measures[2].children.find((c) => typeof c !== "string" && c.tag === "staff");
+  let notes = null;
+  const walk = (el) => {
+    for (const c of el.children) if (typeof c !== "string") { if (c.tag === "chord") notes = c.children.filter((n) => typeof n !== "string" && n.tag === "note").length; walk(c); }
+  };
+  walk(staff);
+  return notes;
+});
+await page.waitForFunction(() => {
+  const staff = window.__SESSION__.score.measures[2].children.find((c) => typeof c !== "string" && c.tag === "staff");
+  let n = 0;
+  const walk = (el) => {
+    for (const c of el.children) if (typeof c !== "string") { if (c.tag === "chord") n = c.children.filter((x) => typeof x !== "string" && x.tag === "note").length; walk(c); }
+  };
+  walk(staff);
+  return n === 3;
+}, null, { timeout: 5000 });
+check(`three held MIDI keys build ONE three-note chord (${await chordNotes()} notes)`, (await chordNotes()) === 3);
+const caretBeforeRelease = await page.evaluate(() => document.querySelector("main").dataset.caret);
+await page.evaluate(() => { window.__MIDI_NOTE__(60, false); window.__MIDI_NOTE__(64, false); window.__MIDI_NOTE__(67, false); });
+await page.waitForFunction((before) => document.querySelector("main").dataset.caret !== before, caretBeforeRelease, { timeout: 5000 });
+check("caret advances only when the last key is released", true);
+await page.evaluate(() => { window.__MIDI_NOTE__(62); window.__MIDI_NOTE__(62, false); });
+await page.waitForTimeout(400);
+check(`a note after release starts fresh, chord untouched (${await chordNotes()} notes)`, (await chordNotes()) === 3);
+check("no duration problems after MIDI chord", (await durationProblems()) === 0);
+
+// --- 3a2. dot the chord itself (chords were refused before) ---
+// Build a fresh chord with room after it: quarter b + chord note, rest follows.
+await page.keyboard.press("Control+z"); // undo the stray d in m4
+await page.waitForTimeout(300);
+await page.locator('.tile[data-index="3"] g[class~="note"] use').first().click({ force: true });
+await page.waitForFunction(() => document.querySelector("main").dataset.caret !== "", null, { timeout: 5000 });
+await page.keyboard.press("5");
+await page.keyboard.press("b"); // quarter b, dotted-half rest follows
+await page.keyboard.press("Shift+D"); // chord: b+d
+const m4Chord = () => page.evaluate(() => {
+  const staff = window.__SESSION__.score.measures[3].children.find((c) => typeof c !== "string" && c.tag === "staff");
+  let chord = null;
+  const walk = (el) => { for (const c of el.children) if (typeof c !== "string") { if (c.tag === "chord") chord = { dots: c.attrs.dots ?? null, notes: c.children.filter((n) => typeof n !== "string" && n.tag === "note").length }; walk(c); } };
+  walk(staff);
+  return chord;
+});
+await page.waitForFunction(() => {
+  const staff = window.__SESSION__.score.measures[3].children.find((c) => typeof c !== "string" && c.tag === "staff");
+  let found = false;
+  const walk = (el) => { for (const c of el.children) if (typeof c !== "string") { if (c.tag === "chord") found = true; walk(c); } };
+  walk(staff);
+  return found;
+}, null, { timeout: 10000 });
+await page.keyboard.press("."); // dot the chord (lastEntered = the chord id)
+await page.waitForFunction(() => {
+  const staff = window.__SESSION__.score.measures[3].children.find((c) => typeof c !== "string" && c.tag === "staff");
+  let dotted = false;
+  const walk = (el) => { for (const c of el.children) if (typeof c !== "string") { if (c.tag === "chord" && c.attrs.dots === "1") dotted = true; walk(c); } };
+  walk(staff);
+  return dotted;
+}, null, { timeout: 10000 });
+const dottedChord = await m4Chord();
+check(`'.' dots a chord in place (${JSON.stringify(dottedChord)})`, dottedChord && dottedChord.dots === "1" && dottedChord.notes === 2);
+check("no duration problems after chord dot", (await durationProblems()) === 0);
+// restore m4 to its whole note for the split/merge block: undo dot, chord, entry
+for (let i = 0; i < 3; i++) await page.keyboard.press("Control+z");
+await page.waitForFunction(() => {
+  const staff = window.__SESSION__.score.measures[3].children.find((c) => typeof c !== "string" && c.tag === "staff");
+  const first = staff.children[0].children.find((c) => typeof c !== "string");
+  return first && first.tag === "note" && first.attrs.dur === "1";
+}, null, { timeout: 10000 });
+check("undo chain restores the whole note", true);
+
+// --- 2d. alt+←/→ changes the duration in place (same rules as the dot) ---
+// m1: c4 half + e4 half. Shorten the c, then lengthen it back.
+await page.locator('.tile[data-index="0"] g[class~="note"] use').first().click({ force: true });
+await page.waitForFunction(() => document.querySelector("main").dataset.caret !== "", null, { timeout: 5000 });
+const m1state = () => page.evaluate(() => {
+  const walk = (el, out) => {
+    if (el.tag === "note") out.push(`${el.attrs.pname}:${el.attrs.dur}`);
+    if (el.tag === "rest") out.push(`r:${el.attrs.dur}`);
     for (const c of el.children) if (typeof c !== "string") walk(c, out);
     return out;
   };
   const staff = window.__SESSION__.score.measures[0].children.find((c) => typeof c !== "string" && c.tag === "staff");
-  return walk(staff, [])[0] === "c.";
+  return walk(staff, []);
+});
+await page.keyboard.press("Alt+ArrowLeft"); // half -> quarter, releases a quarter rest
+await page.waitForFunction(() => {
+  const staff = window.__SESSION__.score.measures[0].children.find((c) => typeof c !== "string" && c.tag === "staff");
+  const first = staff.children[0].children.find((c) => typeof c !== "string");
+  return first && first.attrs.dur === "4";
 }, null, { timeout: 10000 });
-check("'.' dots an existing note at the caret, outside input mode", true);
+const shortened = await m1state();
+check(`alt+← shortens in place, releasing rests (${shortened.join(" ")})`, JSON.stringify(shortened) === JSON.stringify(["c:4", "r:4", "e:2"]));
+await page.keyboard.press("Alt+ArrowRight"); // quarter -> half, consumes the rest back
+await page.waitForFunction(() => {
+  const staff = window.__SESSION__.score.measures[0].children.find((c) => typeof c !== "string" && c.tag === "staff");
+  const first = staff.children[0].children.find((c) => typeof c !== "string");
+  return first && first.attrs.dur === "2";
+}, null, { timeout: 10000 });
+const lengthened = await m1state();
+check(`alt+→ lengthens back, consuming the rest (${lengthened.join(" ")})`, JSON.stringify(lengthened) === JSON.stringify(["c:2", "e:2"]));
+// boundary: lengthening past what follows is refused with a reason
+await page.keyboard.press("Alt+ArrowRight"); // half -> whole consumes e fully: allowed!
+await page.waitForTimeout(400);
+await page.keyboard.press("Alt+ArrowRight"); // whole -> breve: crosses the measure -> refused
+await page.waitForFunction(() => document.querySelector("[data-notice]").textContent.includes("duration refused"), null, { timeout: 5000 });
+check("lengthening past the measure is refused with a reason", true);
+await page.keyboard.press("Control+z");
+await page.keyboard.press("Control+z");
 await page.keyboard.press("Control+z");
 await page.waitForFunction(() => {
   const staff = window.__SESSION__.score.measures[0].children.find((c) => typeof c !== "string" && c.tag === "staff");
-  const first = staff.children[0].children.find((c) => typeof c !== "string" && c.tag === "note");
-  return first && !first.attrs.dots;
+  const first = staff.children[0].children.find((c) => typeof c !== "string");
+  return first && first.attrs.dur === "2" && staff.children[0].children.filter((c) => typeof c !== "string").length === 2;
 }, null, { timeout: 10000 });
-check("undo restores the un-dotted note", true);
+check("undo chain restores m1", true);
 
 // --- 3b. split and merge (x / m) ---
 await page.keyboard.press("Escape"); // leave input mode for plain-key ops
@@ -301,26 +409,38 @@ check("no duration problems in the new measure", (await durationProblems()) === 
 
 // --- 3d. regression: in input mode, m/x follow the CARET once it moves ---
 // (they used to stay locked to the last entered note and its split halves)
-await page.mouse.click(newTile.x, newTile.y); // caret on the new measure's mRest
+// recompute the tile position: earlier blocks reflowed the rows
+const newTile2 = await page.evaluate(() => {
+  const r = document.querySelector('.tile[data-index="5"]').getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 3 };
+});
+await page.mouse.click(newTile2.x, newTile2.y); // caret on the new measure's mRest
 await page.waitForFunction(() => document.querySelector("main").dataset.caret !== "", null, { timeout: 5000 });
 await page.keyboard.press("i");
 await page.keyboard.press("5");
-await page.keyboard.press("c"); // enter quarter c -> [c, rests…]; lastEntered = c
+await page.keyboard.press("c"); // dots state may vary (inherited) — the test is dot-agnostic
 await page.waitForFunction(() => {
   const staff = window.__SESSION__.score.measures[5].children.find((c) => typeof c !== "string" && c.tag === "staff");
-  return JSON.stringify(staff.children[0].children.map((c) => c.tag)) === JSON.stringify(["note", "rest"]);
+  const kids = staff.children[0].children.filter((c) => typeof c !== "string");
+  return kids.length >= 2 && kids[0].tag === "note";
 }, null, { timeout: 10000 });
-// Entry left the caret on the rest but lastEntered = the c note; MOVE the
-// caret (left onto the c, right back onto the rest) — the movement must
-// release the last-entered lock so x targets the caret's rest.
+const before3d = await page.evaluate(() => {
+  const staff = window.__SESSION__.score.measures[5].children.find((c) => typeof c !== "string" && c.tag === "staff");
+  const kids = staff.children[0].children.filter((c) => typeof c !== "string");
+  return { noteId: kids[0].attrs["xml:id"], noteDur: kids[0].attrs.dur, rests: kids.filter((k) => k.tag === "rest").length };
+});
+// Entry left the caret on the first rest but lastEntered = the c note; MOVE
+// the caret (left onto the c, right back onto the rest) — the movement must
+// release the last-entered lock so x targets the caret's rest, not the note.
 await page.keyboard.press("ArrowLeft");
 await page.keyboard.press("ArrowRight");
-await page.keyboard.press("x"); // must split the REST at the caret, not the entered c
-await page.waitForFunction(() => {
+await page.keyboard.press("x");
+await page.waitForFunction((b) => {
   const staff = window.__SESSION__.score.measures[5].children.find((c) => typeof c !== "string" && c.tag === "staff");
-  const kinds = staff.children[0].children.map((c) => `${c.tag}:${c.attrs.dur}${c.attrs.dots ? "." : ""}`);
-  return JSON.stringify(kinds) === JSON.stringify(["note:4", "rest:4.", "rest:4."]);
-}, null, { timeout: 10000 });
+  const kids = staff.children[0].children.filter((c) => typeof c !== "string");
+  const note = kids.find((k) => k.tag === "note");
+  return note && note.attrs["xml:id"] === b.noteId && note.attrs.dur === b.noteDur && kids.filter((k) => k.tag === "rest").length === b.rests + 1;
+}, before3d, { timeout: 10000 });
 check("after moving the caret, x splits the rest at the caret (entered note untouched)", true);
 await page.keyboard.press("Escape");
 

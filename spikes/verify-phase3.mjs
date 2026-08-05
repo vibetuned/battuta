@@ -190,6 +190,34 @@ await page.keyboard.press("Control+z");
 await page.waitForFunction((n) => window.__SESSION__.score.measures.length === n, measureCount, { timeout: 10000 });
 check("undo unwinds both structural ops", true);
 
+// --- 5b. numpad +/−/* mirror the buttons, and the caret follows the work ---
+const npKey = (key, code) => page.evaluate(({ key, code }) => window.dispatchEvent(new KeyboardEvent("keydown", { key, code, bubbles: true, cancelable: true })), { key, code });
+const caretRefState = () => page.evaluate(() => window.__SESSION__.index.byId.get(document.querySelector("main").dataset.caret) ?? null);
+const s1b = await staffCenter(1, 0);
+await page.mouse.click(s1b.x, s1b.y);
+await page.waitForFunction(() => document.querySelector("main").dataset.caret !== "", null, { timeout: 5000 });
+const nBefore = await page.evaluate(() => window.__SESSION__.score.measures.length);
+await npKey("+", "NumpadAdd");
+await page.waitForFunction((n) => window.__SESSION__.score.measures.length === n + 1, nBefore, { timeout: 10000 });
+let ref = await caretRefState();
+check(`numpad + inserts a measure AND the caret lands in it (m${ref?.measureIndex + 1}, ${ref?.tag})`, ref?.measureIndex === 2 && ref?.tag === "mRest");
+// no re-click needed: the caret is already in the new measure — delete it
+await npKey("-", "NumpadSubtract");
+await page.waitForFunction((n) => window.__SESSION__.score.measures.length === n, nBefore, { timeout: 10000 });
+ref = await caretRefState();
+check(`numpad − deletes it and the caret steps to the previous measure (m${ref?.measureIndex + 1})`, ref?.measureIndex === 1);
+// duplicate: caret is on m2 — * duplicates it and lands in the copy
+await npKey("*", "NumpadMultiply");
+await page.waitForFunction((n) => window.__SESSION__.score.measures.length === n + 1, nBefore, { timeout: 10000 });
+ref = await caretRefState();
+const dupSame = await page.evaluate(() => {
+  const count = (el) => { let c = el.tag === "note" ? 1 : 0; for (const ch of el.children) if (typeof ch !== "string") c += count(ch); return c; };
+  return count(window.__SESSION__.score.measures[1]) === count(window.__SESSION__.score.measures[2]);
+});
+check(`numpad * duplicates (same note count) and the caret lands in the copy (m${ref?.measureIndex + 1})`, dupSame && ref?.measureIndex === 2);
+await page.keyboard.press("Control+z");
+await page.waitForFunction((n) => window.__SESSION__.score.measures.length === n, nBefore, { timeout: 10000 });
+
 // --- 6. save + reopen through core and Verovio ---
 const [download] = await Promise.all([page.waitForEvent("download"), page.locator("button", { hasText: "save" }).click()]);
 const savedPath = `${scratch}/phase3-saved.mei`;

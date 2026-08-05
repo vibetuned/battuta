@@ -134,6 +134,68 @@ export class ReplaceEntryCommand implements Command {
   }
 }
 
+/**
+ * Change the written duration of an event IN PLACE — note, rest, or chord
+ * (children and all ids preserved). Shorter fills the freed time with rests;
+ * longer consumes following siblings, refusing at container boundaries —
+ * the same splice semantics as entry, without rebuilding the element.
+ */
+export class ChangeDurationCommand implements Command {
+  readonly label: string;
+  private memento: SpliceMemento | null = null;
+
+  constructor(
+    private readonly targetId: string,
+    private readonly dur: string,
+    private readonly dots: number,
+    private readonly capacity: Fraction,
+  ) {
+    this.label = `duration ${dur}${dots ? "." : ""}`;
+  }
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    const ref = ctx.index.byId.get(this.targetId);
+    if (!ref) throw new Error("duration target not found");
+    if (ref.tag === "mRest" || ref.tag === "mSpace") throw new Error("a whole-measure rest has no written duration — enter into it instead");
+    const measure = ctx.score.measures[ref.measureIndex];
+    const hit = measure && locateWithParent(measure, this.targetId);
+    if (!hit) throw new Error("duration target not in measure");
+    const oldDur = eventDuration(hit.el);
+    if (oldDur === null) throw new Error("target duration unknown");
+    const newDur = specDuration({ dur: this.dur, dots: this.dots });
+
+    const removed: CoreElement[] = [hit.el];
+    let covered = oldDur;
+    let cursor = hit.at + 1;
+    while (fCmp(covered, newDur) < 0) {
+      const next = hit.parent.children[cursor];
+      if (next === undefined || typeof next === "string" || !EVENT_TAGS.has(next.tag)) {
+        throw new Error("duration change crosses a beam/tuplet/measure boundary");
+      }
+      const d = next.tag === "mRest" || next.tag === "mSpace" ? this.capacity : eventDuration(next);
+      if (d === null) throw new Error("cannot consume an event of unknown duration");
+      removed.push(next);
+      covered = fAdd(covered, d);
+      cursor++;
+    }
+    const remainder = fAdd(covered, { num: -newDur.num, den: newDur.den });
+    const changed: CoreElement = { ...hit.el, attrs: { ...hit.el.attrs, dur: this.dur } };
+    if (this.dots) changed.attrs["dots"] = String(this.dots);
+    else delete changed.attrs["dots"];
+    const inserted = [changed, ...makeRests(remainder)];
+    hit.parent.children.splice(hit.at, removed.length, ...inserted);
+    this.memento = { parent: hit.parent, at: hit.at, removed, inserted };
+    return [{ measureIndex: ref.measureIndex, staffN: ref.staffN }];
+  }
+
+  revert(_ctx: CommandContext): DirtyRegion[] {
+    if (!this.memento) return [];
+    const m = this.memento;
+    m.parent.children.splice(m.at, m.inserted.length, ...m.removed);
+    return [];
+  }
+}
+
 /** Written pitch identity used by merge (chords compare pitch multisets). */
 function pitchKey(el: CoreElement): string | null {
   if (el.tag === "rest") return "rest";
@@ -288,6 +350,9 @@ export class SplitEventCommand implements Command {
 export class AddChordNoteCommand implements Command {
   readonly label: string;
   private memento: { parent: CoreElement; at: number; before: CoreElement; after: CoreElement } | null = null;
+  /** Id of the chord after apply — promotion gives the chord a NEW id, so
+   * callers stacking further pitches must retarget through this. */
+  resultId: string | null = null;
 
   constructor(
     private readonly targetId: string,
@@ -328,6 +393,7 @@ export class AddChordNoteCommand implements Command {
     }
     hit.parent.children[hit.at] = after;
     this.memento = { parent: hit.parent, at: hit.at, before: el, after };
+    this.resultId = after.attrs["xml:id"] ?? null;
     return [{ measureIndex: ref.measureIndex, staffN: ref.staffN }];
   }
 

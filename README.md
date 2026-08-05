@@ -105,7 +105,7 @@ project exists.
   asserts byte-identical unwind AND the duration invariant after every step.
 - Editor: document **tabs** with a shared clipboard, **drag block selection**
   across tiles/staves, ctrl+c/ctrl+v (paste refusals surface the validator's
-  reason; warnings ask), structural buttons (+m/−m/⧉m), save-to-MEI download.
+  reason; warnings ask), structural buttons (+m/−m/⧉m, also on numpad +/−/*), save-to-MEI download.
 - E2E (`node spikes/verify-phase3.mjs`): the target workflow start to
   finish — block-copy chorale measures, paste into another document's other
   staff, validator refuses a short measure into a full one, save, and the
@@ -123,7 +123,11 @@ Phase 4 in progress (2026-08-02): note entry + round-trip hardening.
   nearest-octave guessing, shift+A–G chord building, `r` rests, 7..1
   durations (5 = quarter), `.` dot, s/v/n accidentals, `t` tie (back to the
   predecessor; pitch-checked), `,` staccato, `;`/`!` accent, and `p` cycling
-  dynamics (none → p → f → none). **Keyboard-layout independent**: duration
+  dynamics (none → p → f → none). **Web MIDI is a first-class input**: in
+  input mode, note-ons enter at the caret, keys held together build chords
+  (note-off tracking), devices hot-plug via `onstatechange`, the HUD shows
+  what is connected, and a note played outside input mode hints at pressing
+  `i`. **Keyboard-layout independent**: duration
   digits also match by physical key position (`e.code`), so AZERTY's
   unshifted number row works without Shift; the dot is `.` or `:` (both
   character-based — `:` is unshifted on AZERTY), accent is `;` — no physical

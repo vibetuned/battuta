@@ -528,9 +528,10 @@ export default function App() {
     [session],
   );
 
-  /** Overwrite-mode entry at the caret; advances the caret afterwards. */
+  /** Overwrite-mode entry at the caret. Advances the caret unless told not
+   * to — MIDI chords enter without advancing and advance on key release. */
   const enterAtCaret = useCallback(
-    (spec: { kind: "note" | "rest"; pname?: string; oct?: number; accid?: string }) => {
+    (spec: { kind: "note" | "rest"; pname?: string; oct?: number; accid?: string }, opts?: { advance?: boolean }) => {
       if (!session || !caret || !caretId) return;
       try {
         const entered = session.enterEvent(caretId, {
@@ -543,13 +544,52 @@ export default function App() {
         });
         lastEntered.current = entered;
         afterCommand(session);
-        setCaret((c) => (c ? caretRight(session.index, session.score, c) ?? c : c));
+        if (opts?.advance !== false) setCaret((c) => (c ? caretRight(session.index, session.score, c) ?? c : c));
         setNotice(null);
       } catch (err) {
         setNotice(`entry refused: ${err instanceof Error ? err.message : err}`);
       }
     },
     [session, caret, caretId, entryDur, entryDots, afterCommand],
+  );
+
+  const structural = useCallback(
+    (op: "insert" | "delete" | "duplicate") => {
+      if (!session) return;
+      const at = block ? block.measureFrom : caret?.measureIndex;
+      const count = block ? block.measureTo - block.measureFrom + 1 : 1;
+      if (at === undefined) {
+        setNotice("place the caret or select a block first");
+        return;
+      }
+      const staffWish = block ? block.staffFrom : caret?.staffN ?? 1;
+      if (op === "insert") session.insertMeasures(at + count, count);
+      else if (op === "delete") session.deleteMeasures(at, count);
+      else session.duplicateMeasures(at, count);
+      setBlock(null);
+      setSelection([]);
+      anchor.current = null;
+      lastEntered.current = null;
+      setNotice(op === "insert" ? `inserted ${count} empty measure(s) after m${at + count}` : op === "delete" ? `deleted m${at + 1}${count > 1 ? `–m${at + count}` : ""}` : `duplicated m${at + 1}${count > 1 ? `–m${at + count}` : ""}`);
+      afterCommand(session);
+      // Keep the flow going: the caret lands in the first NEW measure after
+      // insert/duplicate, and on the PREVIOUS measure after delete — no
+      // re-clicking to continue working (applies to buttons and numpad).
+      const total = session.score.measures.length;
+      let m = op === "delete" ? at - 1 : at + count;
+      m = Math.max(0, Math.min(m, total - 1));
+      let next: CaretPosition | null = null;
+      if (total > 0) {
+        const staves = session.index.stavesPerMeasure.get(m) ?? [];
+        const s = staves.includes(staffWish) ? staffWish : staves[0] ?? 1;
+        const layers = session.index.layersPerStaff.get(`${m}/${s}`) ?? [];
+        const l = layers[0] ?? 1;
+        if (session.index.eventsAt(m, s, l).length > 0) next = { measureIndex: m, staffN: s, layerN: l, eventIndex: 0 };
+      }
+      caretRef.current = next; // MIDI path reads this synchronously
+      setCaret(next);
+    },
+    [session, block, caret, afterCommand],
   );
 
   // Keyboard: navigation, selection, edits, undo/redo.
@@ -606,6 +646,12 @@ export default function App() {
         setNotice(plan.warnings.length ? `pasted (${plan.warnings.join("; ")})` : "pasted");
         return;
       }
+      // Numpad +/−/* mirror the +m/−m/⧉m buttons (physical codes: layout-proof).
+      if (e.code === "NumpadAdd" || e.code === "NumpadSubtract" || e.code === "NumpadMultiply") {
+        e.preventDefault();
+        structural(e.code === "NumpadAdd" ? "insert" : e.code === "NumpadSubtract" ? "delete" : "duplicate");
+        return;
+      }
       if (!caret) return;
 
       // --- note input mode: letters enter, digits set duration ---
@@ -644,7 +690,8 @@ export default function App() {
           e.preventDefault();
           const pname = e.key.toLowerCase();
           try {
-            session.addChordNote(applyTo, pname, nearestOctave(pname, caret));
+            const chordId = session.addChordNote(applyTo, pname, nearestOctave(pname, caret));
+            if (chordId && lastEntered.current) lastEntered.current = chordId;
             afterCommand(session);
           } catch (err) {
             setNotice(`chord refused: ${err instanceof Error ? err.message : err}`);
@@ -737,9 +784,28 @@ export default function App() {
         return;
       }
 
+      // alt+←/→ shortens/lengthens the duration — same target rule as the
+      // dot (last entered until the caret moves, else the caret event).
+      if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && e.altKey) {
+        const target = entryMode && lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId;
+        if (!target) return;
+        e.preventDefault();
+        try {
+          const r = session.changeDurationStep(target, e.key === "ArrowRight" ? 1 : -1);
+          if (entryMode) {
+            setEntryDur(r.dur);
+            setEntryDots(r.dots);
+          }
+          afterCommand(session);
+          setNotice(null);
+        } catch (err) {
+          setNotice(`duration refused: ${err instanceof Error ? err.message : err}`);
+        }
+        return;
+      }
+
       if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
         e.preventDefault();
-        if (e.altKey) return;
         const next = e.key === "ArrowRight" ? caretRight(session.index, session.score, caret) : caretLeft(session.index, session.score, caret);
         if (!next) return;
         if (e.shiftKey) {
@@ -804,48 +870,153 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [session, caret, block, editTargets, afterCommand, entryMode, caretId, enterAtCaret, nearestOctave]);
+  }, [session, caret, block, editTargets, afterCommand, entryMode, caretId, enterAtCaret, nearestOctave, structural]);
 
-  // Web MIDI: note-on enters at the caret while input mode is active.
-  const midiEnter = useCallback(
-    (midiNote: number) => {
-      const PC = ["c", "c", "d", "d", "e", "f", "f", "g", "g", "a", "a", "b"] as const;
-      const SHARP = new Set([1, 3, 6, 8, 10]);
-      const pc = midiNote % 12;
-      enterAtCaret({ kind: "note", pname: PC[pc]!, oct: Math.floor(midiNote / 12) - 1, ...(SHARP.has(pc) && { accid: "s" }) });
-    },
-    [enterAtCaret],
-  );
-  const midiEnterRef = useRef(midiEnter);
-  midiEnterRef.current = midiEnter;
+  // --- Web MIDI: note-ons enter at the caret while input mode is active;
+  // keys held together build a CHORD (like MuseScore). Devices hot-plug via
+  // onstatechange, and the HUD shows what is connected.
+  const [midiStatus, setMidiStatus] = useState<string | null>(null);
+  const heldNotes = useRef(new Set<number>());
   const entryModeRef = useRef(entryMode);
   entryModeRef.current = entryMode;
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+  // MIDI events arrive faster than React re-renders (real playing sends
+  // note-ons milliseconds apart), so the whole MIDI path works off refs and
+  // the session's synchronously-updated index — never render-fresh closures.
+  const caretRef = useRef(caret);
+  caretRef.current = caret;
+  const entryDurRef = useRef(entryDur);
+  entryDurRef.current = entryDur;
+  const entryDotsRef = useRef(entryDots);
+  entryDotsRef.current = entryDots;
+
+  const midiPitch = (midiNote: number) => {
+    const PC = ["c", "c", "d", "d", "e", "f", "f", "g", "g", "a", "a", "b"] as const;
+    const SHARP = new Set([1, 3, 6, 8, 10]);
+    const pc = midiNote % 12;
+    return { pname: PC[pc]!, oct: Math.floor(midiNote / 12) - 1, accid: SHARP.has(pc) ? "s" : undefined };
+  };
+
+  const midiNoteOn = useCallback(
+    (midiNote: number) => {
+      const s = sessionRef.current;
+      if (!s) return;
+      if (!entryModeRef.current) {
+        setNotice("MIDI note received — press i (input mode) to enter notes with your keyboard");
+        return;
+      }
+      const wasHeld = heldNotes.current.size > 0;
+      heldNotes.current.add(midiNote);
+      const { pname, oct, accid } = midiPitch(midiNote);
+      if (wasHeld && lastEntered.current && s.index.byId.has(lastEntered.current)) {
+        // Another key is still down: stack onto the held note as a chord.
+        // Promotion assigns the chord a NEW id — retarget through it, or the
+        // third pitch would fall back to a fresh entry at the caret.
+        try {
+          const chordId = s.addChordNote(lastEntered.current, pname, oct, accid);
+          if (chordId) lastEntered.current = chordId;
+          afterCommand(s);
+        } catch (err) {
+          setNotice(`chord refused: ${err instanceof Error ? err.message : err}`);
+        }
+      } else {
+        // Enter WITHOUT advancing: the caret moves when all keys release,
+        // so every pitch of the chord lands on the same event. Target is
+        // resolved from the session at event time (race-free).
+        const pos = caretRef.current;
+        const targetId = pos ? s.index.eventIdAt(pos) : undefined;
+        if (!targetId) {
+          setNotice("nothing at the caret to enter into");
+          return;
+        }
+        try {
+          const entered = s.enterEvent(targetId, {
+            kind: "note",
+            pname,
+            oct,
+            ...(accid && { accid }),
+            dur: entryDurRef.current,
+            ...(entryDotsRef.current > 0 && { dots: entryDotsRef.current }),
+          });
+          lastEntered.current = entered;
+          afterCommand(s);
+          midiAdvancePending.current = true;
+          setNotice(null);
+        } catch (err) {
+          setNotice(`entry refused: ${err instanceof Error ? err.message : err}`);
+        }
+      }
+    },
+    [afterCommand],
+  );
+  const midiNoteOnRef = useRef(midiNoteOn);
+  midiNoteOnRef.current = midiNoteOn;
+  const midiAdvancePending = useRef(false);
+  const midiNoteOff = useCallback(
+    (midiNote: number) => {
+      heldNotes.current.delete(midiNote);
+      // Last key released: NOW the caret advances past the finished chord.
+      // caretRef updates synchronously so an immediate next note-on already
+      // sees the advanced position, before React commits.
+      if (heldNotes.current.size === 0 && midiAdvancePending.current) {
+        midiAdvancePending.current = false;
+        const s = sessionRef.current;
+        const pos = caretRef.current;
+        if (s && pos) {
+          const next = caretRight(s.index, s.score, pos) ?? pos;
+          caretRef.current = next;
+          setCaret(next);
+        }
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (import.meta.env.DEV) {
-      (window as unknown as Record<string, unknown>).__MIDI_NOTE__ = (n: number) => entryModeRef.current && midiEnterRef.current(n);
+      (window as unknown as Record<string, unknown>).__MIDI_NOTE__ = (n: number, on = true) => (on ? midiNoteOnRef.current(n) : midiNoteOff(n));
     }
-    const nav = navigator as Navigator & { requestMIDIAccess?: () => Promise<{ inputs: Map<string, { onmidimessage: ((e: { data: Uint8Array }) => void) | null }> }> };
+    interface MidiInput {
+      name?: string;
+      onmidimessage: ((e: { data: Uint8Array | null }) => void) | null;
+    }
+    interface MidiAccess {
+      inputs: Map<string, MidiInput>;
+      onstatechange: (() => void) | null;
+    }
+    const nav = navigator as Navigator & { requestMIDIAccess?: () => Promise<MidiAccess> };
     if (!nav.requestMIDIAccess) return;
     let closed = false;
+    const onMessage = (e: { data: Uint8Array | null }) => {
+      const d = e.data;
+      if (!d) return;
+      const status = (d[0] ?? 0) & 0xf0;
+      const note = d[1] ?? 0;
+      const velocity = d[2] ?? 0;
+      if (status === 0x90 && velocity > 0) midiNoteOnRef.current(note);
+      else if (status === 0x80 || (status === 0x90 && velocity === 0)) midiNoteOff(note);
+    };
     nav
       .requestMIDIAccess()
       .then((access) => {
         if (closed) return;
-        for (const input of access.inputs.values()) {
-          input.onmidimessage = (e) => {
-            const data = e.data;
-            if (!data) return;
-            const [status, note, velocity] = [data[0] ?? 0, data[1] ?? 0, data[2] ?? 0];
-            if ((status & 0xf0) === 0x90 && velocity > 0 && entryModeRef.current) midiEnterRef.current(note);
-          };
-        }
+        const attach = () => {
+          const names: string[] = [];
+          for (const input of access.inputs.values()) {
+            input.onmidimessage = onMessage;
+            names.push(input.name || "device");
+          }
+          setMidiStatus(names.length ? names.join(", ") : null);
+        };
+        attach();
+        access.onstatechange = attach; // hot-plug: (re)attach and update HUD
       })
-      .catch(() => undefined);
+      .catch(() => setMidiStatus(null));
     return () => {
       closed = true;
     };
-  }, []);
+  }, [midiNoteOff]);
 
   /** Resolve a pointer event to a (measure, staff) position for block drags. */
   const staffPosFromPoint = useCallback(
@@ -982,7 +1153,8 @@ export default function App() {
         ` · undo ${session.stack.undoDepth}` +
         (clipInfo ? ` · clip ${clipInfo}` : "") +
         (block ? ` · block m${block.measureFrom + 1}–${block.measureTo + 1} / staff ${block.staffFrom}–${block.staffTo}` : "") +
-        (entryMode ? ` · INPUT ${entryDur}${entryDots ? "." : ""}` : "");
+        (entryMode ? ` · INPUT ${entryDur}${entryDots ? "." : ""}` : "") +
+        (midiStatus ? ` · midi: ${midiStatus}` : "");
 
   const saveDoc = () => {
     if (!session || !active) return;
@@ -994,26 +1166,6 @@ export default function App() {
     URL.revokeObjectURL(a.href);
   };
 
-  const structural = (op: "insert" | "delete" | "duplicate") => {
-    if (!session) return;
-    const at = block ? block.measureFrom : caret?.measureIndex;
-    const count = block ? block.measureTo - block.measureFrom + 1 : 1;
-    if (at === undefined) {
-      setNotice("place the caret or select a block first");
-      return;
-    }
-    if (op === "insert") session.insertMeasures(at + count, count);
-    else if (op === "delete") session.deleteMeasures(at, count);
-    else session.duplicateMeasures(at, count);
-    // Measure indexes shifted: a stale caret would silently retarget the
-    // NEXT structural op at the wrong measure. Require an explicit target.
-    setBlock(null);
-    setCaret(null);
-    setSelection([]);
-    anchor.current = null;
-    setNotice(op === "insert" ? `inserted ${count} empty measure(s) after m${at + count}` : op === "delete" ? `deleted m${at + 1}${count > 1 ? `–m${at + count}` : ""}` : `duplicated m${at + 1}${count > 1 ? `–m${at + count}` : ""}`);
-    afterCommand(session);
-  };
 
   const selectionCss = selection.length
     ? selection.map((id) => `g[id="${CSS.escape(id)}"] *`).join(", ") + ` { fill: #d22; stroke: #d22; }`

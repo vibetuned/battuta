@@ -57,21 +57,27 @@ Keyboard note entry at the caret (pitch letters or MIDI input via Web MIDI, dura
 
 Exit criteria: transcribe a short passage from scratch by keyboard/MIDI without touching raw XML; corpus round-trip suite green.
 
-## Phase 5 — Reference layers for transcription (≈2–3 weeks)
+> **Reorder note (2026-08-02).** Polish (previously Phase 7) moves up to
+> Phase 5: keymap customization, autosave, and import/export matter for
+> daily use now, while reference layers and OMR are the research-heavy
+> phases and Phase 4 still has open work (tuplet entry, file watching).
+> Reference layers and OMR shift to Phases 6 and 7 unchanged.
+
+## Phase 5 — Polish and release (moved up; ongoing)
+
+Preferences, keymap customization, session restore, crash-safe autosave (command log replay), MusicXML import via Verovio's converter, export (MEI, MusicXML, per-page SVG/PDF via Verovio), packaging for Linux/macOS/Windows through Tauri, docs and sample corpus. Only after real usage: evaluate whether the core's hot paths (context hashing, duration arithmetic, fragment splicing) justify the Rust/WASM rewrite behind the existing interface.
+
+## Phase 6 — Reference layers for transcription (≈2–3 weeks)
 
 Import MIDI (and a JSON sidecar format emitted by sound2midi) as reference tracks. Per-tile timemap extraction, ghost piano-roll rendering on the overlay aligned to the tile's clef-based pitch axis, per-track solo/mute/color, beat-aligned by default with an optional section offset map. Add selection playback via timemap → Tone.js so an edit can be auditioned instantly against the reference audio grid.
 
 Exit criteria: load a stems MIDI behind its exported MEI, visually spot a transcription error from the ghost layer, fix it with the editor, and hear the corrected measure.
 
-## Phase 6 — OMR correction mode (≈2–3 weeks)
+## Phase 7 — OMR correction mode (≈2–3 weeks)
 
 Facsimile support: parse `<facsimile>`/`<zone>` (and a sidecar JSON alternative for pipelines that don't emit MEI zones), display the source-image strip above each tile, click-through between scan region and notation. Confidence sidecar ingestion, heat tinting, and next-flagged-element navigation. Annotation write-back for corrections so the pipeline can harvest training data.
 
 Exit criteria: correct a real OMR output measure-by-measure using scan strips and flag navigation, measurably faster than doing it in mei-friend.
-
-## Phase 7 — Polish and release (ongoing)
-
-Preferences, keymap customization, session restore, crash-safe autosave (command log replay), MusicXML import via Verovio's converter, export (MEI, MusicXML, per-page SVG/PDF via Verovio), packaging for Linux/macOS/Windows through Tauri, docs and sample corpus. Only after real usage: evaluate whether the core's hot paths (context hashing, duration arithmetic, fragment splicing) justify the Rust/WASM rewrite behind the existing interface.
 
 ## Cross-cutting practices
 

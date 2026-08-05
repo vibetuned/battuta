@@ -8,7 +8,7 @@ import {
   buildScore, resolveContexts, buildEventIndex, ensureIds, fromDom, serialize, serializeDocument, childElements, findAll, meterCapacity, frac,
   CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, DeleteToRestsCommand,
   copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand,
-  ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand,
+  ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, ChangeDurationCommand,
   type CoreScore, type MeasureContext, type EventIndex, type Command, type DirtyRegion, type DomLikeElement, type DomLikeNode,
   type BlockSelection, type ClipboardFragment, type PastePlan, type EntrySpec, type CoreElement, type CaretPosition,
 } from "@battuta/core";
@@ -146,8 +146,11 @@ export class DocumentSession {
     this.execute(cmd);
     return cmd.enteredId;
   }
-  addChordNote(targetId: string, pname: string, oct: number, accid?: string): DirtyRegion[] {
-    return this.execute(new AddChordNoteCommand(targetId, pname, oct, accid));
+  /** Returns the resulting chord's id (promotion assigns a new one). */
+  addChordNote(targetId: string, pname: string, oct: number, accid?: string): string | null {
+    const cmd = new AddChordNoteCommand(targetId, pname, oct, accid);
+    this.execute(cmd);
+    return cmd.resultId;
   }
   toggleTie(targetId: string): DirtyRegion[] {
     return this.execute(new ToggleTieCommand(targetId));
@@ -165,25 +168,40 @@ export class DocumentSession {
    */
   toggleDot(targetId: string): { id: string | null; dots: number } {
     const ref = this.index.byId.get(targetId);
-    if (!ref || (ref.tag !== "note" && ref.tag !== "rest")) throw new Error("dot applies to a note or rest");
+    if (!ref || (ref.tag !== "note" && ref.tag !== "rest" && ref.tag !== "chord")) {
+      throw new Error("dot applies to a note, rest, or chord");
+    }
     const measure = this.score.measures[ref.measureIndex];
     const el = measure && findAll(measure, ref.tag).find((e) => e.attrs["xml:id"] === targetId);
     if (!el || !el.attrs["dur"]) throw new Error("dot target has no written duration");
     const dots = el.attrs["dots"] ? 0 : 1;
-    const carry: Record<string, string> = {};
-    for (const [k, v] of Object.entries(el.attrs)) {
-      if (!["xml:id", "dur", "dots", "pname", "oct", "accid"].includes(k)) carry[k] = v;
+    // In-place duration change: the element (and chord children) keep their
+    // ids, so the caret and lastEntered stay valid without re-pointing.
+    this.execute(new ChangeDurationCommand(targetId, el.attrs["dur"], dots, this.capacityAt(targetId)));
+    return { id: targetId, dots };
+  }
+
+  /**
+   * Halve or double the written duration in place (direction +1 = longer,
+   * -1 = shorter), dots preserved — same consume/release mechanics as the
+   * dot toggle. Returns the resulting duration for entry-state sync.
+   */
+  changeDurationStep(targetId: string, direction: 1 | -1): { dur: string; dots: number } {
+    const ref = this.index.byId.get(targetId);
+    if (!ref || (ref.tag !== "note" && ref.tag !== "rest" && ref.tag !== "chord")) {
+      throw new Error("duration applies to a note, rest, or chord");
     }
-    const id = this.enterEvent(targetId, {
-      kind: ref.tag,
-      ...(el.attrs["pname"] !== undefined && { pname: el.attrs["pname"] }),
-      ...(el.attrs["oct"] !== undefined && { oct: Number(el.attrs["oct"]) }),
-      ...(el.attrs["accid"] !== undefined && { accid: el.attrs["accid"] }),
-      dur: el.attrs["dur"],
-      ...(dots ? { dots } : {}),
-      carry,
-    });
-    return { id, dots };
+    const measure = this.score.measures[ref.measureIndex];
+    const el = measure && findAll(measure, ref.tag).find((e) => e.attrs["xml:id"] === targetId);
+    if (!el || !el.attrs["dur"]) throw new Error("target has no written duration");
+    const order = ["breve", "1", "2", "4", "8", "16", "32", "64", "128"];
+    const at = order.indexOf(el.attrs["dur"]);
+    if (at < 0) throw new Error(`unknown duration ${el.attrs["dur"]}`);
+    const next = order[at - direction];
+    if (!next) throw new Error(direction > 0 ? "already the longest duration" : "already the shortest duration");
+    const dots = Number(el.attrs["dots"] ?? 0);
+    this.execute(new ChangeDurationCommand(targetId, next, dots, this.capacityAt(targetId)));
+    return { dur: next, dots };
   }
 
   private capacityAt(targetId: string) {

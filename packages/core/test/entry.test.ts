@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildEventIndex, serialize, frac, fEq, decomposeDuration, validateMeasureDurations, findAll,
   ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ToggleArticCommand, ToggleDynamCommand,
-  MergeEventsCommand, SplitEventCommand, CycleDynamCommand,
+  MergeEventsCommand, SplitEventCommand, CycleDynamCommand, ChangeDurationCommand,
   type CommandContext,
 } from "../src/index.js";
 import { scoreFrom, mei } from "./helpers.js";
@@ -277,6 +277,42 @@ describe("MergeEventsCommand / SplitEventCommand", () => {
     merge.apply(ctxFor(score));
     merge.revert(ctxFor(score));
     expect(score.measures.map((m) => serialize(m)).join()).toBe(before);
+  });
+});
+
+describe("ChangeDurationCommand", () => {
+  it("dots a CHORD in place: children and ids preserved, time consumed", () => {
+    const body = `<measure n="1" xml:id="m1">
+      <staff n="1"><layer n="1"><chord dur="4" xml:id="ch"><note pname="c" oct="4" xml:id="cn1"/><note pname="e" oct="4" xml:id="cn2"/></chord><rest dur="4" xml:id="r1"/><rest dur="2" xml:id="r2"/></layer></staff>
+      <staff n="2"><layer n="1"><mRest/></layer></staff>
+    </measure>`;
+    const { score } = scoreFrom(mei(body));
+    const cmd = new ChangeDurationCommand("ch", "4", 1, frac(4, 4));
+    cmd.apply(ctxFor(score));
+    const chord = findAll(score.measures[0]!, "chord")[0]!;
+    expect(chord.attrs["xml:id"]).toBe("ch"); // same identity
+    expect(chord.attrs["dur"]).toBe("4");
+    expect(chord.attrs["dots"]).toBe("1");
+    expect(findAll(chord, "note").map((n) => n.attrs["xml:id"])).toEqual(["cn1", "cn2"]);
+    // dotted quarter consumed an eighth from r1 (1/4): remainder 1/8
+    expect(findAll(score.measures[0]!, "rest").map((r) => r.attrs["dur"])).toEqual(["8", "2"]);
+    validAll(score);
+    cmd.revert(ctxFor(score));
+    expect(findAll(score.measures[0]!, "rest").map((r) => r.attrs["dur"])).toEqual(["4", "2"]);
+    validAll(score);
+  });
+
+  it("un-dotting releases time as rests; boundaries refuse", () => {
+    const body = `<measure n="1" xml:id="m1">
+      <staff n="1"><layer n="1"><note pname="c" oct="4" dur="2" dots="1" xml:id="dh"/><note pname="d" oct="4" dur="4" xml:id="q"/></layer></staff>
+      <staff n="2"><layer n="1"><mRest/></layer></staff>
+    </measure>`;
+    const { score } = scoreFrom(mei(body));
+    new ChangeDurationCommand("dh", "2", 0, frac(4, 4)).apply(ctxFor(score));
+    expect(findAll(score.measures[0]!, "rest").map((r) => r.attrs["dur"])).toEqual(["4"]);
+    validAll(score);
+    // q is the last event: dotting it would cross the measure end
+    expect(() => new ChangeDurationCommand("q", "4", 1, frac(4, 4)).apply(ctxFor(score))).toThrow(/boundary/);
   });
 });
 
