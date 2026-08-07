@@ -637,6 +637,149 @@ export class ToggleArticCommand implements Command {
 }
 
 /** Cycle the <dynam> anchored at the event: none -> p -> f -> none. */
+/**
+ * Toggle fingering on a note/chord — <fing startid place="above"> control
+ * events, text = the finger number; several stack vertically (Verovio
+ * renders them; <fingGrp> is unsupported there, so plural = plural <fing>).
+ *  - plain (additive=false): SET the fingering — replaces whatever is
+ *    there; the same single number again removes it.
+ *  - additive=true: add one more finger; an already-present number is
+ *    removed instead (per-number toggle within the set).
+ */
+export class ToggleFingCommand implements Command {
+  readonly label: string;
+  private removed: { at: number; el: CoreElement }[] = [];
+  private addedEl: CoreElement | null = null;
+  private measure: CoreElement | null = null;
+  private region: DirtyRegion[] = [];
+
+  constructor(
+    private readonly targetId: string,
+    private readonly finger: string,
+    private readonly additive = false,
+  ) {
+    this.label = `${additive ? "add" : "set"} fingering ${finger}`;
+  }
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    const ref = ctx.index.byId.get(this.targetId);
+    if (!ref) throw new Error("fingering target not found");
+    if (ref.tag !== "note" && ref.tag !== "chord") throw new Error("fingering attaches to notes or chords");
+    const measure = ctx.score.measures[ref.measureIndex];
+    if (!measure) throw new Error("measure not found");
+    this.removed = [];
+    this.addedEl = null;
+    this.measure = measure;
+    this.region = [{ measureIndex: ref.measureIndex, staffN: ref.staffN }];
+    const mine: { at: number; el: CoreElement }[] = [];
+    measure.children.forEach((c, at) => {
+      if (typeof c !== "string" && c.tag === "fing" && (c.attrs["startid"] ?? "").replace(/^#/, "") === this.targetId) mine.push({ at, el: c });
+    });
+    const textOf = (el: CoreElement) => el.children.filter((c): c is string => typeof c === "string").join("");
+    const hit = mine.find((m) => textOf(m.el) === this.finger);
+    const remove = (entries: { at: number; el: CoreElement }[]) => {
+      for (const e of [...entries].sort((a, b) => b.at - a.at)) {
+        measure.children.splice(e.at, 1);
+        this.removed.push(e);
+      }
+    };
+    const add = () => {
+      const fing: CoreElement = { tag: "fing", attrs: { "xml:id": newId(), staff: String(ref.staffN), startid: `#${this.targetId}`, place: "above" }, children: [this.finger] };
+      measure.children.push(fing);
+      this.addedEl = fing;
+    };
+    if (this.additive) {
+      if (hit) remove([hit]);
+      else add();
+    } else {
+      if (hit && mine.length === 1) remove([hit]); // same single number -> off
+      else {
+        remove(mine);
+        add();
+      }
+    }
+    return this.region;
+  }
+
+  revert(_ctx: CommandContext): DirtyRegion[] {
+    const measure = this.measure;
+    if (!measure) return [];
+    if (this.addedEl) {
+      const i = measure.children.indexOf(this.addedEl);
+      if (i >= 0) measure.children.splice(i, 1);
+    }
+    // Removals were recorded high-to-low; restore low-to-high.
+    for (const r of [...this.removed].reverse()) measure.children.splice(r.at, 0, r.el);
+    return this.region;
+  }
+}
+
+/**
+ * Cycle a hairpin over [startId, endId]: none -> crescendo -> decrescendo
+ * -> none. The <hairpin> lives in the START measure (a span control event
+ * — tile segmentation stubs it across boundaries like slurs). One undo
+ * step per press.
+ */
+export class CycleHairpinCommand implements Command {
+  readonly label = "cycle hairpin";
+  private memento: { measure: CoreElement; at: number; before: CoreElement | null; after: CoreElement | null } | null = null;
+  private region: DirtyRegion[] = [];
+
+  constructor(
+    private readonly startId: string,
+    private readonly endId: string,
+  ) {}
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    const deref = (v: string | undefined) => (v ? v.replace(/^#/, "") : undefined);
+    let a = ctx.index.byId.get(this.startId);
+    let b = ctx.index.byId.get(this.endId);
+    if (!a || !b) throw new Error("hairpin endpoints not found");
+    if (a.id === b.id) throw new Error("a hairpin needs two different events");
+    if (a.staffN !== b.staffN || a.layerN !== b.layerN) throw new Error("hairpin endpoints must share a staff and layer");
+    if (a.measureIndex > b.measureIndex || (a.measureIndex === b.measureIndex && a.eventIndex > b.eventIndex)) [a, b] = [b, a];
+    const measure = ctx.score.measures[a.measureIndex];
+    if (!measure) throw new Error("start measure not found");
+    this.region = [];
+    for (let m = a.measureIndex; m <= b.measureIndex; m++) this.region.push({ measureIndex: m, staffN: a.staffN });
+    const existing = childElements(measure).find(
+      (c) => c.tag === "hairpin" && deref(c.attrs["startid"]) === a!.id && deref(c.attrs["endid"]) === b!.id,
+    ) ?? null;
+    if (!existing) {
+      const hairpin: CoreElement = {
+        tag: "hairpin",
+        attrs: { "xml:id": newId(), staff: String(a.staffN), form: "cres", startid: `#${a.id}`, endid: `#${b.id}` },
+        children: [],
+      };
+      measure.children.push(hairpin);
+      this.memento = { measure, at: measure.children.length - 1, before: null, after: hairpin };
+    } else if (existing.attrs["form"] === "cres") {
+      const at = measure.children.indexOf(existing);
+      const next: CoreElement = { ...existing, attrs: { ...existing.attrs, form: "dim" }, children: [...existing.children] };
+      measure.children[at] = next;
+      this.memento = { measure, at, before: existing, after: next };
+    } else {
+      const at = measure.children.indexOf(existing);
+      measure.children.splice(at, 1);
+      this.memento = { measure, at, before: existing, after: null };
+    }
+    // New measures array -> the tile span-end index rebuilds (stale index
+    // would drop the incoming stub on the end tile — the slur lesson).
+    refreshScore(ctx.score);
+    return this.region;
+  }
+
+  revert(ctx: CommandContext): DirtyRegion[] {
+    if (!this.memento) return [];
+    const m = this.memento;
+    if (m.before === null && m.after) m.measure.children.splice(m.measure.children.indexOf(m.after), 1);
+    else if (m.after === null && m.before) m.measure.children.splice(m.at, 0, m.before);
+    else if (m.before) m.measure.children[m.at] = m.before;
+    refreshScore(ctx.score);
+    return this.region;
+  }
+}
+
 export class CycleDynamCommand implements Command {
   readonly label = "cycle dynamic";
   private memento: { measure: CoreElement; at: number; before: CoreElement | null; after: CoreElement | null } | null = null;
@@ -650,13 +793,15 @@ export class CycleDynamCommand implements Command {
     if (!measure) throw new Error("measure not found");
     const existing = childElements(measure).find((c) => c.tag === "dynam" && c.attrs["startid"] === `#${this.targetId}`) ?? null;
     const value = existing?.children[0];
+    // Softest to loudest, then off: none -> p -> mp -> mf -> f -> none.
+    const NEXT: Record<string, string> = { p: "mp", mp: "mf", mf: "f" };
     if (!existing) {
       const dynam: CoreElement = { tag: "dynam", attrs: { "xml:id": newId(), staff: String(ref.staffN), startid: `#${this.targetId}` }, children: ["p"] };
       measure.children.push(dynam);
       this.memento = { measure, at: measure.children.length - 1, before: null, after: dynam };
-    } else if (value === "p") {
+    } else if (typeof value === "string" && NEXT[value]) {
       const at = measure.children.indexOf(existing);
-      const next: CoreElement = { ...existing, attrs: { ...existing.attrs }, children: ["f"] };
+      const next: CoreElement = { ...existing, attrs: { ...existing.attrs }, children: [NEXT[value]!] };
       measure.children[at] = next;
       this.memento = { measure, at, before: existing, after: next };
     } else {

@@ -246,6 +246,39 @@ const toolkit = new VerovioToolkit(VerovioModule);
 check("saved file renders in a fresh Verovio toolkit", toolkit.loadData(savedXml) && toolkit.getPageCount() >= 1);
 
 await page.screenshot({ path: `${scratch}/phase3-arranging.png` });
+// --- repeat barlines: "r" on a block selection toggles the bis ---
+{
+  const rFrom = await staffCenter(0, 0);
+  const rTo = await staffCenter(1, 0);
+  let rBlock = "";
+  for (let tries = 0; tries < 5 && rBlock !== "0-1/1-1"; tries++) {
+    const a = await staffCenter(0, 0);
+    const b = await staffCenter(1, 0);
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down();
+    await page.mouse.move(b.x, b.y, { steps: 5 });
+    await page.mouse.up();
+    rBlock = await page
+      .waitForFunction(() => document.querySelector("main").dataset.block === "0-1/1-1", null, { timeout: 1500 })
+      .then(() => "0-1/1-1")
+      .catch(() => page.evaluate(() => document.querySelector("main").dataset.block));
+  }
+  void rFrom; void rTo;
+  check("block m1–m2 selected for the repeat", rBlock === "0-1/1-1");
+  await page.keyboard.press("r");
+  await page.waitForFunction(() => {
+    const ms = window.__SESSION__.score.measures;
+    return ms[0].attrs.left === "rptstart" && ms[1].attrs.right === "rptend";
+  }, null, { timeout: 10000 });
+  check("r wraps the block in repeat barlines (𝄆 𝄇)", true);
+  await page.keyboard.press("r");
+  await page.waitForFunction(() => {
+    const ms = window.__SESSION__.score.measures;
+    return ms[0].attrs.left === undefined && ms[1].attrs.right === undefined;
+  }, null, { timeout: 10000 });
+  check("second r removes them", true);
+}
+
 } finally {
   await browser.close();
   await server.close();

@@ -7,8 +7,8 @@
 import {
   buildScore, resolveContexts, buildEventIndex, ensureIds, fromDom, serialize, serializeDocument, childElements, findAll, meterCapacity, frac,
   CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand,
-  copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand,
-  ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, ChangeDurationCommand, ChangeContextCommand, planContextChange,
+  copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, ToggleRepeatCommand,
+  ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, AutoBeamCommand, UnbeamThen, measuresOf, ChangeContextCommand, planContextChange,
   type CoreScore, type MeasureContext, type EventIndex, type Command, type DirtyRegion, type DomLikeElement, type DomLikeNode,
   type BlockSelection, type ClipboardFragment, type PastePlan, type EntrySpec, type CoreElement, type CaretPosition, type ContextChangeSpec,
 } from "@battuta/core";
@@ -122,7 +122,7 @@ export class DocumentSession {
     return this.execute(new ChordNoteAccidentalCommand(chordId, noteId, accid));
   }
   deleteToRests(ids: string[]): DirtyRegion[] {
-    return this.execute(new DeleteToRestsCommand(ids));
+    return this.execute(new UnbeamThen(new DeleteToRestsCommand(ids), measuresOf(this.score, this.index, ids)));
   }
 
   copyBlock(block: BlockSelection): ClipboardFragment | null {
@@ -143,6 +143,9 @@ export class DocumentSession {
   duplicateMeasures(at: number, count = 1): DirtyRegion[] {
     return this.execute(new DuplicateMeasuresCommand(at, count));
   }
+  toggleRepeat(from: number, to: number): DirtyRegion[] {
+    return this.execute(new ToggleRepeatCommand(from, to));
+  }
   /** Adds a staff below the existing ones; returns its number. */
   addStaff(): number {
     const cmd = new AddStaffCommand();
@@ -161,7 +164,9 @@ export class DocumentSession {
     const ref = this.index.byId.get(targetId);
     const capacity = (ref && meterCapacity(this.contexts[ref.measureIndex]?.get(ref.staffN)?.meter ?? {})) || frac(4, 4);
     const cmd = new ReplaceEntryCommand(targetId, spec, capacity);
-    this.execute(cmd);
+    // Rhythm edits unbeam their measure first (UnbeamThen): entry never
+    // fights beam boundaries, no broken beams survive — alt+b re-beams.
+    this.execute(new UnbeamThen(cmd, measuresOf(this.score, this.index, [targetId])));
     return cmd.enteredId;
   }
   /** Returns the resulting chord's id (promotion assigns a new one). */
@@ -201,7 +206,7 @@ export class DocumentSession {
     const dots = el.attrs["dots"] ? 0 : 1;
     // In-place duration change: the element (and chord children) keep their
     // ids, so the caret and lastEntered stay valid without re-pointing.
-    this.execute(new ChangeDurationCommand(targetId, el.attrs["dur"], dots, this.capacityAt(targetId)));
+    this.execute(new UnbeamThen(new ChangeDurationCommand(targetId, el.attrs["dur"], dots, this.capacityAt(targetId)), measuresOf(this.score, this.index, [targetId])));
     return { id: targetId, dots };
   }
 
@@ -224,7 +229,7 @@ export class DocumentSession {
     const next = order[at - direction];
     if (!next) throw new Error(direction > 0 ? "already the longest duration" : "already the shortest duration");
     const dots = Number(el.attrs["dots"] ?? 0);
-    this.execute(new ChangeDurationCommand(targetId, next, dots, this.capacityAt(targetId)));
+    this.execute(new UnbeamThen(new ChangeDurationCommand(targetId, next, dots, this.capacityAt(targetId)), measuresOf(this.score, this.index, [targetId])));
     return { dur: next, dots };
   }
 
@@ -242,11 +247,20 @@ export class DocumentSession {
   cycleDynam(targetId: string): DirtyRegion[] {
     return this.execute(new CycleDynamCommand(targetId));
   }
+  cycleHairpin(startId: string, endId: string): DirtyRegion[] {
+    return this.execute(new CycleHairpinCommand(startId, endId));
+  }
+  autoBeam(measureIndexes: number[]): DirtyRegion[] {
+    return this.execute(new AutoBeamCommand(measureIndexes));
+  }
+  toggleFing(targetId: string, finger: string, additive: boolean): DirtyRegion[] {
+    return this.execute(new ToggleFingCommand(targetId, finger, additive));
+  }
   mergeWithNext(targetId: string): DirtyRegion[] {
-    return this.execute(new MergeEventsCommand(targetId, this.capacityAt(targetId)));
+    return this.execute(new UnbeamThen(new MergeEventsCommand(targetId, this.capacityAt(targetId)), measuresOf(this.score, this.index, [targetId])));
   }
   splitInHalf(targetId: string): DirtyRegion[] {
-    return this.execute(new SplitEventCommand(targetId, this.capacityAt(targetId)));
+    return this.execute(new UnbeamThen(new SplitEventCommand(targetId, this.capacityAt(targetId)), measuresOf(this.score, this.index, [targetId])));
   }
 
   /** Pitch of the nearest note at or before the position (octave guessing). */

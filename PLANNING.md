@@ -77,7 +77,12 @@ Preferences, keymap customization, session restore, crash-safe autosave (command
 > (staff-local clef), doubling as the change controls.
 > `node spikes/verify-phase5.mjs` covers it. Also landed: "+" tab (blank
 > score), open file… from disk, staves select (add below / remove at
-> caret, full undo).
+> caret, full undo), fingering (alt+1..5 set / alt+shift+1..5 stack,
+> <fing> control events, Verovio-rendered), auto-beam (alt+b, half-measure
+> groups; rhythm edits dissolve beams first — beams are formatting),
+> hairpins (selection + p: none → < → > → none; single-note p cycles
+> p/mp/mf/f), repeats (r on a block = 𝄆 𝄇), control events travel with
+> copy/paste, measure renumbering after structural ops and paste.
 > Landed late in Phase 4 alongside: context editing (clef/key/meter
 > dropdowns), cross-measure slurs (selection + S), tie chains (selection
 > + t), per-note chord accidental picker, edge-tie render stubs.

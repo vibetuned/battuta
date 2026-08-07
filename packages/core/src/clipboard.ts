@@ -11,7 +11,7 @@
 import { CoreElement, childElements, deepClone, serialize } from "./xml.js";
 import { CoreScore } from "./score.js";
 import { MeasureContext, MeterContext } from "./context.js";
-import { ensureIds } from "./ids.js";
+import { newId } from "./ids.js";
 
 export interface BlockSelection {
   measureFrom: number;
@@ -35,10 +35,29 @@ export interface ClipboardStaff {
   keysig: string;
 }
 
+/** A control event travelling with the block (fing, dynam, hairpin, …). */
+export interface ClipboardControl {
+  /** Measure offset within the block. */
+  atMeasure: number;
+  /** Source staff minus block.staffFrom (paste retargets @staff by this). */
+  staffOffset: number;
+  el: CoreElement;
+}
+
 export interface ClipboardFragment {
   measureCount: number;
   staves: ClipboardStaff[];
   meter: MeterContext;
+  /** Control events whose anchors all live inside the block. */
+  controls: ClipboardControl[];
+}
+
+const REF_ATTRS = ["startid", "endid"] as const;
+export const derefId = (v: string | undefined): string | undefined => (v ? v.replace(/^#/, "") : undefined);
+
+/** All id-refs of a measure-level control event. */
+export function controlRefs(el: CoreElement): string[] {
+  return REF_ATTRS.map((a) => derefId(el.attrs[a])).filter((r): r is string => r !== undefined);
 }
 
 export function findStaffInMeasure(measure: CoreElement, staffN: number): CoreElement | null {
@@ -56,19 +75,42 @@ export function copyBlock(score: CoreScore, contexts: MeasureContext[], block: B
   const ctx = contexts[block.measureFrom];
   if (!ctx) return null;
   const staves: ClipboardStaff[] = [];
+  const staffOfId = new Map<string, number>(); // copied event id -> source staff n
   for (let n = block.staffFrom; n <= block.staffTo; n++) {
     const measures: CoreElement[] = [];
     for (let m = block.measureFrom; m <= block.measureTo; m++) {
       const measure = score.measures[m];
       const staff = measure ? findStaffInMeasure(measure, n) : null;
+      if (staff) {
+        const index = (e: CoreElement): void => {
+          const id = e.attrs["xml:id"];
+          if (id) staffOfId.set(id, n);
+          for (const c of childElements(e)) index(c);
+        };
+        index(staff);
+      }
       // A missing staff still occupies its slot (pastes as empty).
       measures.push(staff ? deepClone(staff) : emptyStaff(n));
     }
     staves.push({ sourceStaffN: n, measures, keysig: ctx.get(n)?.keysig ?? "0" });
   }
   if (staves.length === 0) return null;
+  // Control events riding along: measure children (fing/dynam/hairpin/slur/…)
+  // whose every id anchor lives inside the copied block. Anchors reaching
+  // outside (half a hairpin) stay behind; tstamp-only events too.
+  const controls: ClipboardControl[] = [];
+  for (let m = block.measureFrom; m <= block.measureTo; m++) {
+    const measure = score.measures[m];
+    if (!measure) continue;
+    for (const child of childElements(measure)) {
+      if (child.tag === "staff") continue;
+      const refs = controlRefs(child);
+      if (refs.length === 0 || !refs.every((r) => staffOfId.has(r))) continue;
+      controls.push({ atMeasure: m - block.measureFrom, staffOffset: staffOfId.get(refs[0]!)! - block.staffFrom, el: deepClone(child) });
+    }
+  }
   const firstStaff = ctx.get(block.staffFrom);
-  return { measureCount: block.measureTo - block.measureFrom + 1, staves, meter: firstStaff ? { ...firstStaff.meter } : {} };
+  return { measureCount: block.measureTo - block.measureFrom + 1, staves, meter: firstStaff ? { ...firstStaff.meter } : {}, controls };
 }
 
 /** Readable MEI text form (for the system clipboard / interop). */
@@ -80,14 +122,17 @@ export function fragmentToText(frag: ClipboardFragment): string {
   return `<!-- battuta clipboard: ${frag.measureCount} measure(s) × ${frag.staves.length} staff/staves, meter ${frag.meter.count ?? "?"}/${frag.meter.unit ?? "?"} -->\n${measures.join("\n")}`;
 }
 
-/** Clone a fragment staff for insertion, with all-new ids (never collide). */
-export function materializeStaff(staff: CoreElement): CoreElement {
+/** Clone a fragment staff for insertion, with all-new ids (never collide).
+ * `idMap` (optional) records old→new so control-event anchors can follow. */
+export function materializeStaff(staff: CoreElement, idMap?: Map<string, string>): CoreElement {
   const el = deepClone(staff);
-  const strip = (e: CoreElement): void => {
-    delete e.attrs["xml:id"];
-    for (const c of childElements(e)) strip(c);
+  const walk = (e: CoreElement): void => {
+    const old = e.attrs["xml:id"];
+    const fresh = newId();
+    e.attrs["xml:id"] = fresh;
+    if (old && idMap) idMap.set(old, fresh);
+    for (const c of childElements(e)) walk(c);
   };
-  strip(el);
-  ensureIds(el);
+  walk(el);
   return el;
 }

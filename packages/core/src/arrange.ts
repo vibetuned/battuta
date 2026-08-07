@@ -8,9 +8,9 @@ import { CoreElement, childElements, deepClone, findAll } from "./xml.js";
 import { CoreScore, refreshScore } from "./score.js";
 import { MeasureContext } from "./context.js";
 import { Command, CommandContext, DirtyRegion } from "./commands.js";
-import { ClipboardFragment, findStaffInMeasure, materializeStaff } from "./clipboard.js";
+import { ClipboardFragment, findStaffInMeasure, materializeStaff, controlRefs } from "./clipboard.js";
 import { layerDuration, meterCapacity, fEq } from "./durations.js";
-import { ensureIds } from "./ids.js";
+import { ensureIds, newId } from "./ids.js";
 
 /* ------------------------------------------------------------------ */
 /* Paste planning (validation)                                         */
@@ -83,6 +83,11 @@ interface StaffMemento {
 export class PasteReplaceMeasuresCommand implements Command {
   readonly label: string;
   private mementos: StaffMemento[] = [];
+  /** Control events removed because their anchors were replaced. */
+  private removedControls: { measure: CoreElement; at: number; el: CoreElement }[] = [];
+  /** Control events recreated from the fragment (anchors remapped). */
+  private insertedControls: { measure: CoreElement; el: CoreElement }[] = [];
+  private renumbered: NumberMemento = null;
 
   constructor(
     private readonly frag: ClipboardFragment,
@@ -94,6 +99,15 @@ export class PasteReplaceMeasuresCommand implements Command {
 
   apply(ctx: CommandContext): DirtyRegion[] {
     this.mementos = [];
+    this.removedControls = [];
+    this.insertedControls = [];
+    const idMap = new Map<string, string>();
+    const replacedIds = new Set<string>();
+    const collectIds = (e: CoreElement): void => {
+      const id = e.attrs["xml:id"];
+      if (id) replacedIds.add(id);
+      for (const c of childElements(e)) collectIds(c);
+    };
     for (let k = 0; k < this.frag.measureCount; k++) {
       const measureEl = ctx.score.measures[this.measureIndex + k];
       if (!measureEl) break;
@@ -101,9 +115,10 @@ export class PasteReplaceMeasuresCommand implements Command {
         const targetN = this.staffN + si;
         const source = this.frag.staves[si]!.measures[k];
         if (!source) continue;
-        const fresh = materializeStaff(source);
+        const fresh = materializeStaff(source, idMap);
         fresh.attrs["n"] = String(targetN);
         const existing = findStaffInMeasure(measureEl, targetN);
+        if (existing) collectIds(existing);
         if (existing) {
           const at = measureEl.children.indexOf(existing);
           measureEl.children[at] = fresh;
@@ -119,14 +134,56 @@ export class PasteReplaceMeasuresCommand implements Command {
         }
       }
     }
+    // Drop control events whose anchors were just replaced (dead startids),
+    // then recreate the fragment's own controls with remapped anchors.
+    for (let k = 0; k < this.frag.measureCount; k++) {
+      const measureEl = ctx.score.measures[this.measureIndex + k];
+      if (!measureEl) break;
+      for (let i = measureEl.children.length - 1; i >= 0; i--) {
+        const c = measureEl.children[i];
+        if (c === undefined || typeof c === "string" || c.tag === "staff") continue;
+        const refs = controlRefs(c);
+        if (refs.length && refs.some((r) => replacedIds.has(r))) {
+          measureEl.children.splice(i, 1);
+          this.removedControls.push({ measure: measureEl, at: i, el: c });
+        }
+      }
+    }
+    for (const ctl of this.frag.controls ?? []) {
+      const measureEl = ctx.score.measures[this.measureIndex + ctl.atMeasure];
+      if (!measureEl) continue;
+      const refs = controlRefs(ctl.el);
+      if (!refs.every((r) => idMap.has(r))) continue; // anchor not pasted (staff outside target range)
+      const el = deepClone(ctl.el);
+      el.attrs["xml:id"] = newId();
+      for (const a of ["startid", "endid"]) {
+        const ref = el.attrs[a] ? el.attrs[a]!.replace(/^#/, "") : undefined;
+        if (ref) el.attrs[a] = `#${idMap.get(ref)!}`;
+      }
+      if (el.attrs["staff"] !== undefined) el.attrs["staff"] = String(this.staffN + ctl.staffOffset);
+      measureEl.children.push(el);
+      this.insertedControls.push({ measure: measureEl, el });
+    }
+    // Pasted spans (slur/hairpin) must reach the tile span-end index.
+    refreshScore(ctx.score);
+    // Normalize measure numbering too — pasting into a document with stale
+    // @n (older saves) should leave it sequential like the structural ops.
+    this.renumbered = renumberMeasures(ctx.score, numberingAnchor(ctx.score));
     return this.mementos.map((m) => ({ measureIndex: m.measureIndex, staffN: m.staffN }));
   }
 
-  revert(_ctx: CommandContext): DirtyRegion[] {
+  revert(ctx: CommandContext): DirtyRegion[] {
+    restoreNumbers(this.renumbered);
+    for (const ic of [...this.insertedControls].reverse()) {
+      const i = ic.measure.children.indexOf(ic.el);
+      if (i >= 0) ic.measure.children.splice(i, 1);
+    }
+    for (const rc of [...this.removedControls].reverse()) rc.measure.children.splice(rc.at, 0, rc.el);
     for (const m of [...this.mementos].reverse()) {
       if (m.original) m.measureEl.children[m.at] = m.original;
       else m.measureEl.children.splice(m.at, 1);
     }
+    refreshScore(ctx.score);
     return this.mementos.map((m) => ({ measureIndex: m.measureIndex, staffN: m.staffN }));
   }
 }
@@ -178,6 +235,39 @@ function insertMeasuresAt(score: CoreScore, at: number, els: CoreElement[]): voi
   refreshScore(score);
 }
 
+type NumberMemento = { el: CoreElement; n: string | undefined }[] | null;
+
+/** Pre-op numbering anchor: capture before mutating (see renumberMeasures). */
+function numberingAnchor(score: CoreScore): { el: CoreElement | undefined; n: string | undefined } {
+  const el = score.measures[0];
+  return { el, n: el?.attrs["n"] };
+}
+
+/**
+ * Sequential @n after structural changes — Verovio prints @n at system
+ * starts, and template-suffix names compound into "4aaaa" otherwise.
+ * The base comes from the PRE-op first measure: a surviving pickup keeps
+ * its 0-based numbering, but deleting the head restarts at 1. Non-numeric
+ * editorial numbering is left alone entirely.
+ */
+function renumberMeasures(score: CoreScore, anchor: { el: CoreElement | undefined; n: string | undefined }): NumberMemento {
+  if (anchor.n !== undefined && anchor.n !== "" && !/^\d+$/.test(anchor.n)) return null;
+  const base = anchor.el === score.measures[0] && anchor.n && /^\d+$/.test(anchor.n) ? Number(anchor.n) : 1;
+  const memo = score.measures.map((el) => ({ el, n: el.attrs["n"] }));
+  score.measures.forEach((el, i) => {
+    el.attrs["n"] = String(base + i);
+  });
+  return memo;
+}
+
+function restoreNumbers(memo: NumberMemento): void {
+  if (!memo) return;
+  for (const { el, n } of memo) {
+    if (n === undefined) delete el.attrs["n"];
+    else el.attrs["n"] = n;
+  }
+}
+
 /** Synthesize an empty measure matching a template's staff/layer shape. */
 export function emptyMeasureLike(template: CoreElement): CoreElement {
   const measure: CoreElement = { tag: "measure", attrs: { n: template.attrs["n"] ? `${template.attrs["n"]}a` : "" }, children: [] };
@@ -195,6 +285,7 @@ export function emptyMeasureLike(template: CoreElement): CoreElement {
 export class InsertMeasuresCommand implements Command {
   readonly label: string;
   private inserted: CoreElement[] = [];
+  private renumbered: NumberMemento = null;
 
   constructor(
     private readonly at: number,
@@ -206,12 +297,15 @@ export class InsertMeasuresCommand implements Command {
   apply(ctx: CommandContext): DirtyRegion[] {
     const template = ctx.score.measures[Math.min(this.at, ctx.score.measures.length - 1)];
     if (!template) return [];
+    const anchor = numberingAnchor(ctx.score);
     this.inserted = Array.from({ length: this.count }, () => emptyMeasureLike(template));
     insertMeasuresAt(ctx.score, this.at, this.inserted);
+    this.renumbered = renumberMeasures(ctx.score, anchor);
     return this.dirtyFrom(ctx);
   }
 
   revert(ctx: CommandContext): DirtyRegion[] {
+    restoreNumbers(this.renumbered);
     for (const el of this.inserted) {
       const parent = ctx.score.measureParent.get(el);
       if (parent) parent.children.splice(parent.children.indexOf(el), 1);
@@ -229,6 +323,7 @@ export class InsertMeasuresCommand implements Command {
 export class DeleteMeasuresCommand implements Command {
   readonly label: string;
   private removed: RemovedMeasure[] = [];
+  private renumbered: NumberMemento = null;
 
   constructor(
     private readonly at: number,
@@ -238,11 +333,14 @@ export class DeleteMeasuresCommand implements Command {
   }
 
   apply(ctx: CommandContext): DirtyRegion[] {
+    const anchor = numberingAnchor(ctx.score);
     this.removed = removeMeasures(ctx.score, this.at, this.count);
+    this.renumbered = renumberMeasures(ctx.score, anchor);
     return ctx.score.measures.slice(this.at).map((_, i) => ({ measureIndex: this.at + i, staffN: 0 }));
   }
 
   revert(ctx: CommandContext): DirtyRegion[] {
+    restoreNumbers(this.renumbered);
     for (const r of this.removed) r.parent.children.splice(r.at, 0, r.el);
     refreshScore(ctx.score);
     return ctx.score.measures.slice(this.at).map((_, i) => ({ measureIndex: this.at + i, staffN: 0 }));
@@ -252,6 +350,7 @@ export class DeleteMeasuresCommand implements Command {
 export class DuplicateMeasuresCommand implements Command {
   readonly label: string;
   private inserted: CoreElement[] = [];
+  private renumbered: NumberMemento = null;
 
   constructor(
     private readonly at: number,
@@ -272,11 +371,14 @@ export class DuplicateMeasuresCommand implements Command {
       ensureIds(clone);
       return clone;
     });
+    const anchor = numberingAnchor(ctx.score);
     insertMeasuresAt(ctx.score, this.at + this.count, this.inserted);
+    this.renumbered = renumberMeasures(ctx.score, anchor);
     return ctx.score.measures.slice(this.at).map((_, i) => ({ measureIndex: this.at + i, staffN: 0 }));
   }
 
   revert(ctx: CommandContext): DirtyRegion[] {
+    restoreNumbers(this.renumbered);
     for (const el of this.inserted) {
       const parent = ctx.score.measureParent.get(el);
       if (parent) parent.children.splice(parent.children.indexOf(el), 1);
@@ -417,5 +519,54 @@ export class RemoveStaffCommand implements Command {
     for (const r of [...this.removed].reverse()) r.parent.children.splice(r.at, 0, r.el);
     refreshScore(ctx.score);
     return allDirty(ctx);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * Toggle repeat barlines (the "bis") around a measure range: @left="rptstart"
+ * on the first measure, @right="rptend" on the last. Toggling off restores
+ * whatever barline values were there before (double bars survive).
+ */
+export class ToggleRepeatCommand implements Command {
+  readonly label: string;
+  private memento: { first: CoreElement; left: string | undefined; last: CoreElement; right: string | undefined } | null = null;
+
+  constructor(
+    private readonly from: number,
+    private readonly to: number,
+  ) {
+    this.label = `toggle repeat m${Math.min(from, to) + 1}–m${Math.max(from, to) + 1}`;
+  }
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    const lo = Math.min(this.from, this.to);
+    const hi = Math.max(this.from, this.to);
+    const first = ctx.score.measures[lo];
+    const last = ctx.score.measures[hi];
+    if (!first || !last) throw new Error("repeat range out of the score");
+    this.memento = { first, left: first.attrs["left"], last, right: last.attrs["right"] };
+    if (first.attrs["left"] === "rptstart" && last.attrs["right"] === "rptend") {
+      delete first.attrs["left"];
+      delete last.attrs["right"];
+    } else {
+      first.attrs["left"] = "rptstart";
+      last.attrs["right"] = "rptend";
+    }
+    return [
+      { measureIndex: lo, staffN: 0 },
+      { measureIndex: hi, staffN: 0 },
+    ];
+  }
+
+  revert(_ctx: CommandContext): DirtyRegion[] {
+    if (!this.memento) return [];
+    const m = this.memento;
+    if (m.left === undefined) delete m.first.attrs["left"];
+    else m.first.attrs["left"] = m.left;
+    if (m.right === undefined) delete m.last.attrs["right"];
+    else m.last.attrs["right"] = m.right;
+    return [];
   }
 }

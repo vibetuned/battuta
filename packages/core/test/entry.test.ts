@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildEventIndex, serialize, frac, fEq, decomposeDuration, validateMeasureDurations, findAll,
   ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand,
-  MergeEventsCommand, SplitEventCommand, CycleDynamCommand, ChangeDurationCommand,
+  MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand,
   type CommandContext,
 } from "../src/index.js";
 import { scoreFrom, mei } from "./helpers.js";
@@ -328,24 +328,23 @@ describe("artic + dynam", () => {
     expect(noteOf().attrs["artic"]).toBe("acc");
   });
 
-  it("cycles a dynam none -> p -> f -> none with clean reverts", () => {
+  it("cycles a dynam none -> p -> mp -> mf -> f -> none with clean reverts", () => {
     const { score } = scoreFrom(mei(BODY));
     const dynams = () => findAll(score.measures[0]!, "dynam").map((d) => d.children[0]);
-    const c1 = new CycleDynamCommand("q1");
-    c1.apply(ctxFor(score));
-    expect(dynams()).toEqual(["p"]);
-    const c2 = new CycleDynamCommand("q1");
-    c2.apply(ctxFor(score));
-    expect(dynams()).toEqual(["f"]);
-    const c3 = new CycleDynamCommand("q1");
-    c3.apply(ctxFor(score));
-    expect(dynams()).toEqual([]);
-    c3.revert(ctxFor(score));
-    expect(dynams()).toEqual(["f"]);
-    c2.revert(ctxFor(score));
-    expect(dynams()).toEqual(["p"]);
-    c1.revert(ctxFor(score));
-    expect(dynams()).toEqual([]);
+    const cmds: CycleDynamCommand[] = [];
+    const step = () => {
+      const c = new CycleDynamCommand("q1");
+      c.apply(ctxFor(score));
+      cmds.push(c);
+    };
+    for (const want of [["p"], ["mp"], ["mf"], ["f"], []] as const) {
+      step();
+      expect(dynams()).toEqual(want);
+    }
+    for (const want of [["f"], ["mf"], ["mp"], ["p"], []] as const) {
+      cmds.pop()!.revert(ctxFor(score));
+      expect(dynams()).toEqual(want);
+    }
   });
 
   it("adds and removes a dynam anchored to the note", () => {
@@ -463,5 +462,92 @@ describe("ChainTieCommand", () => {
     cmd.apply(ctxFor(score));
     cmd.revert(ctxFor(score));
     expect(serialize(score.scoreEl)).toBe(snap);
+  });
+});
+
+describe("ToggleFingCommand", () => {
+  const body = `
+    <measure n="1" xml:id="m1">
+      <staff n="1"><layer n="1"><note pname="c" oct="4" dur="2" xml:id="f1"/><rest dur="2" xml:id="fr"/></layer></staff>
+      <staff n="2"><layer n="1"><note pname="c" oct="3" dur="1" xml:id="f2"/></layer></staff>
+    </measure>`;
+  const fings = (score: ReturnType<typeof scoreFrom>["score"]) =>
+    findAll(score.measures[0]!, "fing").map((f) => f.children.filter((c) => typeof c === "string").join(""));
+
+  it("sets, replaces, and toggles off a fingering", () => {
+    const { score } = scoreFrom(mei(body));
+    const before = serialize(score.scoreEl);
+    new ToggleFingCommand("f1", "3").apply(ctxFor(score));
+    expect(fings(score)).toEqual(["3"]);
+    const el = findAll(score.measures[0]!, "fing")[0]!;
+    expect(el.attrs["startid"]).toBe("#f1");
+    expect(el.attrs["place"]).toBe("above");
+    new ToggleFingCommand("f1", "2").apply(ctxFor(score)); // replace
+    expect(fings(score)).toEqual(["2"]);
+    new ToggleFingCommand("f1", "2").apply(ctxFor(score)); // same again -> off
+    expect(serialize(score.scoreEl)).toBe(before);
+  });
+
+  it("additive adds and removes single fingers; plain set collapses the pile", () => {
+    const { score } = scoreFrom(mei(body));
+    new ToggleFingCommand("f1", "1").apply(ctxFor(score));
+    new ToggleFingCommand("f1", "3", true).apply(ctxFor(score));
+    new ToggleFingCommand("f1", "5", true).apply(ctxFor(score));
+    expect(fings(score)).toEqual(["1", "3", "5"]);
+    new ToggleFingCommand("f1", "3", true).apply(ctxFor(score)); // remove just the 3
+    expect(fings(score)).toEqual(["1", "5"]);
+    new ToggleFingCommand("f1", "2").apply(ctxFor(score)); // plain set replaces the pile
+    expect(fings(score)).toEqual(["2"]);
+  });
+
+  it("reverts byte-identically and refuses rests", () => {
+    const { score } = scoreFrom(mei(body));
+    new ToggleFingCommand("f1", "1").apply(ctxFor(score));
+    new ToggleFingCommand("f1", "4", true).apply(ctxFor(score));
+    const snap = serialize(score.scoreEl);
+    const cmd = new ToggleFingCommand("f1", "2"); // replaces both
+    cmd.apply(ctxFor(score));
+    cmd.revert(ctxFor(score));
+    expect(serialize(score.scoreEl)).toBe(snap);
+    expect(() => new ToggleFingCommand("fr", "1").apply(ctxFor(score))).toThrow(/notes or chords/);
+  });
+});
+
+describe("CycleHairpinCommand", () => {
+  const body = `
+    <measure n="1" xml:id="m1">
+      <staff n="1"><layer n="1"><note pname="c" oct="4" dur="2" xml:id="h1"/><note pname="d" oct="4" dur="2" xml:id="h2"/></layer></staff>
+      <staff n="2"><layer n="1"><note pname="c" oct="3" dur="1" xml:id="k1"/></layer></staff>
+    </measure>
+    <measure n="2" xml:id="m2">
+      <staff n="1"><layer n="1"><note pname="e" oct="4" dur="1" xml:id="h3"/></layer></staff>
+      <staff n="2"><layer n="1"><note pname="d" oct="3" dur="1" xml:id="k2"/></layer></staff>
+    </measure>`;
+  const pins = (score: ReturnType<typeof scoreFrom>["score"]) =>
+    findAll(score.measures[0]!, "hairpin").map((h) => `${h.attrs["form"]}:${h.attrs["startid"]}→${h.attrs["endid"]}`);
+
+  it("cycles none → cres → dim → none over a cross-measure pair", () => {
+    const { score } = scoreFrom(mei(body));
+    const before = serialize(score.scoreEl);
+    new CycleHairpinCommand("h1", "h3").apply(ctxFor(score));
+    expect(pins(score)).toEqual(["cres:#h1→#h3"]);
+    expect(findAll(score.measures[0]!, "hairpin")[0]!.attrs["staff"]).toBe("1");
+    new CycleHairpinCommand("h1", "h3").apply(ctxFor(score));
+    expect(pins(score)).toEqual(["dim:#h1→#h3"]);
+    new CycleHairpinCommand("h1", "h3").apply(ctxFor(score));
+    expect(serialize(score.scoreEl)).toBe(before);
+  });
+
+  it("normalizes reversed endpoints, reverts byte-identically, refuses mixed staves", () => {
+    const { score } = scoreFrom(mei(body));
+    new CycleHairpinCommand("h3", "h1").apply(ctxFor(score)); // reversed
+    expect(pins(score)).toEqual(["cres:#h1→#h3"]);
+    const snap = serialize(score.scoreEl);
+    const cmd = new CycleHairpinCommand("h1", "h3"); // -> dim
+    cmd.apply(ctxFor(score));
+    cmd.revert(ctxFor(score));
+    expect(serialize(score.scoreEl)).toBe(snap);
+    expect(() => new CycleHairpinCommand("h1", "k2").apply(ctxFor(score))).toThrow(/share a staff/);
+    expect(() => new CycleHairpinCommand("h1", "h1").apply(ctxFor(score))).toThrow(/two different/);
   });
 });

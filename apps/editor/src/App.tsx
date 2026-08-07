@@ -135,7 +135,7 @@ export const DEFAULT_ZOOM = 0.9;
  * matches the document re-renders; clean tiles are cache hits. After each
  * sync batch settles, onSettled fires (drives the edit-latency HUD).
  */
-function TileGrid({ session, version, pool, zoom, onRendered, onSettled }: { session: DocumentSession; version: number; pool: RenderPool; zoom: number; onRendered: (r: TileResult) => void; onSettled: () => void }) {
+function TileGrid({ session, version, pool, zoom, onRendered, onSettled, onLayout }: { session: DocumentSession; version: number; pool: RenderPool; zoom: number; onRendered: (r: TileResult) => void; onSettled: () => void; onLayout: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [tiles, setTiles] = useState<ReadonlyMap<number, TileState>>(new Map());
   const [headers, setHeaders] = useState<ReadonlyMap<string, TileState>>(new Map());
@@ -176,6 +176,13 @@ function TileGrid({ session, version, pool, zoom, onRendered, onSettled }: { ses
 
   const measureCount = session.score.measures.length;
   const rendered = useMemo(() => [...tiles.values()], [tiles]);
+
+  // Any commit that can move tiles (fresh renders, the forced spacing pass,
+  // header cells, zoom, container resize) must re-project overlays like the
+  // caret — the parent recomputes them from the DOM after this fires.
+  useEffect(() => {
+    onLayout();
+  }, [tiles, headers, measureTick, zoom, containerW, onLayout]);
   const estimateW = useMemo(() => {
     const ws = rendered.map((t) => t.w).sort((a, b) => a - b);
     return ws[Math.floor(ws.length / 2)] ?? 150;
@@ -850,6 +857,74 @@ export default function App() {
         }
         return;
       }
+      if (e.key === "r" && !mod && !e.altKey && !entryMode && block) {
+        // "r" on a block selection toggles repeat barlines around it — the
+        // bis. In input mode r still enters rests.
+        e.preventDefault();
+        try {
+          session.toggleRepeat(block.measureFrom, block.measureTo);
+          afterCommand(session);
+          setNotice(`repeat toggled around m${block.measureFrom + 1}–m${block.measureTo + 1} (𝄆 𝄇)`);
+        } catch (err) {
+          setNotice(`repeat refused: ${err instanceof Error ? err.message : err}`);
+        }
+        return;
+      }
+      if (e.key === "p" && !mod && !e.altKey && selection.length >= 2) {
+        // With a block of notes selected, "p" cycles a hairpin over it:
+        // none -> crescendo -> decrescendo -> none (single-note "p" still
+        // cycles p/f dynamics).
+        e.preventDefault();
+        try {
+          session.cycleHairpin(selection[0]!, selection[selection.length - 1]!);
+          afterCommand(session);
+          setNotice("hairpin: none → < → > → none");
+        } catch (err) {
+          setNotice(`hairpin refused: ${err instanceof Error ? err.message : err}`);
+        }
+        return;
+      }
+      if (e.altKey && !mod && e.key.toLowerCase() === "b") {
+        // alt+b: auto-beam the caret's measure (or every measure the
+        // selection touches) — beam groups span at most half the measure.
+        e.preventDefault();
+        const measures = selection.length
+          ? [...new Set(selection.map((id) => session.index.byId.get(id)?.measureIndex).filter((m): m is number => m !== undefined))]
+          : caret
+            ? [caret.measureIndex]
+            : [];
+        if (!measures.length) {
+          setNotice("place the caret or select notes first");
+          return;
+        }
+        try {
+          session.autoBeam(measures);
+          afterCommand(session);
+          setNotice(`auto-beamed ${measures.length > 1 ? `${measures.length} measures` : `m${measures[0]! + 1}`} (groups of half a measure)`);
+        } catch (err) {
+          setNotice(`beam refused: ${err instanceof Error ? err.message : err}`);
+        }
+        return;
+      }
+      if (e.altKey && !mod) {
+        // alt+1..5 = SET fingering (same number again removes); with shift
+        // = ADD one more finger (chords, substitutions). Physical-key match
+        // so AZERTY's shifted digit row works identically.
+        const fing = /^(?:Digit|Numpad)([1-5])$/.exec(e.code)?.[1];
+        if (fing) {
+          const target = entryMode && lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId;
+          if (!target) return;
+          e.preventDefault();
+          try {
+            session.toggleFing(target, fing, e.shiftKey);
+            afterCommand(session);
+            setNotice(null);
+          } catch (err) {
+            setNotice(`fingering refused: ${err instanceof Error ? err.message : err}`);
+          }
+          return;
+        }
+      }
       if (entryMode && !mod) {
         const DUR: Record<string, string> = { "7": "1", "6": "2", "5": "4", "4": "8", "3": "16", "2": "32", "1": "64" };
         const applyTo = lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId;
@@ -1314,6 +1389,8 @@ export default function App() {
     setLayoutTick((t) => t + 1);
   }, []);
 
+  const onLayout = useCallback(() => setLayoutTick((t) => t + 1), []);
+
   const onSettled = useCallback(() => {
     setLayoutTick((t) => t + 1);
     if (pendingEdit.current && session) {
@@ -1484,7 +1561,7 @@ export default function App() {
         data-block={block ? `${block.measureFrom}-${block.measureTo}/${block.staffFrom}-${block.staffTo}` : ""}
         data-entry={entryMode ? `${entryDur}${entryDots ? "." : ""}` : ""}
       >
-        {session && pool && view === "tiles" && <TileGrid key={activeId ?? -1} session={session} version={version} pool={pool} zoom={zoom} onRendered={onRendered} onSettled={onSettled} />}
+        {session && pool && view === "tiles" && <TileGrid key={activeId ?? -1} session={session} version={version} pool={pool} zoom={zoom} onRendered={onRendered} onSettled={onSettled} onLayout={onLayout} />}
         {session && pool && view === "pages" && <PageView key={`${activeId}-${version}`} session={session} pool={pool} />}
         {caretRect && view === "tiles" && <div className="caret" style={caretRect} />}
       </main>

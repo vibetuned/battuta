@@ -132,12 +132,15 @@ const dynVal = () => page.evaluate(() => {
   return m.children.filter((c) => typeof c !== "string" && c.tag === "dynam").map((d) => d.children[0]);
 });
 check("p anchors a piano dynam", JSON.stringify(await dynVal()) === JSON.stringify(["p"]));
-await page.keyboard.press("p"); // p -> f
-check("second p cycles to forte", JSON.stringify(await dynVal()) === JSON.stringify(["f"]));
+await page.keyboard.press("p"); // p -> mp
+check("second p cycles to mezzo-piano", JSON.stringify(await dynVal()) === JSON.stringify(["mp"]));
+await page.keyboard.press("p"); // mp -> mf
+await page.keyboard.press("p"); // mf -> f
+check("two more reach forte", JSON.stringify(await dynVal()) === JSON.stringify(["f"]));
 await page.keyboard.press("p"); // f -> none
-check("third p removes the dynamic", JSON.stringify(await dynVal()) === JSON.stringify([]));
+check("next p removes the dynamic", JSON.stringify(await dynVal()) === JSON.stringify([]));
 await page.keyboard.press("p"); // leave one for the undo count parity: none -> p
-check("fourth p re-adds piano", JSON.stringify(await dynVal()) === JSON.stringify(["p"]));
+check("another p re-adds piano", JSON.stringify(await dynVal()) === JSON.stringify(["p"]));
 
 // A force-click right after edits can land on stale coordinates (rows
 // reflow while renders settle) — click by id and verify the caret took.

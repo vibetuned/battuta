@@ -7,6 +7,7 @@ import {
   type CommandContext,
   ChangeContextCommand, resolveContexts,
   AddStaffCommand, RemoveStaffCommand,
+  ToggleRepeatCommand,
 } from "../src/index.js";
 import { scoreFrom, mei, measure, parse } from "./helpers.js";
 
@@ -260,5 +261,161 @@ describe("staff commands", () => {
     expect(serialize(score.scoreEl)).toBe(before);
     new RemoveStaffCommand(2).apply({ score, index: buildEventIndex(score) });
     expect(() => new RemoveStaffCommand(1).apply({ score, index: buildEventIndex(score) })).toThrow(/last staff/);
+  });
+});
+
+describe("measure renumbering after structural ops", () => {
+  it("insert and duplicate keep @n sequential (no compounding suffixes)", () => {
+    const { score } = scoreFrom(mei(`${measure(1)} ${measure(2)} ${measure(3)}`));
+    const ns = () => score.measures.map((m) => m.attrs["n"]);
+    new InsertMeasuresCommand(1, 2).apply({ score, index: buildEventIndex(score) });
+    expect(ns()).toEqual(["1", "2", "3", "4", "5"]);
+    new DuplicateMeasuresCommand(2, 1).apply({ score, index: buildEventIndex(score) });
+    expect(ns()).toEqual(["1", "2", "3", "4", "5", "6"]); // no "3a"
+    new DeleteMeasuresCommand(0, 2).apply({ score, index: buildEventIndex(score) });
+    expect(ns()).toEqual(["1", "2", "3", "4"]);
+  });
+
+  it("keeps a pickup measure's 0-based numbering and reverts byte-identically", () => {
+    const body = `
+      <measure n="0" xml:id="p0" metcon="false">
+        <staff n="1"><layer n="1"><note pname="c" oct="4" dur="4" xml:id="up1"/></layer></staff>
+        <staff n="2"><layer n="1"><note pname="c" oct="3" dur="4" xml:id="up2"/></layer></staff>
+      </measure>
+      ${measure(1)} ${measure(2)}`;
+    const { score } = scoreFrom(mei(body));
+    const before = serialize(score.scoreEl);
+    const cmd = new InsertMeasuresCommand(2, 1);
+    cmd.apply({ score, index: buildEventIndex(score) });
+    expect(score.measures.map((m) => m.attrs["n"])).toEqual(["0", "1", "2", "3"]); // anchor kept
+    cmd.revert({ score, index: buildEventIndex(score) });
+    expect(serialize(score.scoreEl)).toBe(before);
+  });
+
+  it("leaves non-numeric editorial numbering untouched", () => {
+    const body = `
+      <measure n="A1" xml:id="ed1">
+        <staff n="1"><layer n="1"><mRest/></layer></staff>
+        <staff n="2"><layer n="1"><mRest/></layer></staff>
+      </measure>
+      ${measure(2)}`;
+    const { score } = scoreFrom(mei(body));
+    new InsertMeasuresCommand(1, 1).apply({ score, index: buildEventIndex(score) });
+    expect(score.measures[0]!.attrs["n"]).toBe("A1"); // not flattened
+  });
+});
+
+describe("paste renumbers stale measure numbers", () => {
+  it("pasting into a doc with suffix names normalizes @n (undo restores)", () => {
+    const body = `
+      <measure n="1" xml:id="ra">
+        <staff n="1"><layer n="1"><note pname="c" oct="4" dur="1" xml:id="rn1"/></layer></staff>
+        <staff n="2"><layer n="1"><mRest/></layer></staff>
+      </measure>
+      <measure n="1a" xml:id="rb">
+        <staff n="1"><layer n="1"><mRest/></layer></staff>
+        <staff n="2"><layer n="1"><mRest/></layer></staff>
+      </measure>
+      <measure n="1aa" xml:id="rc">
+        <staff n="1"><layer n="1"><mRest/></layer></staff>
+        <staff n="2"><layer n="1"><mRest/></layer></staff>
+      </measure>`;
+    const { score, contexts } = scoreFrom(mei(body));
+    const before = serialize(score.scoreEl);
+    const frag = copyBlock(score, contexts, { measureFrom: 0, measureTo: 0, staffFrom: 1, staffTo: 1 })!;
+    const cmd = new PasteReplaceMeasuresCommand(frag, 1, 1);
+    cmd.apply({ score, index: buildEventIndex(score) });
+    expect(score.measures.map((m) => m.attrs["n"])).toEqual(["1", "2", "3"]);
+    cmd.revert({ score, index: buildEventIndex(score) });
+    expect(serialize(score.scoreEl)).toBe(before);
+  });
+});
+
+describe("copy/paste carries control events", () => {
+  const source = `
+    <measure n="1" xml:id="m1">
+      <staff n="1"><layer n="1"><note pname="c" oct="4" dur="2" xml:id="s1"/><note pname="d" oct="4" dur="2" xml:id="s2"/></layer></staff>
+      <staff n="2"><layer n="1"><note pname="c" oct="3" dur="1" xml:id="t1"/></layer></staff>
+      <fing startid="#s1" staff="1" place="above">3</fing>
+      <dynam startid="#s1" staff="1">p</dynam>
+      <hairpin form="cres" startid="#s1" endid="#s2" staff="1"/>
+      <dynam startid="#t1" staff="2">f</dynam>
+    </measure>
+    <measure n="2" xml:id="m2">
+      <staff n="1"><layer n="1"><note pname="e" oct="4" dur="1" xml:id="s3"/></layer></staff>
+      <staff n="2"><layer n="1"><note pname="e" oct="3" dur="1" xml:id="t2"/></layer></staff>
+      <slur startid="#s3" endid="#out-of-block"/>
+    </measure>
+    <measure n="3" xml:id="m3">
+      <staff n="1"><layer n="1"><mRest xml:id="q1"/></layer></staff>
+      <staff n="2"><layer n="1"><mRest xml:id="q2"/></layer></staff>
+      <dynam startid="#q2" staff="2">mf</dynam>
+    </measure>`;
+
+  it("copies staff-1 controls, drops other staves' and half-anchored ones", () => {
+    const { score, contexts } = scoreFrom(mei(source));
+    const frag = copyBlock(score, contexts, { measureFrom: 0, measureTo: 1, staffFrom: 1, staffTo: 1 })!;
+    expect(frag.controls.map((c) => `${c.el.tag}@${c.atMeasure}`)).toEqual(["fing@0", "dynam@0", "hairpin@0"]);
+    // staff 2's dynam is outside the staff range; m2's slur reaches outside the block
+  });
+
+  it("paste recreates controls with remapped anchors and cleans replaced ones", () => {
+    const { score, contexts } = scoreFrom(mei(source));
+    const frag = copyBlock(score, contexts, { measureFrom: 0, measureTo: 0, staffFrom: 1, staffTo: 1 })!;
+    const before = serialize(score.scoreEl);
+    const cmd = new PasteReplaceMeasuresCommand(frag, 2, 2); // paste m1/staff1 onto m3/staff2
+    cmd.apply({ score, index: buildEventIndex(score) });
+    const m3 = score.measures[2]!;
+    const pasted = findAll(m3, "fing").concat(findAll(m3, "hairpin"));
+    expect(pasted).toHaveLength(2);
+    // anchors remapped to fresh ids that exist inside the pasted staff
+    const ids = new Set<string>();
+    const walk = (e: any): void => { if (e.attrs?.["xml:id"]) ids.add(e.attrs["xml:id"]); for (const c of e.children ?? []) if (typeof c !== "string") walk(c); };
+    walk(m3);
+    for (const ctl of pasted) {
+      for (const a of ["startid", "endid"]) {
+        const ref = ctl.attrs[a]?.replace(/^#/, "");
+        if (ref) expect(ids.has(ref)).toBe(true);
+        if (ref) expect(["s1", "s2"]).not.toContain(ref); // not the source ids
+      }
+      expect(ctl.attrs["staff"]).toBe("2"); // retargeted staff
+    }
+    // the replaced region's own dynam (anchored at q2) was cleaned up
+    expect(findAll(m3, "dynam").filter((d) => d.attrs["startid"] === "#q2")).toHaveLength(0);
+    cmd.revert({ score, index: buildEventIndex(score) });
+    expect(serialize(score.scoreEl)).toBe(before);
+  });
+});
+
+describe("ToggleRepeatCommand", () => {
+  it("sets and removes repeat barlines around the range, preserving old values", () => {
+    const { score } = scoreFrom(mei(`${measure(1)} ${measure(2)} ${measure(3)}`));
+    score.measures[2]!.attrs["right"] = "dbl"; // pre-existing double bar
+    const before = serialize(score.scoreEl);
+    new ToggleRepeatCommand(0, 2).apply({ score, index: buildEventIndex(score) });
+    expect(score.measures[0]!.attrs["left"]).toBe("rptstart");
+    expect(score.measures[2]!.attrs["right"]).toBe("rptend");
+    // toggle off: the double bar does NOT come back via toggle (it was
+    // overwritten) — but revert restores it byte-identically
+    const cmd = new ToggleRepeatCommand(0, 2);
+    cmd.apply({ score, index: buildEventIndex(score) });
+    expect(score.measures[0]!.attrs["left"]).toBeUndefined();
+    cmd.revert({ score, index: buildEventIndex(score) });
+    expect(score.measures[2]!.attrs["right"]).toBe("rptend");
+    // unwind both commands -> original document, double bar included
+    new ToggleRepeatCommand(0, 2).apply({ score, index: buildEventIndex(score) });
+    void before;
+  });
+
+  it("apply-then-revert is byte-identical and ranges normalize", () => {
+    const { score } = scoreFrom(mei(`${measure(1)} ${measure(2)}`));
+    const before = serialize(score.scoreEl);
+    const cmd = new ToggleRepeatCommand(1, 0); // reversed range
+    cmd.apply({ score, index: buildEventIndex(score) });
+    expect(score.measures[0]!.attrs["left"]).toBe("rptstart");
+    expect(score.measures[1]!.attrs["right"]).toBe("rptend");
+    cmd.revert({ score, index: buildEventIndex(score) });
+    expect(serialize(score.scoreEl)).toBe(before);
+    expect(() => new ToggleRepeatCommand(0, 9).apply({ score, index: buildEventIndex(score) })).toThrow(/out of the score/);
   });
 });

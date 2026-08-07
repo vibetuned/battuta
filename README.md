@@ -124,7 +124,7 @@ Phase 4 in progress (2026-08-02): note entry + round-trip hardening.
   durations (5 = quarter), `.` dot, s/v/n accidentals, `t` tie (back to the
   predecessor — across the barline when the note opens the measure; works
   outside input mode too, on the caret note; pitch-checked), `,` staccato, `;`/`!` accent, and `p` cycling
-  dynamics (none → p → f → none). **Web MIDI is a first-class input**: in
+  dynamics (none → p → mp → mf → f → none). **Web MIDI is a first-class input**: in
   input mode, note-ons enter at the caret, keys held together build chords
   (note-off tracking), devices hot-plug via `onstatechange`, the HUD shows
   what is connected, and a note played outside input mode hints at pressing
@@ -145,7 +145,7 @@ Phase 4 in progress (2026-08-02): note entry + round-trip hardening.
   zero new ids. Compatibility note: Verovio rejects comments before the
   root element (PIs are fine), so prologue comments are preserved by moving
   them just inside `<mei>`.
-- 114 core tests; the property fuzzer covers the whole command pool (a
+- 134 core tests; the property fuzzer covers the whole command pool (a
   stale modulo had silenced part of it) and promptly caught a real bug:
   measures inserted or duplicated at a mid-piece context change landed
   AFTER the interleaved def, adopting the next section's meter — a
@@ -224,10 +224,54 @@ Phase 5 in progress (2026-08-05): polish.
   *remove caret staff* takes out the caret's staff everywhere — its
   staffDef, mid-piece staffDefs, and staff-anchored control events — one
   undo step each, last staff refused.
+- **Fingering** (`alt+1..5`): sets the fingering on the target note or
+  chord — rendered by Verovio as a small digit above the staff (`<fing>`
+  control events; the same number again removes it, a different one
+  replaces it). `alt+shift+1..5` stacks additional fingers (chords,
+  substitutions) and removes exactly that number if present. Same target
+  rule as the dot — the just-entered note in input mode, else the caret
+  note — and matched by physical key, so AZERTY's shifted digit row works
+  identically. One undo step each. (`<fingGrp>` is unsupported by Verovio,
+  so plural fingering = several stacked `<fing>` elements.)
+- **Auto-beam** (`alt+b`): groups the caret measure's eighth-and-shorter
+  notes into beams — every measure the selection touches with one press —
+  with the longest beam spanning **half the measure regardless of meter**
+  (onset decides the half; rests and longer notes break groups; runs of
+  one stay unbeamed). Idempotent: existing beams are lifted and regrouped.
+  The other half of the policy: **beams are formatting, and rhythm edits
+  dissolve them** — entry, duration changes, merge/split, and
+  delete-to-rests unbeam their measure *first* (so overwrite entry never
+  refuses at a beam boundary) and no broken beams survive; re-beam with
+  `alt+b` once the rhythm settles. All one-undo-step, byte-identical
+  unwind (the un/re-beam travels with the edit).
+- **Repeats** (`r` on a block selection): wraps the selected measures in
+  repeat barlines (`@left="rptstart"` / `@right="rptend"` — the bis);
+  the same block again removes them, and undo restores any barline the
+  repeat overwrote (double bars survive). In input mode `r` still enters
+  rests.
+- **Copy/paste carries control events**: fingering, dynamics, hairpins,
+  and slurs whose anchors live inside the copied block travel with it —
+  pasted with freshly remapped anchor ids and retargeted staff numbers;
+  events reaching outside the block (half a hairpin) stay behind, and
+  control events attached to the *replaced* region are cleaned up rather
+  than left dangling. Paste also normalizes measure `@n` like the
+  structural ops, so stale numbering from older saves heals on the first
+  paste. Byte-identical undo covers all of it.
+- **Hairpins** (`p` with a selection): select a run of notes — across
+  measures too — and `p` cycles a hairpin over it: none → crescendo →
+  decrescendo → none (`<hairpin>` with startid/endid in the start
+  measure, rendered across tile boundaries by the span segmentation).
+  With no selection, `p` keeps cycling p/f dynamics on the note. One
+  undo step per press.
+- **Measure numbers stay sane**: insert/delete/duplicate renumber `@n`
+  sequentially (page view prints it at every system start — this used to
+  show compounding "4aaaa" template names). A surviving pickup keeps its
+  0-based numbering; non-numeric editorial numbering is never touched;
+  undo restores the original numbers exactly.
 - **Tabs**: a `+` button opens a fresh blank score (one treble staff, 4/4,
   four empty measures, named untitled-1, -2, …) ready for note entry, and
   **open file…** loads any `.mei`/`.xml` from disk into a new tab named
-  after the file. `node spikes/verify-phase5.mjs` (37 checks).
+  after the file. `node spikes/verify-phase5.mjs` (61 checks).
 
 ## Layout
 
