@@ -86,6 +86,11 @@ Preferences, keymap customization, session restore, crash-safe autosave (command
 > multiple voices (per-staff AND per-measure: add/remove from the caret's
 > measure like context changes, boundary double barline, voice colors
 > blue/violet via layer@n, ↑/↓ traverse voices before staves).
+> Tester round: marcato/staccatissimo (shifted accent/staccato keys),
+> double sharp (S), fermata (h), coda/segno cycle (o), ornament cycle (w:
+> arpeggio/tremolo/trill/mordent), grace-note cycle (m on a two-pitch
+> pair), pedal (P on selection), volta brackets (shift+1..9 on a block =
+> toggle that number; mixes like [1,2][3]; group barlines renormalize).
 > Landed late in Phase 4 alongside: context editing (clef/key/meter
 > dropdowns), cross-measure slurs (selection + S), tie chains (selection
 > + t), per-note chord accidental picker, edge-tie render stubs.

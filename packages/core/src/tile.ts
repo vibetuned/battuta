@@ -294,11 +294,18 @@ export function synthesizeTile(score: CoreScore, contexts: MeasureContext[], fro
   const ctx = contexts[from];
   if (!ctx) throw new Error(`no context for measure index ${from}`);
   const scoreDefXml = serialize(synthesizeScoreDef(score, ctx, header));
-  const measures = score.measures.slice(from, from + count).map(deepClone);
+  const originals = score.measures.slice(from, from + count);
+  const measures = originals.map(deepClone);
   const firstStaff = ctx.values().next().value;
   const incoming = getSpanEndIndex(score).filter((s) => s.measureIndex < from);
   segmentControlEvents(measures, Number(firstStaff?.meter.count ?? "4") || 4, incoming);
-  const measuresXml = measures.map((m) => serialize(m)).join("\n");
+  // Measures living inside an <ending> keep their volta bracket in the
+  // slice (per-measure tiles show a bracket segment, like other spans).
+  const sliced = measures.map((m, i) => {
+    const parent = score.measureParent.get(originals[i]!);
+    return parent?.tag === "ending" ? ({ tag: "ending", attrs: { n: parent.attrs["n"] ?? "1" }, children: [m] } as CoreElement) : m;
+  });
+  const measuresXml = sliced.map((m) => serialize(m)).join("\n");
   const xml = [
     `<?xml version="1.0" encoding="UTF-8"?>`,
     `<mei xmlns="${MEI_NS}" meiversion="5.0">`,

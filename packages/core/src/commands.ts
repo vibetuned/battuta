@@ -136,7 +136,7 @@ export class TransposeOctaveCommand extends AttrCommand {
 /** Set an accidental, or remove it when it is already the requested one. */
 export class ToggleAccidentalCommand extends AttrCommand {
   readonly label: string;
-  constructor(ids: string[], private readonly accid: "s" | "f" | "n") {
+  constructor(ids: string[], private readonly accid: "s" | "f" | "n" | "x") {
     super(ids);
     this.label = `toggle accidental ${accid}`;
   }
@@ -173,7 +173,7 @@ export class ChordNoteAccidentalCommand implements Command {
   constructor(
     private readonly chordId: string,
     private readonly noteId: string,
-    private readonly accid: "s" | "f" | "n",
+    private readonly accid: "s" | "f" | "n" | "x",
   ) {
     this.label = `toggle accidental ${accid} on chord note`;
   }

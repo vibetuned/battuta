@@ -430,7 +430,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   /** Chord accidental picker: which note of the chord gets the accidental. */
-  const [accidPick, setAccidPick] = useState<{ accid: "s" | "f" | "n"; chordId: string; notes: { id: string; pname: string; oct: string; accid?: string }[]; x: number; y: number } | null>(null);
+  const [accidPick, setAccidPick] = useState<{ accid: "s" | "f" | "n" | "x"; chordId: string; notes: { id: string; pname: string; oct: string; accid?: string }[]; x: number; y: number } | null>(null);
   const [caret, setCaret] = useState<CaretPosition | null>(null);
   const [selection, setSelection] = useState<string[]>([]);
   const [block, setBlock] = useState<BlockSelection | null>(null);
@@ -697,7 +697,7 @@ export default function App() {
   /** Chord accidentals are per-note (an all-notes sharp is rarely meant):
    * for a chord target, open a picker near the glyph instead of applying. */
   const openAccidPicker = useCallback(
-    (chordId: string, accid: "s" | "f" | "n"): boolean => {
+    (chordId: string, accid: "s" | "f" | "n" | "x"): boolean => {
       if (!session || session.index.byId.get(chordId)?.tag !== "chord") return false;
       const notes = session.chordNotes(chordId);
       if (notes.length === 0) return false;
@@ -800,28 +800,68 @@ export default function App() {
       }
       if (e.key === "S") {
         e.preventDefault();
-        // Slur between the ends of the note selection (shift+click or
-        // shift+arrows build one, across measures too); with just the
-        // caret, slur to the next event. Same pair again removes it.
-        const targets = editTargets();
-        const startId = targets[0];
-        const ref = startId ? session.index.byId.get(startId) : undefined;
-        const endId =
-          targets.length >= 2
-            ? targets[targets.length - 1]
-            : ref
-              ? session.index.eventsAt(ref.measureIndex, ref.staffN, ref.layerN)[ref.eventIndex + 1] ??
-                session.index.eventsAt(ref.measureIndex + 1, ref.staffN, ref.layerN)[0]
-              : undefined;
-        if (!startId || !endId) return;
+        // With a selection: slur between its ends (unchanged). On a single
+        // target: DOUBLE SHARP — shift+s, mirroring plain s (tester ask).
+        if (selection.length >= 2) {
+          try {
+            session.toggleSlur(selection[0]!, selection[selection.length - 1]!);
+            afterCommand(session);
+            setNotice("slur toggled");
+          } catch (err) {
+            setNotice(`slur refused: ${err instanceof Error ? err.message : err}`);
+          }
+          return;
+        }
+        const target = entryMode && lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId;
+        if (!target) return;
         try {
-          session.toggleSlur(startId, endId);
+          if (openAccidPicker(target, "x")) return;
+          session.toggleAccidental([target], "x");
           afterCommand(session);
-          setNotice("slur toggled");
+          setNotice(null);
         } catch (err) {
-          setNotice(`slur refused: ${err instanceof Error ? err.message : err}`);
+          setNotice(`double sharp refused: ${err instanceof Error ? err.message : err}`);
         }
         return;
+      }
+      if (!mod && !e.altKey) {
+        // Single markings (tester round). Same target rule as the dot.
+        const target = entryMode && lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId;
+        const markTry = (fn: () => void, what: string) => {
+          e.preventDefault();
+          try {
+            fn();
+            afterCommand(session);
+            setNotice(null);
+          } catch (err) {
+            setNotice(`${what} refused: ${err instanceof Error ? err.message : err}`);
+          }
+        };
+        // marcato: the accent key SHIFTED (AZERTY shift+; = "." · QWERTY
+        // shift+; = ":" · shift+. = ">"); the dot keeps the unshifted forms
+        if (e.shiftKey && (e.key === "." || e.key === ":" || e.key === ">") && target) {
+          markTry(() => session.toggleArtic([target], "marc"), "marcato");
+          return;
+        }
+        // staccatissimo: the staccato key shifted ("<" QWERTY, "?" AZERTY)
+        if ((e.key === "<" || e.key === "?") && target) {
+          markTry(() => session.toggleArtic([target], "stacciss"), "staccatissimo");
+          return;
+        }
+        if (e.key === "h" && target) {
+          markTry(() => session.toggleMark(target, "fermata"), "fermata");
+          return;
+        }
+        if (e.key === "o" && target) {
+          markTry(() => session.toggleMark(target, "coda"), "coda");
+          return;
+        }
+        // one key circles the four ornaments: arpeggio (chords) → tremolo
+        // → trill → mordent → off
+        if (e.key === "w" && target) {
+          markTry(() => session.cycleOrnament(target), "ornament");
+          return;
+        }
       }
       if (e.key === "t" && !mod && selection.length >= 2) {
         e.preventDefault();
@@ -856,6 +896,71 @@ export default function App() {
           setNotice(`tie refused: ${err instanceof Error ? err.message : err}`);
         }
         return;
+      }
+      if (e.key === "m" && !mod && !e.altKey && selection.length === 2) {
+        // Two selected notes: same pitch still merges; DIFFERENT pitches
+        // cycle the first into a grace note — acciaccatura → appoggiatura
+        // → none — folding its time into the second (tester ask).
+        const [aId, bId] = [selection[0]!, selection[1]!];
+        const a = session.index.byId.get(aId);
+        const b = session.index.byId.get(bId);
+        if (a?.tag === "note" && b?.tag === "note") {
+          e.preventDefault();
+          try {
+            const samePitch = (() => {
+              const pick = (rid: string) => {
+                const m = session.score.measures[session.index.byId.get(rid)!.measureIndex]!;
+                const walk = (e2: import("@battuta/core").CoreElement): import("@battuta/core").CoreElement | null => {
+                  if (e2.attrs["xml:id"] === rid) return e2;
+                  for (const c of e2.children) if (typeof c !== "string") { const r = walk(c); if (r) return r; }
+                  return null;
+                };
+                return walk(m);
+              };
+              const na = pick(aId);
+              const nb = pick(bId);
+              return !!na && !!nb && na.attrs["pname"] === nb.attrs["pname"] && na.attrs["oct"] === nb.attrs["oct"];
+            })();
+            if (samePitch) session.mergeWithNext(aId);
+            else session.toggleGrace(aId, bId);
+            afterCommand(session);
+            setNotice(null);
+          } catch (err) {
+            setNotice(`grace/merge refused: ${err instanceof Error ? err.message : err}`);
+          }
+          return;
+        }
+      }
+      if (e.key === "P" && !mod && !e.altKey && selection.length >= 2) {
+        // Pedal line over the selection: down at the first note, up at the
+        // last; the same selection removes it.
+        e.preventDefault();
+        try {
+          session.togglePedal(selection[0]!, selection[selection.length - 1]!);
+          afterCommand(session);
+          setNotice("pedal toggled");
+        } catch (err) {
+          setNotice(`pedal refused: ${err instanceof Error ? err.message : err}`);
+        }
+        return;
+      }
+      if (e.shiftKey && !mod && !e.altKey && !entryMode && block) {
+        // shift+1..9 toggles that volta number on the block's bracket —
+        // mixes like [1, 2][3] build up number by number; removing the
+        // last number removes the bracket. Barlines renormalize across
+        // the group (rptend before a later bracket, dbl on the last).
+        const volta = /^Digit([1-9])$/.exec(e.code)?.[1];
+        if (volta) {
+          e.preventDefault();
+          try {
+            session.toggleVolta(block.measureFrom, block.measureTo, Number(volta));
+            afterCommand(session);
+            setNotice(`volta ${volta} toggled on m${block.measureFrom + 1}–m${block.measureTo + 1}`);
+          } catch (err) {
+            setNotice(`volta refused: ${err instanceof Error ? err.message : err}`);
+          }
+          return;
+        }
       }
       if (e.key === "r" && !mod && !e.altKey && !entryMode && block) {
         // "r" on a block selection toggles repeat barlines around it — the
@@ -1002,7 +1107,7 @@ export default function App() {
       // applies to a real event — the just-entered note, or the note/rest at
       // the caret (existing notes includable). Subsequent entries inherit
       // the resulting dot state; there is no separate prospective toggle.
-      if ((e.key === "." || e.key === ":" || e.code === "NumpadDecimal") && !mod && !e.altKey) {
+      if ((((e.key === "." || e.key === ":") && !e.shiftKey) || e.code === "NumpadDecimal") && !mod && !e.altKey) {
         const target = entryMode && lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId;
         if (!target) return;
         e.preventDefault();
@@ -1568,7 +1673,7 @@ export default function App() {
       </div>
       {accidPick && (
         <div data-accid-pick style={{ position: "fixed", left: accidPick.x, top: accidPick.y, background: "#233", color: "#fff", padding: "4px 8px", borderRadius: 4, fontSize: 12, zIndex: 40, pointerEvents: "none", boxShadow: "0 2px 8px rgba(0,0,0,.35)" }}>
-          {accidPick.accid === "s" ? "♯" : accidPick.accid === "f" ? "♭" : "♮"} on{" "}
+          {accidPick.accid === "s" ? "♯" : accidPick.accid === "f" ? "♭" : accidPick.accid === "x" ? "𝄪" : "♮"} on{" "}
           {accidPick.notes.map((n, k) => `${k + 1}:${n.pname}${n.accid === "s" ? "♯" : n.accid === "f" ? "♭" : n.accid === "n" ? "♮" : ""}${n.oct}`).join("  ")}
           {"  ·  a–g / 1–9 pick, esc"}
         </div>

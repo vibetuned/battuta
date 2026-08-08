@@ -780,6 +780,291 @@ export class CycleHairpinCommand implements Command {
   }
 }
 
+export type MarkKind = "fermata" | "coda";
+
+const REPEAT_MARK_CYCLE: Record<string, string | null> = { coda: "segno", segno: null };
+
+/**
+ * Toggle a single mark on an event: fermata (<fermata>) or coda
+ * (<repeatMark func="coda"> — MEI 5's repeat-mark element, which Verovio
+ * renders). Same shape as the dynam toggle: one control event anchored by
+ * startid in the event's measure.
+ */
+export class ToggleMarkCommand implements Command {
+  readonly label: string;
+  private memento: { measure: CoreElement; at: number; before: CoreElement | null; after: CoreElement | null } | null = null;
+  private region: DirtyRegion[] = [];
+
+  constructor(
+    private readonly targetId: string,
+    private readonly kind: MarkKind,
+  ) {
+    this.label = `toggle ${kind}`;
+  }
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    const ref = ctx.index.byId.get(this.targetId);
+    if (!ref) throw new Error(`${this.kind} target not found`);
+    const measure = ctx.score.measures[ref.measureIndex];
+    if (!measure) throw new Error("measure not found");
+    const tag = this.kind === "fermata" ? "fermata" : "repeatMark";
+    const existing = childElements(measure).find(
+      (c) => c.tag === tag && (c.attrs["startid"] ?? "").replace(/^#/, "") === this.targetId,
+    ) ?? null;
+    this.region = [{ measureIndex: ref.measureIndex, staffN: ref.staffN }];
+    if (existing && this.kind === "coda" && REPEAT_MARK_CYCLE[existing.attrs["func"] ?? ""] !== undefined && REPEAT_MARK_CYCLE[existing.attrs["func"] ?? ""] !== null) {
+      // the repeat-mark key cycles: coda -> segno -> off
+      const at = measure.children.indexOf(existing);
+      const next: CoreElement = { ...existing, attrs: { ...existing.attrs, func: REPEAT_MARK_CYCLE[existing.attrs["func"]!]! }, children: [...existing.children] };
+      measure.children[at] = next;
+      this.memento = { measure, at, before: existing, after: next };
+    } else if (existing) {
+      const at = measure.children.indexOf(existing);
+      measure.children.splice(at, 1);
+      this.memento = { measure, at, before: existing, after: null };
+    } else {
+      const attrs: Record<string, string> = { "xml:id": newId(), staff: String(ref.staffN), startid: `#${this.targetId}` };
+      if (this.kind === "coda") attrs["func"] = "coda";
+      const el: CoreElement = { tag, attrs, children: [] };
+      measure.children.push(el);
+      this.memento = { measure, at: measure.children.length - 1, before: null, after: el };
+    }
+    return this.region;
+  }
+
+  revert(_ctx: CommandContext): DirtyRegion[] {
+    if (!this.memento) return [];
+    const m = this.memento;
+    if (m.before === null && m.after) m.measure.children.splice(m.measure.children.indexOf(m.after), 1);
+    else if (m.after === null && m.before) m.measure.children.splice(m.at, 0, m.before);
+    else if (m.before) m.measure.children[m.at] = m.before;
+    return this.region;
+  }
+}
+
+type OrnamentState = "none" | "arpeg" | "btrem" | "trill" | "mordent";
+
+/**
+ * One key circles the four ornaments: arpeggio → tremolo → trill →
+ * mordent → none. Arpeggio only makes sense on chords (single notes skip
+ * straight to tremolo). Mixed encodings, hidden behind the cycle:
+ * arpeg/trill/mordent are startid control events; tremolo WRAPS the event
+ * in <bTrem unitdur="16"> (ids untouched — the index walks containers).
+ */
+export class OrnamentCycleCommand implements Command {
+  readonly label = "cycle ornament";
+  private steps: (
+    | { op: "removeControl"; measure: CoreElement; at: number; el: CoreElement }
+    | { op: "addControl"; measure: CoreElement; el: CoreElement }
+    | { op: "wrap"; parent: CoreElement; at: number; wrapper: CoreElement }
+    | { op: "unwrap"; parent: CoreElement; at: number; wrapper: CoreElement }
+  )[] = [];
+  private region: DirtyRegion[] = [];
+
+  constructor(private readonly targetId: string) {}
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    this.steps = [];
+    const ref = ctx.index.byId.get(this.targetId);
+    if (!ref) throw new Error("ornament target not found");
+    if (ref.tag !== "note" && ref.tag !== "chord") throw new Error("ornaments attach to notes or chords");
+    const measure = ctx.score.measures[ref.measureIndex];
+    const hit = measure && locateWithParent(measure, this.targetId);
+    if (!measure || !hit) throw new Error("ornament target not in measure");
+    this.region = [{ measureIndex: ref.measureIndex, staffN: ref.staffN }];
+    const deref = (v: string | undefined) => (v ? v.replace(/^#/, "") : undefined);
+    const control = (tag: string) => childElements(measure).find((c) => c.tag === tag && deref(c.attrs["startid"]) === this.targetId) ?? null;
+
+    const current: OrnamentState =
+      hit.parent.tag === "bTrem" ? "btrem"
+      : control("arpeg") ? "arpeg"
+      : control("trill") ? "trill"
+      : control("mordent") ? "mordent"
+      : "none";
+    const order: OrnamentState[] = ref.tag === "chord" ? ["none", "arpeg", "btrem", "trill", "mordent"] : ["none", "btrem", "trill", "mordent"];
+    const next = order[(order.indexOf(current) + 1) % order.length]!;
+
+    const removeControl = (tag: string) => {
+      const el = control(tag)!;
+      const at = measure.children.indexOf(el);
+      measure.children.splice(at, 1);
+      this.steps.push({ op: "removeControl", measure, at, el });
+    };
+    const addControl = (tag: string, extra: Record<string, string> = {}) => {
+      const el: CoreElement = { tag, attrs: { "xml:id": newId(), staff: String(ref.staffN), startid: `#${this.targetId}`, ...extra }, children: [] };
+      measure.children.push(el);
+      this.steps.push({ op: "addControl", measure, el });
+    };
+    // leave the current state…
+    if (current === "arpeg") removeControl("arpeg");
+    else if (current === "trill") removeControl("trill");
+    else if (current === "mordent") removeControl("mordent");
+    else if (current === "btrem") {
+      const wrapper = hit.parent;
+      const gp = locateWithParent(measure, wrapper.attrs["xml:id"] ?? "");
+      if (!gp) throw new Error("tremolo wrapper not found");
+      gp.parent.children.splice(gp.at, 1, ...wrapper.children);
+      this.steps.push({ op: "unwrap", parent: gp.parent, at: gp.at, wrapper });
+    }
+    // …and enter the next one
+    if (next === "arpeg") addControl("arpeg");
+    else if (next === "trill") addControl("trill");
+    else if (next === "mordent") addControl("mordent", { form: "upper" });
+    else if (next === "btrem") {
+      const fresh = locateWithParent(measure, this.targetId)!;
+      const wrapper: CoreElement = { tag: "bTrem", attrs: { "xml:id": newId(), unitdur: "16" }, children: [fresh.el] };
+      fresh.parent.children.splice(fresh.at, 1, wrapper);
+      this.steps.push({ op: "wrap", parent: fresh.parent, at: fresh.at, wrapper });
+    }
+    return this.region;
+  }
+
+  revert(_ctx: CommandContext): DirtyRegion[] {
+    for (const s of [...this.steps].reverse()) {
+      if (s.op === "removeControl") s.measure.children.splice(s.at, 0, s.el);
+      else if (s.op === "addControl") {
+        const i = s.measure.children.indexOf(s.el);
+        if (i >= 0) s.measure.children.splice(i, 1);
+      } else if (s.op === "wrap") {
+        s.parent.children.splice(s.at, 1, ...s.wrapper.children);
+      } else {
+        s.parent.children.splice(s.at, s.wrapper.children.length, s.wrapper);
+      }
+    }
+    return this.region;
+  }
+}
+
+/**
+ * Cycle a two-note pair (different pitches, adjacent, same container) into
+ * grace + main: none → acciaccatura (slashed) → appoggiatura → none. The
+ * grace note keeps its written duration but counts zero time, so its time
+ * FOLDS into the main note (like a merge); un-gracing gives it back. The
+ * fold requires the sum / difference to be one written duration.
+ */
+export class ToggleGraceCommand implements Command {
+  readonly label = "cycle grace note";
+  private mementos: { el: CoreElement; before: Record<string, string> }[] = [];
+  private region: DirtyRegion[] = [];
+
+  constructor(
+    private readonly firstId: string,
+    private readonly secondId: string,
+  ) {}
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    this.mementos = [];
+    const a = ctx.index.byId.get(this.firstId);
+    const b = ctx.index.byId.get(this.secondId);
+    if (!a || !b) throw new Error("grace pair not found");
+    if (a.measureIndex !== b.measureIndex || a.staffN !== b.staffN || a.layerN !== b.layerN) throw new Error("grace pair must sit in one measure, staff, and voice");
+    const measure = ctx.score.measures[a.measureIndex]!;
+    const h1 = locateWithParent(measure, this.firstId);
+    const h2 = locateWithParent(measure, this.secondId);
+    if (!h1 || !h2) throw new Error("grace pair not found");
+    if (h1.parent !== h2.parent || h2.at !== h1.at + 1) throw new Error("grace pair must be adjacent notes");
+    if (h1.el.tag !== "note" || h2.el.tag !== "note") throw new Error("grace pairs are single notes");
+    this.region = [{ measureIndex: a.measureIndex, staffN: a.staffN }];
+    const grace = h1.el;
+    const main = h2.el;
+    this.mementos.push({ el: grace, before: { ...grace.attrs } }, { el: main, before: { ...main.attrs } });
+    const written = (el: CoreElement): Fraction => {
+      const base = el.attrs["dur"] === "breve" ? frac(2, 1) : frac(1, Number(el.attrs["dur"]));
+      const dots = Number(el.attrs["dots"] ?? "0");
+      return { num: base.num * (2 ** (dots + 1) - 1), den: base.den * 2 ** dots };
+    };
+    const asSingle = (v: Fraction, what: string): { dur: string; dots?: number } => {
+      if (v.num <= 0) throw new Error(`${what}: nothing left for the main note`);
+      const parts = decomposeDuration(v);
+      if (parts.length !== 1) throw new Error(`${what}: not one written duration`);
+      return parts[0]!;
+    };
+    const state = grace.attrs["grace"] === "unacc" ? "unacc" : grace.attrs["grace"] === "acc" ? "acc" : "none";
+    if (state === "none") {
+      const sum = asSingle(fAdd(written(grace), written(main)), "grace fold");
+      main.attrs["dur"] = sum.dur;
+      if (sum.dots) main.attrs["dots"] = String(sum.dots);
+      else delete main.attrs["dots"];
+      grace.attrs["grace"] = "unacc";
+      grace.attrs["stem.mod"] = "1slash";
+    } else if (state === "unacc") {
+      grace.attrs["grace"] = "acc";
+      delete grace.attrs["stem.mod"];
+    } else {
+      const rest = asSingle(fAdd(written(main), { num: -written(grace).num, den: written(grace).den }), "grace unfold");
+      main.attrs["dur"] = rest.dur;
+      if (rest.dots) main.attrs["dots"] = String(rest.dots);
+      else delete main.attrs["dots"];
+      delete grace.attrs["grace"];
+      delete grace.attrs["stem.mod"];
+    }
+    return this.region;
+  }
+
+  revert(_ctx: CommandContext): DirtyRegion[] {
+    for (const m of [...this.mementos].reverse()) m.el.attrs = { ...m.before };
+    return this.region;
+  }
+}
+
+/**
+ * Toggle a pedal line over [startId, endId]: <pedal dir="down"> at the
+ * start, <pedal dir="up"> at the end — each anchored in its own measure.
+ */
+export class TogglePedalCommand implements Command {
+  readonly label = "toggle pedal";
+  private removed: { measure: CoreElement; at: number; el: CoreElement }[] = [];
+  private added: { measure: CoreElement; el: CoreElement }[] = [];
+  private region: DirtyRegion[] = [];
+
+  constructor(
+    private readonly startId: string,
+    private readonly endId: string,
+  ) {}
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    this.removed = [];
+    this.added = [];
+    const deref = (v: string | undefined) => (v ? v.replace(/^#/, "") : undefined);
+    let a = ctx.index.byId.get(this.startId);
+    let b = ctx.index.byId.get(this.endId);
+    if (!a || !b) throw new Error("pedal endpoints not found");
+    if (a.id === b.id) throw new Error("a pedal needs two different events");
+    if (a.staffN !== b.staffN) throw new Error("pedal endpoints must share a staff");
+    if (a.measureIndex > b.measureIndex || (a.measureIndex === b.measureIndex && a.eventIndex > b.eventIndex)) [a, b] = [b, a];
+    this.region = [];
+    for (let m = a.measureIndex; m <= b.measureIndex; m++) this.region.push({ measureIndex: m, staffN: a.staffN });
+    const mA = ctx.score.measures[a.measureIndex]!;
+    const mB = ctx.score.measures[b.measureIndex]!;
+    const down = childElements(mA).find((c) => c.tag === "pedal" && c.attrs["dir"] === "down" && deref(c.attrs["startid"]) === a!.id) ?? null;
+    if (down) {
+      const up = childElements(mB).find((c) => c.tag === "pedal" && c.attrs["dir"] === "up" && deref(c.attrs["startid"]) === b!.id) ?? null;
+      for (const [measure, el] of [[mA, down], [mB, up]] as const) {
+        if (!el) continue;
+        const at = measure.children.indexOf(el);
+        measure.children.splice(at, 1);
+        this.removed.push({ measure, at, el });
+      }
+    } else {
+      for (const [measure, id, dir] of [[mA, a.id, "down"], [mB, b.id, "up"]] as const) {
+        const el: CoreElement = { tag: "pedal", attrs: { "xml:id": newId(), staff: String(a.staffN), startid: `#${id}`, dir }, children: [] };
+        measure.children.push(el);
+        this.added.push({ measure, el });
+      }
+    }
+    return this.region;
+  }
+
+  revert(_ctx: CommandContext): DirtyRegion[] {
+    for (const ad of [...this.added].reverse()) {
+      const i = ad.measure.children.indexOf(ad.el);
+      if (i >= 0) ad.measure.children.splice(i, 1);
+    }
+    for (const r of [...this.removed].reverse()) r.measure.children.splice(r.at, 0, r.el);
+    return this.region;
+  }
+}
+
 export class CycleDynamCommand implements Command {
   readonly label = "cycle dynamic";
   private memento: { measure: CoreElement; at: number; before: CoreElement | null; after: CoreElement | null } | null = null;

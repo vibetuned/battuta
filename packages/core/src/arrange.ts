@@ -715,3 +715,166 @@ export class RemoveVoiceCommand implements Command {
     return ctx.score.measures.map((_, i) => ({ measureIndex: i, staffN: this.staffN }));
   }
 }
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * Volta brackets as NUMBER SETS: shift+1/2/3 toggles that number on the
+ * selected range's <ending> — mixes like [1, 2][3] are one bracket with
+ * n="1, 2" and one with n="3". Removing the last number unwraps the
+ * bracket. After every change the sibling GROUP of endings renormalizes
+ * its closing barlines: every bracket with a later sibling ends with a
+ * repeat barline (rptend), the last bracket ends with a double barline —
+ * unless it closes the score, whose final barline is left alone.
+ */
+export class ToggleVoltaCommand implements Command {
+  readonly label: string;
+  private steps: (
+    | { op: "wrap"; parent: CoreElement; at: number; ending: CoreElement }
+    | { op: "setN"; ending: CoreElement; before: string | undefined }
+    | { op: "unwrap"; parent: CoreElement; at: number; ending: CoreElement }
+    | { op: "barline"; el: CoreElement; before: string | undefined }
+  )[] = [];
+  private touchedStructure = false;
+
+  constructor(
+    private readonly from: number,
+    private readonly to: number,
+    private readonly n: number,
+  ) {
+    this.label = `toggle volta ${n} on m${Math.min(from, to) + 1}–m${Math.max(from, to) + 1}`;
+  }
+
+  private static lastMeasureIn(ending: CoreElement): CoreElement | null {
+    const measures = ending.children.filter((c): c is CoreElement => typeof c !== "string" && c.tag === "measure");
+    return measures[measures.length - 1] ?? null;
+  }
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    this.steps = [];
+    this.touchedStructure = false;
+    const lo = Math.min(this.from, this.to);
+    const hi = Math.max(this.from, this.to);
+    const first = ctx.score.measures[lo];
+    const last = ctx.score.measures[hi];
+    if (!first || !last) throw new Error("volta range out of the score");
+    const pFirst = ctx.score.measureParent.get(first)!;
+    const pLast = ctx.score.measureParent.get(last)!;
+    const setBarline = (el: CoreElement, value: string | null) => {
+      const before = el.attrs["right"];
+      if ((value ?? undefined) === before) return;
+      this.steps.push({ op: "barline", el, before });
+      if (value === null) delete el.attrs["right"];
+      else el.attrs["right"] = value;
+    };
+
+    let parent: CoreElement;
+    let anchorAt: number;
+
+    if (pFirst.tag === "ending" && pFirst === pLast) {
+      // Toggle this number in the existing bracket's set.
+      const set = new Set(
+        (pFirst.attrs["n"] ?? "")
+          .split(/\s*,\s*/)
+          .filter((s) => s !== "")
+          .map(Number),
+      );
+      const gp = (function find(el: CoreElement): CoreElement | null {
+        for (const c of childElements(el)) {
+          if (c === pFirst) return el;
+          const hit = find(c);
+          if (hit) return hit;
+        }
+        return null;
+      })(ctx.score.scoreEl);
+      if (!gp) throw new Error("ending parent not found");
+      parent = gp;
+      anchorAt = gp.children.indexOf(pFirst);
+      if (set.has(this.n)) {
+        set.delete(this.n);
+        if (set.size === 0) {
+          const lastM = ToggleVoltaCommand.lastMeasureIn(pFirst);
+          if (lastM && (lastM.attrs["right"] === "rptend" || lastM.attrs["right"] === "dbl")) setBarline(lastM, null);
+          gp.children.splice(anchorAt, 1, ...pFirst.children);
+          this.steps.push({ op: "unwrap", parent: gp, at: anchorAt, ending: pFirst });
+          this.touchedStructure = true;
+        } else {
+          this.steps.push({ op: "setN", ending: pFirst, before: pFirst.attrs["n"] });
+          pFirst.attrs["n"] = [...set].sort((a, b) => a - b).join(", ");
+        }
+      } else {
+        set.add(this.n);
+        this.steps.push({ op: "setN", ending: pFirst, before: pFirst.attrs["n"] });
+        pFirst.attrs["n"] = [...set].sort((a, b) => a - b).join(", ");
+      }
+    } else if (pFirst.tag === "ending" || pLast.tag === "ending" || pFirst !== pLast) {
+      throw new Error("selection crosses an ending boundary");
+    } else {
+      const at = pFirst.children.indexOf(first);
+      const end = pFirst.children.indexOf(last);
+      const slice = pFirst.children.slice(at, end + 1);
+      const ending: CoreElement = { tag: "ending", attrs: { "xml:id": newId(), n: String(this.n) }, children: slice };
+      pFirst.children.splice(at, slice.length, ending);
+      this.steps.push({ op: "wrap", parent: pFirst, at, ending });
+      this.touchedStructure = true;
+      parent = pFirst;
+      anchorAt = at;
+    }
+    if (this.touchedStructure) refreshScore(ctx.score);
+
+    // Renormalize the closing barlines of the CONTIGUOUS ending group at
+    // the anchor position (rptend before a later bracket, dbl on the last,
+    // the score's own final barline left alone).
+    const kids = parent.children;
+    let gStart = anchorAt;
+    let gEnd = anchorAt;
+    const isEnding = (i: number) => {
+      const c = kids[i];
+      return c !== undefined && typeof c !== "string" && c.tag === "ending";
+    };
+    if (!isEnding(anchorAt)) {
+      // the anchor was unwrapped: look around it for the surviving group
+      if (isEnding(anchorAt - 1)) gStart = gEnd = anchorAt - 1;
+      else {
+        // scan forward past the spliced-in children for a following ending
+        let i = anchorAt;
+        while (i < kids.length && !isEnding(i)) i++;
+        if (i < kids.length) gStart = gEnd = i;
+        else gStart = gEnd = -1;
+      }
+    }
+    if (gStart >= 0) {
+      while (isEnding(gStart - 1)) gStart--;
+      while (isEnding(gEnd + 1)) gEnd++;
+      const group: CoreElement[] = [];
+      for (let i = gStart; i <= gEnd; i++) if (isEnding(i)) group.push(kids[i] as CoreElement);
+      const scoreLast = ctx.score.measures[ctx.score.measures.length - 1];
+      group.forEach((ending, gi) => {
+        const lastM = ToggleVoltaCommand.lastMeasureIn(ending);
+        if (!lastM) return;
+        if (gi < group.length - 1) setBarline(lastM, "rptend");
+        else if (lastM !== scoreLast) setBarline(lastM, "dbl");
+        // group-last that closes the score: leave the final barline alone
+      });
+    }
+    return ctx.score.measures.slice(lo).map((_, i) => ({ measureIndex: lo + i, staffN: 0 }));
+  }
+
+  revert(ctx: CommandContext): DirtyRegion[] {
+    for (const s of [...this.steps].reverse()) {
+      if (s.op === "barline") {
+        if (s.before === undefined) delete s.el.attrs["right"];
+        else s.el.attrs["right"] = s.before;
+      } else if (s.op === "setN") {
+        if (s.before === undefined) delete s.ending.attrs["n"];
+        else s.ending.attrs["n"] = s.before;
+      } else if (s.op === "wrap") {
+        s.parent.children.splice(s.at, 1, ...s.ending.children);
+      } else {
+        s.parent.children.splice(s.at, s.ending.children.length, s.ending);
+      }
+    }
+    if (this.touchedStructure) refreshScore(ctx.score);
+    return ctx.score.measures.map((_, i) => ({ measureIndex: i, staffN: 0 }));
+  }
+}

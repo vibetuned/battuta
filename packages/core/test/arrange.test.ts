@@ -11,6 +11,7 @@ import {
   AddVoiceCommand, RemoveVoiceCommand,
   caretVertical,
   caretRight, caretLeft,
+  ToggleVoltaCommand, synthesizeTile,
 } from "../src/index.js";
 import { scoreFrom, mei, measure, parse } from "./helpers.js";
 
@@ -582,5 +583,64 @@ describe("voices vs structural ops and navigation (user bug round)", () => {
     const index = buildEventIndex(score);
     const atEnd = { measureIndex: 2, staffN: 1, layerN: 2, eventIndex: index.eventsAt(2, 1, 2).length - 1 };
     expect(caretRight(index, score, atEnd)).toBeNull(); // m4 lacks voice 2: stay
+  });
+});
+
+describe("ToggleVoltaCommand (volta number sets)", () => {
+  const four = () => scoreFrom(mei(`${measure(1)} ${measure(2)} ${measure(3)} ${measure(4)}`));
+  const ctx = (score: ReturnType<typeof four>["score"]) => ({ score, index: buildEventIndex(score) });
+
+  it("builds mixed sets: [1] + 2 → [1, 2]; removing unwinds; last number unwraps", () => {
+    const { score } = four();
+    const before = serialize(score.scoreEl);
+    new ToggleVoltaCommand(1, 1, 1).apply(ctx(score));
+    expect(findAll(score.scoreEl, "ending")[0]!.attrs["n"]).toBe("1");
+    new ToggleVoltaCommand(1, 1, 2).apply(ctx(score));
+    expect(findAll(score.scoreEl, "ending")[0]!.attrs["n"]).toBe("1, 2");
+    new ToggleVoltaCommand(1, 1, 1).apply(ctx(score));
+    expect(findAll(score.scoreEl, "ending")[0]!.attrs["n"]).toBe("2");
+    new ToggleVoltaCommand(1, 1, 2).apply(ctx(score)); // last number -> unwrap
+    expect(serialize(score.scoreEl)).toBe(before);
+  });
+
+  it("group barlines: rptend before a later bracket, dbl on the last (non-final)", () => {
+    const { score } = four();
+    new ToggleVoltaCommand(1, 1, 1).apply(ctx(score));
+    new ToggleVoltaCommand(1, 1, 2).apply(ctx(score)); // [1, 2] on m2
+    // single bracket, not at score end: closes with a double barline
+    expect(score.measures[1]!.attrs["right"]).toBe("dbl");
+    new ToggleVoltaCommand(2, 2, 3).apply(ctx(score)); // [3] on m3 joins the group
+    expect(score.measures[1]!.attrs["right"]).toBe("rptend"); // now has a later sibling
+    expect(score.measures[2]!.attrs["right"]).toBe("dbl"); // group-last, not score-final
+  });
+
+  it("a group-last bracket closing the score keeps its final barline", () => {
+    const { score } = four();
+    score.measures[3]!.attrs["right"] = "end";
+    new ToggleVoltaCommand(2, 2, 1).apply(ctx(score));
+    new ToggleVoltaCommand(3, 3, 2).apply(ctx(score)); // last bracket = last measure
+    expect(score.measures[2]!.attrs["right"]).toBe("rptend");
+    expect(score.measures[3]!.attrs["right"]).toBe("end"); // untouched
+  });
+
+  it("reverts byte-identically and refuses boundary-crossing ranges", () => {
+    const { score } = four();
+    new ToggleVoltaCommand(1, 1, 1).apply(ctx(score));
+    const snap = serialize(score.scoreEl);
+    const cmd = new ToggleVoltaCommand(2, 2, 3); // adds a bracket AND renumbers barlines
+    cmd.apply(ctx(score));
+    cmd.revert(ctx(score));
+    expect(serialize(score.scoreEl)).toBe(snap);
+    expect(() => new ToggleVoltaCommand(0, 1, 1).apply(ctx(score))).toThrow(/ending boundary/);
+  });
+
+  it("tiles keep the volta bracket wrapper", () => {
+    const { score } = four();
+    new ToggleVoltaCommand(1, 1, 1).apply(ctx(score));
+    const contexts = resolveContexts(score);
+    const tile = synthesizeTile(score, contexts, 1);
+    expect(tile.xml).toContain('<ending n="1">');
+    const plain = synthesizeTile(score, contexts, 0);
+    expect(plain.xml).not.toContain("<ending");
   });
 });

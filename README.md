@@ -145,7 +145,7 @@ Phase 4 in progress (2026-08-02): note entry + round-trip hardening.
   zero new ids. Compatibility note: Verovio rejects comments before the
   root element (PIs are fine), so prologue comments are preserved by moving
   them just inside `<mei>`.
-- 145 core tests; the property fuzzer covers the whole command pool (a
+- 157 core tests; the property fuzzer covers the whole command pool (a
   stale modulo had silenced part of it) and promptly caught a real bug:
   measures inserted or duplicated at a mid-piece context change landed
   AFTER the interleaved def, adopting the next section's meter — a
@@ -244,6 +244,33 @@ Phase 5 in progress (2026-08-05): polish.
   refuses at a beam boundary) and no broken beams survive; re-beam with
   `alt+b` once the rhythm settles. All one-undo-step, byte-identical
   unwind (the un/re-beam travels with the edit).
+- **Single markings** (tester round): **marcato** = the accent key
+  shifted (`shift+;` — on AZERTY that's `.`, so the dot keeps its
+  unshifted forms `.`/`:` and gains nothing new to learn); **staccatissimo**
+  = the staccato key shifted (`<` / AZERTY `?`); **double sharp** = `S`
+  with no selection (with a selection `S` is still the slur; on chords it
+  opens the per-note picker with 𝄪); **fermata** = `h`; **coda** = `o`
+  (MEI `repeatMark func="coda"`); and `w` **circles the four ornaments**
+  — arpeggio (chords) → tremolo (`bTrem` wrap) → trill → mordent → off.
+  All follow the dot's target rule (just-entered note in input mode, else
+  the caret), toggle on repeat, one undo step each. The `o` key cycles
+  **coda → segno → off** (both `repeatMark`s).
+- **Block-selection feedback round**: with two selected notes of
+  *different* pitches, `m` cycles the first into a **grace note** —
+  acciaccatura (slashed) → appoggiatura → none — folding its written time
+  into the main note like a merge and giving it back on the way out
+  (same-pitch pairs still merge); `P` toggles a **pedal** line over the
+  selection (down at the first note, up at the last); and `shift+1..9` on a
+  block toggles that **volta number** on the bracket — numbers build up
+  into mixes like `[1, 2][3]` (one `<ending n="1, 2">`, one `n="3"`),
+  removing the last number removes the bracket, and ranges crossing an
+  existing ending are refused. Closing **barlines renormalize across the
+  bracket group**: every bracket with a later sibling ends with a repeat
+  barline, the last with a double barline — unless it closes the score,
+  whose final barline is left alone. Per-measure tiles draw their bracket
+  segment, and page view shows the true spanning bracket — its serializer
+  now keeps structural containers instead of flattening measures into a
+  bare section.
 - **Multiple voices** (per staff, per measure): a *voices* dropdown in
   the status bar shows the caret's voice, switches between the staff's
   voices, and *add a voice* puts a new layer (whole-measure rests) into
@@ -291,7 +318,7 @@ Phase 5 in progress (2026-08-05): polish.
 - **Tabs**: a `+` button opens a fresh blank score (one treble staff, 4/4,
   four empty measures, named untitled-1, -2, …) ready for note entry, and
   **open file…** loads any `.mei`/`.xml` from disk into a new tab named
-  after the file. `node spikes/verify-phase5.mjs` (85 checks).
+  after the file. `node spikes/verify-phase5.mjs` (115 checks).
 
 ## Layout
 

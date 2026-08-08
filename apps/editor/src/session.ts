@@ -7,10 +7,10 @@
 import {
   buildScore, resolveContexts, buildEventIndex, ensureIds, seedIds, fromDom, serialize, serializeDocument, childElements, findAll, meterCapacity, frac,
   CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand,
-  copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, AddVoiceCommand, RemoveVoiceCommand, ToggleRepeatCommand,
-  ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, AutoBeamCommand, UnbeamThen, measuresOf, ChangeContextCommand, planContextChange,
+  copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, AddVoiceCommand, RemoveVoiceCommand, ToggleRepeatCommand, ToggleVoltaCommand,
+  ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, AutoBeamCommand, UnbeamThen, measuresOf, ChangeContextCommand, planContextChange,
   type CoreScore, type MeasureContext, type EventIndex, type Command, type DirtyRegion, type DomLikeElement, type DomLikeNode,
-  type BlockSelection, type ClipboardFragment, type PastePlan, type EntrySpec, type CoreElement, type CaretPosition, type ContextChangeSpec,
+  type BlockSelection, type ClipboardFragment, type PastePlan, type EntrySpec, type MarkKind, type CoreElement, type CaretPosition, type ContextChangeSpec,
 } from "@battuta/core";
 
 export class DocumentSession {
@@ -115,13 +115,13 @@ export class DocumentSession {
   transposeOctave(ids: string[], octaves: number): DirtyRegion[] {
     return this.execute(new TransposeOctaveCommand(ids, octaves));
   }
-  toggleAccidental(ids: string[], accid: "s" | "f" | "n"): DirtyRegion[] {
+  toggleAccidental(ids: string[], accid: "s" | "f" | "n" | "x"): DirtyRegion[] {
     return this.execute(new ToggleAccidentalCommand(ids, accid));
   }
   chordNotes(chordId: string): { id: string; pname: string; oct: string; accid?: string }[] {
     return chordNotes(this.score, this.index, chordId);
   }
-  chordNoteAccidental(chordId: string, noteId: string, accid: "s" | "f" | "n"): DirtyRegion[] {
+  chordNoteAccidental(chordId: string, noteId: string, accid: "s" | "f" | "n" | "x"): DirtyRegion[] {
     return this.execute(new ChordNoteAccidentalCommand(chordId, noteId, accid));
   }
   deleteToRests(ids: string[]): DirtyRegion[] {
@@ -262,6 +262,21 @@ export class DocumentSession {
   cycleHairpin(startId: string, endId: string): DirtyRegion[] {
     return this.execute(new CycleHairpinCommand(startId, endId));
   }
+  toggleMark(targetId: string, kind: MarkKind): DirtyRegion[] {
+    return this.execute(new ToggleMarkCommand(targetId, kind));
+  }
+  cycleOrnament(targetId: string): DirtyRegion[] {
+    return this.execute(new OrnamentCycleCommand(targetId));
+  }
+  toggleGrace(firstId: string, secondId: string): DirtyRegion[] {
+    return this.execute(new ToggleGraceCommand(firstId, secondId));
+  }
+  togglePedal(startId: string, endId: string): DirtyRegion[] {
+    return this.execute(new TogglePedalCommand(startId, endId));
+  }
+  toggleVolta(from: number, to: number, n: number): DirtyRegion[] {
+    return this.execute(new ToggleVoltaCommand(from, to, n));
+  }
   autoBeam(measureIndexes: number[]): DirtyRegion[] {
     return this.execute(new AutoBeamCommand(measureIndexes));
   }
@@ -299,16 +314,15 @@ export class DocumentSession {
    * measures) in order. Header metadata is not carried over (Phase 4).
    */
   serializeForPageView(): string {
-    const flow = this.score.items.map((item) => serialize(item.el)).join("\n");
+    // Serialize the REAL score element — flattening score.items into a bare
+    // section dropped structural containers like <ending> (volta brackets
+    // never reached the page view).
     return [
       `<?xml version="1.0" encoding="UTF-8"?>`,
       `<mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.0">`,
-      `<music><body><mdiv><score>`,
-      serialize(this.score.scoreDef),
-      `<section>`,
-      flow,
-      `</section>`,
-      `</score></mdiv></body></music>`,
+      `<music><body><mdiv>`,
+      serialize(this.score.scoreEl),
+      `</mdiv></body></music>`,
       `</mei>`,
     ].join("\n");
   }

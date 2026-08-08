@@ -478,6 +478,156 @@ await page.waitForFunction(() => {
 }, null, { timeout: 10000 });
 check("copy/paste round unwinds cleanly", true);
 
+// --- 7e. single markings: marcato, staccatissimo, 𝄪, fermata, coda, ornaments ---
+const m1state = () => page.evaluate(() => {
+  const m = window.__SESSION__.score.measures[0];
+  const walk = (el) => el.attrs?.["xml:id"] === "cc-m1n1" ? el : (el.children ?? []).reduce((a, c) => a || (typeof c !== "string" ? walk(c) : null), null);
+  const note = walk(m);
+  const tags = m.children.filter((c) => typeof c !== "string" && c.tag !== "staff").map((c) => c.tag + (c.attrs.func ? `:${c.attrs.func}` : ""));
+  const parentTrem = (() => { const f = (el, par) => el.attrs?.["xml:id"] === "cc-m1n1" ? par?.tag : (el.children ?? []).reduce((a, c) => a || (typeof c !== "string" ? f(c, el) : null), null); return f(m, null); })();
+  return { artic: note?.attrs.artic ?? "", accid: note?.attrs.accid ?? "", dots: note?.attrs.dots ?? "", tags, parentTrem };
+});
+const markDepth0 = await page.evaluate(() => window.__SESSION__.stack.undoDepth);
+await page.locator('g[id="cc-m1n1"] use').first().click({ force: true });
+await page.waitForFunction(() => document.querySelector("main").dataset.caret === "cc-m1n1", null, { timeout: 5000 });
+await page.keyboard.press("Shift+Semicolon"); // shift+; = marcato
+await page.waitForFunction(() => JSON.stringify(window.__SESSION__.score.measures[0]).includes("marc"), null, { timeout: 5000 });
+check(`shift+accent adds a marcato (artic="${(await m1state()).artic}")`, (await m1state()).artic.includes("marc"));
+await page.keyboard.press("Shift+Comma"); // shift+, = staccatissimo
+await page.waitForFunction(() => JSON.stringify(window.__SESSION__.score.measures[0]).includes("stacciss"), null, { timeout: 5000 });
+check(`shift+staccato adds a staccatissimo (artic="${(await m1state()).artic}")`, (await m1state()).artic.includes("stacciss"));
+await page.keyboard.press("."); // unshifted dot still dots
+await page.waitForFunction(() => { const s = JSON.stringify(window.__SESSION__.score.measures[0]); return s.includes('"dots":"1"'); }, null, { timeout: 5000 });
+check("the unshifted dot still means dot", (await m1state()).dots === "1");
+await page.keyboard.press("S"); // no selection: double sharp
+await page.waitForFunction(() => { const s = JSON.stringify(window.__SESSION__.score.measures[0]); return s.includes('"accid":"x"'); }, null, { timeout: 5000 });
+check("S without a selection sets a double sharp", (await m1state()).accid === "x");
+await page.keyboard.press("h");
+await page.waitForFunction(() => JSON.stringify(window.__SESSION__.score.measures[0]).includes('"fermata"'), null, { timeout: 5000 });
+check("h toggles a fermata", (await m1state()).tags.includes("fermata"));
+await page.waitForFunction(() => document.querySelector('.tile[data-index="0"] g[class~="fermata"]'), null, { timeout: 15000 });
+check("…and Verovio draws it", true);
+await page.keyboard.press("o");
+await page.waitForFunction(() => JSON.stringify(window.__SESSION__.score.measures[0]).includes('"repeatMark"'), null, { timeout: 5000 });
+check("o toggles a coda mark", (await m1state()).tags.includes("repeatMark:coda"));
+await page.keyboard.press("o"); // coda -> segno
+await page.waitForFunction(() => JSON.stringify(window.__SESSION__.score.measures[0]).includes('"segno"'), null, { timeout: 5000 });
+check("o again cycles it to a segno", (await m1state()).tags.includes("repeatMark:segno"));
+// w circles tremolo → trill → mordent → off on a note
+await page.keyboard.press("w");
+await page.waitForFunction(() => JSON.stringify(window.__SESSION__.score.measures[0]).includes('"bTrem"'), null, { timeout: 5000 });
+check("w: first press wraps a tremolo", (await m1state()).parentTrem === "bTrem");
+await page.keyboard.press("w");
+await page.waitForFunction(() => JSON.stringify(window.__SESSION__.score.measures[0]).includes('"trill"'), null, { timeout: 5000 });
+check("w: second press trades it for a trill", (await m1state()).tags.includes("trill"));
+await page.keyboard.press("w");
+await page.waitForFunction(() => JSON.stringify(window.__SESSION__.score.measures[0]).includes('"mordent"'), null, { timeout: 5000 });
+check("w: third press a mordent", (await m1state()).tags.includes("mordent"));
+await page.keyboard.press("w");
+await page.waitForFunction(() => !JSON.stringify(window.__SESSION__.score.measures[0]).includes('"mordent"'), null, { timeout: 5000 });
+check("w: fourth press clears the cycle", true);
+const markDepthEnd = await page.evaluate(() => window.__SESSION__.stack.undoDepth);
+for (let i = 0; i < markDepthEnd - markDepth0; i++) await page.keyboard.press("Control+z");
+await page.waitForFunction((d) => window.__SESSION__.stack.undoDepth === d, markDepth0, { timeout: 15000 });
+check("markings round unwinds cleanly", await page.evaluate(() => {
+  const s = JSON.stringify(window.__SESSION__.score.measures[0]);
+  return !s.includes("marc") && !s.includes("fermata") && !s.includes("repeatMark") && !s.includes('"accid":"x"');
+}));
+
+// --- 7f. block feedback: grace pair (m), pedal (P), volta (N) ---
+const blockDepth0 = await page.evaluate(() => window.__SESSION__.stack.undoDepth);
+const noteAttr = (id, k) => page.evaluate(({ id, k }) => {
+  const walk = (el) => el.attrs?.["xml:id"] === id ? el : (el.children ?? []).reduce((a, c) => a || (typeof c !== "string" ? walk(c) : null), null);
+  for (const m of window.__SESSION__.score.measures) { const n = walk(m); if (n) return n.attrs[k] ?? ""; }
+  return "";
+}, { id, k });
+await page.locator('g[id="cc-m1n1"] use').first().click({ force: true });
+await page.waitForFunction(() => document.querySelector("main").dataset.caret === "cc-m1n1", null, { timeout: 5000 });
+await page.locator('g[id="cc-m1n2"] use').first().click({ force: true, modifiers: ["Shift"] });
+await page.keyboard.press("m"); // different pitches -> grace cycle
+await page.waitForFunction(() => JSON.stringify(window.__SESSION__.score.measures[0]).includes('"unacc"'), null, { timeout: 5000 });
+check("m on a two-pitch pair makes an acciaccatura", (await noteAttr("cc-m1n1", "grace")) === "unacc" && (await noteAttr("cc-m1n1", "stem.mod")) === "1slash");
+check("…folding its time into the main note", (await noteAttr("cc-m1n2", "dur")) === "1");
+await page.keyboard.press("m");
+await page.waitForFunction(() => JSON.stringify(window.__SESSION__.score.measures[0]).includes('"acc"'), null, { timeout: 5000 });
+check("second m turns it into an appoggiatura", (await noteAttr("cc-m1n1", "grace")) === "acc");
+await page.keyboard.press("m");
+await page.waitForFunction(() => !JSON.stringify(window.__SESSION__.score.measures[0]).includes('"grace"'), null, { timeout: 5000 });
+check("third m restores both notes", (await noteAttr("cc-m1n2", "dur")) === "2");
+// pedal over the same selection
+await page.keyboard.press("P");
+await page.waitForFunction(() => JSON.stringify(window.__SESSION__.score.measures[0]).includes('"pedal"'), null, { timeout: 5000 });
+check("P adds the pedal pair", await page.evaluate(() => {
+  const dirs = window.__SESSION__.score.measures[0].children.filter((c) => typeof c !== "string" && c.tag === "pedal").map((c) => c.attrs.dir);
+  return JSON.stringify(dirs) === JSON.stringify(["down", "up"]);
+}));
+await page.keyboard.press("P");
+await page.waitForFunction(() => !JSON.stringify(window.__SESSION__.score.measures[0]).includes('"pedal"'), null, { timeout: 5000 });
+check("P again removes it", true);
+// volta bracket on a block drag (m2–m3)
+const vCenter = async (tileIndex, staffOrdinal = 0) => page.evaluate(({ i, s }) => {
+  const staves = document.querySelector(`.tile[data-index="${i}"]`).querySelectorAll("g.staff[id]");
+  const r = staves[s].getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+}, { i: tileIndex, s: staffOrdinal });
+let vBlock = "";
+for (let t = 0; t < 5 && vBlock !== "1-2/1-1"; t++) {
+  const a = await vCenter(1);
+  const b = await vCenter(2);
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move(b.x, b.y, { steps: 5 });
+  await page.mouse.up();
+  vBlock = await page
+    .waitForFunction(() => document.querySelector("main").dataset.block === "1-2/1-1", null, { timeout: 1500 })
+    .then(() => "1-2/1-1")
+    .catch(() => page.evaluate(() => document.querySelector("main").dataset.block));
+}
+check("block m2–m3 selected for the volta", vBlock === "1-2/1-1");
+await page.keyboard.press("Shift+Digit1");
+await page.waitForFunction(() => window.__SESSION__.score.measureParent.get(window.__SESSION__.score.measures[1])?.tag === "ending", null, { timeout: 10000 });
+check("shift+1 wraps the block in volta 1", await page.evaluate(() => window.__SESSION__.score.measureParent.get(window.__SESSION__.score.measures[1]).attrs.n === "1"));
+check("a lone non-final bracket closes with a double barline", await page.evaluate(() => window.__SESSION__.score.measures[2].attrs.right === "dbl"));
+await page.keyboard.press("Shift+Digit2");
+await page.waitForFunction(() => window.__SESSION__.score.measureParent.get(window.__SESSION__.score.measures[1])?.attrs.n === "1, 2", null, { timeout: 10000 });
+check("shift+2 on the same block builds the [1, 2] mix", true);
+await page.waitForFunction(() => document.querySelector('.tile[data-index="1"] g[class~="voltaBracket"]'), null, { timeout: 15000 });
+check("the tile draws the bracket", true);
+// the bracket also shows in PAGE view (full-document render)
+await page.locator("button", { hasText: "page view" }).click();
+await page.waitForFunction(() => document.querySelector(".pages g[class~='voltaBracket']"), null, { timeout: 60000 });
+check("page view draws the volta bracket too", true);
+await page.locator("button", { hasText: "edit view" }).click();
+await page.waitForFunction(() => document.querySelectorAll(".tile .ms").length >= 10, null, { timeout: 60000 });
+// a [3] bracket on the NEXT measure joins the group: barlines renormalize
+// a single-measure block needs the drag to cross staves (drag threshold)
+let v2Block = "";
+for (let t = 0; t < 5 && v2Block !== "3-3/1-2"; t++) {
+  const a = await vCenter(3, 0);
+  const b = await vCenter(3, 1);
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move(b.x, b.y, { steps: 4 });
+  await page.mouse.up();
+  v2Block = await page
+    .waitForFunction(() => document.querySelector("main").dataset.block === "3-3/1-2", null, { timeout: 1500 })
+    .then(() => "3-3/1-2")
+    .catch(() => page.evaluate(() => document.querySelector("main").dataset.block));
+}
+check("block m4 selected for the second bracket", v2Block === "3-3/1-2");
+await page.keyboard.press("Shift+Digit3");
+await page.waitForFunction(() => window.__SESSION__.score.measureParent.get(window.__SESSION__.score.measures[3])?.attrs.n === "3", null, { timeout: 10000 });
+check("shift+3 makes the [3] bracket", true);
+check("the [1, 2] bracket now ends with a repeat barline", await page.evaluate(() => window.__SESSION__.score.measures[2].attrs.right === "rptend"));
+check("…and the [3] bracket with the double barline", await page.evaluate(() => window.__SESSION__.score.measures[3].attrs.right === "dbl"));
+const blockDepthEnd = await page.evaluate(() => window.__SESSION__.stack.undoDepth);
+for (let i = 0; i < blockDepthEnd - blockDepth0; i++) await page.keyboard.press("Control+z");
+await page.waitForFunction((d) => window.__SESSION__.stack.undoDepth === d, blockDepth0, { timeout: 15000 });
+check("block-feedback round unwinds cleanly", await page.evaluate(() => {
+  const s = JSON.stringify(window.__SESSION__.score.measures[0]);
+  return !s.includes("grace") && !s.includes("pedal") && !JSON.stringify(window.__SESSION__.score.measures[1]).includes("ending");
+}));
+
 // --- 8. open file… from disk ---
 await page.setInputFiles('input[type="file"]', "/home/flux/projects/battuta/fixtures/Bach-JS_Ein_feste_Burg.mei");
 await page.waitForFunction(() => [...document.querySelectorAll(".tabs .tab")].some((t) => t.textContent.includes("Bach-JS_Ein_feste_Burg")), null, { timeout: 10000 });

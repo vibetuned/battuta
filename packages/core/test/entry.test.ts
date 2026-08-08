@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildEventIndex, serialize, frac, fEq, decomposeDuration, validateMeasureDurations, findAll,
   ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand,
-  MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand,
+  MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand,
   type CommandContext,
 } from "../src/index.js";
 import { scoreFrom, mei } from "./helpers.js";
@@ -549,5 +549,133 @@ describe("CycleHairpinCommand", () => {
     expect(serialize(score.scoreEl)).toBe(snap);
     expect(() => new CycleHairpinCommand("h1", "k2").apply(ctxFor(score))).toThrow(/share a staff/);
     expect(() => new CycleHairpinCommand("h1", "h1").apply(ctxFor(score))).toThrow(/two different/);
+  });
+});
+
+describe("single markings (fermata, coda, ornament cycle)", () => {
+  const body = `
+    <measure n="1" xml:id="m1">
+      <staff n="1"><layer n="1"><note pname="c" oct="4" dur="2" xml:id="k1"/><chord dur="2" xml:id="kc"><note pname="e" oct="4" xml:id="kc1"/><note pname="g" oct="4" xml:id="kc2"/></chord></layer></staff>
+      <staff n="2"><layer n="1"><mRest/></layer></staff>
+    </measure>`;
+
+  it("fermata and coda toggle on/off byte-identically", () => {
+    const { score } = scoreFrom(mei(body));
+    const before = serialize(score.scoreEl);
+    new ToggleMarkCommand("k1", "fermata").apply(ctxFor(score));
+    expect(findAll(score.measures[0]!, "fermata")).toHaveLength(1);
+    new ToggleMarkCommand("k1", "coda").apply(ctxFor(score));
+    const rm = findAll(score.measures[0]!, "repeatMark");
+    expect(rm).toHaveLength(1);
+    expect(rm[0]!.attrs["func"]).toBe("coda");
+    new ToggleMarkCommand("k1", "fermata").apply(ctxFor(score));
+    new ToggleMarkCommand("k1", "coda").apply(ctxFor(score)); // coda -> segno
+    new ToggleMarkCommand("k1", "coda").apply(ctxFor(score)); // segno -> off
+    expect(serialize(score.scoreEl)).toBe(before);
+  });
+
+  it("the ornament key circles tremolo → trill → mordent → off on a note", () => {
+    const { score } = scoreFrom(mei(body));
+    const before = serialize(score.scoreEl);
+    const state = () => {
+      const m = score.measures[0]!;
+      if (findAll(m, "trill").length) return "trill";
+      if (findAll(m, "mordent").length) return "mordent";
+      const idx = buildEventIndex(score);
+      return findAll(m, "bTrem").length ? "btrem" : idx.byId.has("k1") ? "none" : "gone";
+    };
+    new OrnamentCycleCommand("k1").apply(ctxFor(score));
+    expect(state()).toBe("btrem");
+    expect(buildEventIndex(score).byId.get("k1")?.eventIndex).toBe(0); // still indexed through the wrapper
+    new OrnamentCycleCommand("k1").apply(ctxFor(score));
+    expect(state()).toBe("trill");
+    new OrnamentCycleCommand("k1").apply(ctxFor(score));
+    expect(state()).toBe("mordent");
+    new OrnamentCycleCommand("k1").apply(ctxFor(score));
+    expect(state()).toBe("none");
+    expect(serialize(score.scoreEl)).toBe(before); // full circle = untouched
+  });
+
+  it("chords start the cycle at the arpeggio; revert restores exactly", () => {
+    const { score } = scoreFrom(mei(body));
+    new OrnamentCycleCommand("kc").apply(ctxFor(score));
+    expect(findAll(score.measures[0]!, "arpeg")).toHaveLength(1);
+    const snap = serialize(score.scoreEl);
+    const cmd = new OrnamentCycleCommand("kc"); // arpeg -> btrem (remove + wrap)
+    cmd.apply(ctxFor(score));
+    expect(findAll(score.measures[0]!, "bTrem")).toHaveLength(1);
+    cmd.revert(ctxFor(score));
+    expect(serialize(score.scoreEl)).toBe(snap);
+  });
+});
+
+describe("grace cycle, pedal, coda/segno cycle", () => {
+  const body = `
+    <measure n="1" xml:id="m1">
+      <staff n="1"><layer n="1"><note pname="d" oct="4" dur="4" xml:id="g1"/><note pname="c" oct="4" dur="4" xml:id="g2"/><note pname="e" oct="4" dur="2" xml:id="g3"/></layer></staff>
+      <staff n="2"><layer n="1"><mRest/></layer></staff>
+    </measure>`;
+
+  it("m-pair cycles acciaccatura → appoggiatura → none, folding time into the main note", () => {
+    const { score } = scoreFrom(mei(body));
+    const before = serialize(score.scoreEl);
+    const attrs = (id: string) => findAll(score.scoreEl, "note").find((n) => n.attrs["xml:id"] === id)!.attrs;
+    new ToggleGraceCommand("g1", "g2").apply(ctxFor(score));
+    expect(attrs("g1")["grace"]).toBe("unacc");
+    expect(attrs("g1")["stem.mod"]).toBe("1slash");
+    expect(attrs("g2")["dur"]).toBe("2"); // quarter + quarter folded into a half
+    // the measure still sums correctly (grace counts zero)
+    expect(validateMeasureDurations(score.measures[0]!, { count: "4", unit: "4" }, 1)).toHaveLength(0);
+    new ToggleGraceCommand("g1", "g2").apply(ctxFor(score));
+    expect(attrs("g1")["grace"]).toBe("acc");
+    expect(attrs("g1")["stem.mod"]).toBeUndefined();
+    new ToggleGraceCommand("g1", "g2").apply(ctxFor(score));
+    expect(serialize(score.scoreEl)).toBe(before); // full circle
+  });
+
+  it("refuses non-adjacent pairs and unfoldable sums; revert is exact", () => {
+    const { score } = scoreFrom(mei(body));
+    expect(() => new ToggleGraceCommand("g1", "g3").apply(ctxFor(score))).toThrow(/adjacent/);
+    // quarter + half = dotted half — single written duration, allowed
+    const cmd = new ToggleGraceCommand("g2", "g3");
+    const snap = serialize(score.scoreEl);
+    cmd.apply(ctxFor(score));
+    expect(findAll(score.scoreEl, "note").find((n) => n.attrs["xml:id"] === "g3")!.attrs["dots"]).toBe("1");
+    cmd.revert(ctxFor(score));
+    expect(serialize(score.scoreEl)).toBe(snap);
+  });
+
+  it("pedal toggles a down/up pair over a cross-measure range", () => {
+    const two = scoreFrom(mei(`${body.replace('xml:id="m1"', 'xml:id="p1"')}
+      <measure n="2" xml:id="p2">
+        <staff n="1"><layer n="1"><note pname="f" oct="4" dur="1" xml:id="g9"/></layer></staff>
+        <staff n="2"><layer n="1"><mRest/></layer></staff>
+      </measure>`));
+    const { score } = two;
+    const before = serialize(score.scoreEl);
+    new TogglePedalCommand("g1", "g9").apply(ctxFor(score));
+    const downs = findAll(score.measures[0]!, "pedal");
+    const ups = findAll(score.measures[1]!, "pedal");
+    expect(downs).toHaveLength(1);
+    expect(downs[0]!.attrs["dir"]).toBe("down");
+    expect(ups[0]!.attrs["dir"]).toBe("up");
+    new TogglePedalCommand("g9", "g1").apply(ctxFor(score)); // reversed order still matches
+    expect(serialize(score.scoreEl)).toBe(before);
+  });
+
+  it("the coda key cycles coda → segno → off", () => {
+    const { score } = scoreFrom(mei(body));
+    const before = serialize(score.scoreEl);
+    const marks = () => findAll(score.measures[0]!, "repeatMark").map((r) => r.attrs["func"]);
+    new ToggleMarkCommand("g1", "coda").apply(ctxFor(score));
+    expect(marks()).toEqual(["coda"]);
+    const mid = new ToggleMarkCommand("g1", "coda");
+    mid.apply(ctxFor(score));
+    expect(marks()).toEqual(["segno"]);
+    mid.revert(ctxFor(score));
+    expect(marks()).toEqual(["coda"]); // replace-case revert
+    mid.apply(ctxFor(score));
+    new ToggleMarkCommand("g1", "coda").apply(ctxFor(score));
+    expect(serialize(score.scoreEl)).toBe(before);
   });
 });
