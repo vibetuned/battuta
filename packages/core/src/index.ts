@@ -23,6 +23,9 @@ export type { EntrySpec, MarkKind } from "./entry.js";
 export { normalizeBlock, copyBlock, fragmentToText, materializeStaff, findStaffInMeasure } from "./clipboard.js";
 export type { BlockSelection, ClipboardFragment, ClipboardStaff } from "./clipboard.js";
 
+export { SetHarmCommand, harmTextAt, isChordSymbol, isRomanNumeral, isHarmText, harmSuggestions, HARM_CHARS } from "./harm.js";
+export type { HarmKind } from "./harm.js";
+
 export { planContextChange, ChangeContextCommand } from "./context-edit.js";
 export type { ContextChangeSpec, ClefSpec, ContextPlan } from "./context-edit.js";
 

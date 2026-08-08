@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
+import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, isHarmText, harmSuggestions, HARM_CHARS, type HarmKind, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
 import { RenderPool, type TileResult } from "./render/renderPool";
 import { DocumentSession } from "./session";
 
@@ -429,6 +429,10 @@ export default function App() {
   const [version, setVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /** Harmony lane: typed chord symbols / roman numerals at the caret. */
+  const [harmLane, setHarmLane] = useState<HarmKind | null>(null);
+  const [harmBuffer, setHarmBuffer] = useState("");
+
   /** Chord accidental picker: which note of the chord gets the accidental. */
   const [accidPick, setAccidPick] = useState<{ accid: "s" | "f" | "n" | "x"; chordId: string; notes: { id: string; pname: string; oct: string; accid?: string }[]; x: number; y: number } | null>(null);
   const [caret, setCaret] = useState<CaretPosition | null>(null);
@@ -694,6 +698,14 @@ export default function App() {
     [session, block, caret, afterCommand],
   );
 
+  // A harmony lane edits the harm at the caret: (re)load its text whenever
+  // the caret moves (click, arrows, commit-advance).
+  useEffect(() => {
+    if (!harmLane || !session || !caretId) return;
+    setHarmBuffer(session.harmAt(caretId, harmLane));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [harmLane, caretId, session, version]);
+
   /** Chord accidentals are per-note (an all-notes sharp is rarely meant):
    * for a chord target, open a picker near the glyph instead of applying. */
   const openAccidPicker = useCallback(
@@ -795,6 +807,64 @@ export default function App() {
           } catch (err) {
             setNotice(`accidental refused: ${err instanceof Error ? err.message : err}`);
           }
+        }
+        return;
+      }
+      if (harmLane) {
+        // The harmony lane owns the keyboard: a closed grammar of chord
+        // symbols / numerals, Enter commits + advances, Tab autocompletes,
+        // arrows commit + move, Escape leaves the lane.
+        e.preventDefault();
+        if (!caret || !caretId) {
+          if (e.key === "Escape") setHarmLane(null);
+          return;
+        }
+        const commit = (): boolean => {
+          const existing = session.harmAt(caretId, harmLane);
+          if (harmBuffer === existing) return true; // nothing to do
+          if (harmBuffer !== "" && !isHarmText(harmLane, harmBuffer)) {
+            setNotice(`incomplete ${harmLane === "rna" ? "numeral" : "chord symbol"}: "${harmBuffer}"`);
+            return false;
+          }
+          try {
+            session.setHarm(caretId, harmBuffer, harmLane);
+            afterCommand(session);
+            setNotice(null);
+            return true;
+          } catch (err) {
+            setNotice(`harmony refused: ${err instanceof Error ? err.message : err}`);
+            return false;
+          }
+        };
+        if (e.key === "Escape") {
+          if (commit()) setHarmLane(null);
+          return;
+        }
+        if (e.key === "Enter" || e.key === "ArrowRight" || e.key === "ArrowLeft") {
+          if (!commit()) return;
+          const next = e.key === "ArrowLeft" ? caretLeft(session.index, session.score, caret) : caretRight(session.index, session.score, caret);
+          if (next) {
+            lastEntered.current = null;
+            setCaret(next);
+          }
+          return;
+        }
+        if (e.key === "Backspace") {
+          setHarmBuffer((b) => b.slice(0, -1));
+          return;
+        }
+        if (e.key === "Tab") {
+          const s = harmSuggestions(harmLane, harmBuffer)[0];
+          if (s) setHarmBuffer(s);
+          return;
+        }
+        if (e.key.length === 1) {
+          let ch = e.key;
+          if (harmLane === "rna") {
+            if (ch === "o") ch = "°";
+            if (ch === "0") ch = "ø";
+          }
+          if (HARM_CHARS[harmLane].test(ch)) setHarmBuffer((b) => b + ch);
         }
         return;
       }
@@ -1298,7 +1368,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [session, caret, block, editTargets, afterCommand, entryMode, caretId, enterAtCaret, nearestOctave, structural, selection, accidPick, openAccidPicker]);
+  }, [session, caret, block, editTargets, afterCommand, entryMode, caretId, enterAtCaret, nearestOctave, structural, selection, accidPick, openAccidPicker, harmLane, harmBuffer]);
 
   // --- Web MIDI: note-ons enter at the caret while input mode is active;
   // keys held together build a CHORD (like MuseScore). Devices hot-plug via
@@ -1745,6 +1815,13 @@ export default function App() {
         {session && pool && view === "tiles" && <TileGrid key={activeId ?? -1} session={session} version={version} pool={pool} zoom={zoom} onRendered={onRendered} onSettled={onSettled} onLayout={onLayout} />}
         {session && pool && view === "pages" && <PageView key={`${activeId}-${version}`} session={session} pool={pool} />}
         {caretRect && view === "tiles" && <div className="caret" style={caretRect} />}
+        {harmLane && caretRect && view === "tiles" && (
+          <div data-harm-input data-valid={harmBuffer === "" || isHarmText(harmLane, harmBuffer) ? "1" : "0"} style={{ position: "absolute", left: caretRect.left, top: harmLane === "rna" ? caretRect.top + caretRect.height + 6 : caretRect.top - 30, background: "#233", borderRadius: 4, fontSize: 13, zIndex: 40, padding: "2px 8px", whiteSpace: "nowrap", boxShadow: "0 2px 8px rgba(0,0,0,.35)", color: harmBuffer === "" || isHarmText(harmLane, harmBuffer) ? "#8f8" : "#f88" }}>
+            {harmLane === "rna" ? "RN " : "♩ "}
+            <strong>{harmBuffer || "…"}</strong>
+            <span style={{ color: "#89a", marginLeft: 8 }}>{harmSuggestions(harmLane, harmBuffer).join("  ")}</span>
+          </div>
+        )}
       </main>
       <footer data-statusbar style={{ position: "fixed", left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", gap: 12, background: "#1f2733", color: "#aab", fontSize: 12, lineHeight: "20px", padding: "2px 10px", zIndex: 30 }}>
         <button
@@ -1846,6 +1923,24 @@ export default function App() {
           ))}
           <option value="add">{caret && caret.measureIndex > 0 ? `add a voice (from m${caret.measureIndex + 1})` : "add a voice"}</option>
           <option value="remove">{caret && caret.measureIndex > 0 ? `remove this voice (from m${caret.measureIndex + 1})` : "remove this voice"}</option>
+        </select>
+        <select
+          value=""
+          title="harmony lanes (chord symbols above, roman numerals below)"
+          style={STATUSBAR_SELECT}
+          disabled={!session || !caret}
+          onChange={(e) => {
+            const kind = e.target.value as HarmKind | "";
+            e.target.blur();
+            if (!kind) return;
+            setEntryMode(false);
+            setHarmLane(kind);
+            setNotice(`${kind === "rna" ? "roman numerals" : "chord symbols"}: type at the caret · enter commits + advances · tab completes · esc leaves`);
+          }}
+        >
+          <option value="">{harmLane ? (harmLane === "rna" ? "♩ numerals" : "♩ chords") : "harmony"}</option>
+          <option value="chord">chord symbols (above)</option>
+          <option value="rna">roman numerals (below)</option>
         </select>
         <select value={shownClef} title="clef at caret (staff-local)" style={STATUSBAR_SELECT} disabled={!session} onChange={(e) => { e.target.blur(); applyContext("clef", e.target.value); }}>
           {shownClef && !CLEFS[shownClef] && <option value={shownClef}>{shownClef}</option>}

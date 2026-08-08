@@ -8,9 +8,9 @@ import {
   buildScore, resolveContexts, buildEventIndex, ensureIds, seedIds, fromDom, serialize, serializeDocument, childElements, findAll, meterCapacity, frac,
   CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand,
   copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, AddVoiceCommand, RemoveVoiceCommand, ToggleRepeatCommand, ToggleVoltaCommand,
-  ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, TupletCommand, AutoBeamCommand, UnbeamThen, measuresOf, ChangeContextCommand, planContextChange,
+  SetHarmCommand, harmTextAt, ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, TupletCommand, AutoBeamCommand, UnbeamThen, measuresOf, ChangeContextCommand, planContextChange,
   type CoreScore, type MeasureContext, type EventIndex, type Command, type DirtyRegion, type DomLikeElement, type DomLikeNode,
-  type BlockSelection, type ClipboardFragment, type PastePlan, type EntrySpec, type MarkKind, type CoreElement, type CaretPosition, type ContextChangeSpec,
+  type BlockSelection, type ClipboardFragment, type PastePlan, type EntrySpec, type MarkKind, type HarmKind, type CoreElement, type CaretPosition, type ContextChangeSpec,
 } from "@battuta/core";
 
 export class DocumentSession {
@@ -285,6 +285,15 @@ export class DocumentSession {
   measureRepeat(caret: CaretPosition): DirtyRegion[] {
     return this.execute(new MeasureRepeatCycleCommand(caret.measureIndex, caret.staffN, caret.layerN));
   }
+  setHarm(targetId: string, text: string, kind: HarmKind): DirtyRegion[] {
+    return this.execute(new SetHarmCommand(targetId, text, kind));
+  }
+  harmAt(targetId: string, kind: HarmKind): string {
+    const ref = this.index.byId.get(targetId);
+    const measure = ref && this.score.measures[ref.measureIndex];
+    return measure ? harmTextAt(measure, targetId, kind) : "";
+  }
+
   /** Rhythm edit: unbeams its measure first, like entry. */
   toggleTuplet(ids: string[]): DirtyRegion[] {
     return this.execute(new UnbeamThen(new TupletCommand(ids), measuresOf(this.score, this.index, ids)));

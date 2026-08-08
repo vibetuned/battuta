@@ -145,7 +145,7 @@ Phase 4 in progress (2026-08-02): note entry + round-trip hardening.
   zero new ids. Compatibility note: Verovio rejects comments before the
   root element (PIs are fine), so prologue comments are preserved by moving
   them just inside `<mei>`.
-- 165 core tests; the property fuzzer covers the whole command pool (a
+- 170 core tests; the property fuzzer covers the whole command pool (a
   stale modulo had silenced part of it) and promptly caught a real bug:
   measures inserted or duplicated at a mid-piece context change landed
   AFTER the interleaved def, adopting the next section's meter — a
@@ -282,6 +282,20 @@ Phase 5 in progress (2026-08-05): polish.
   segment, and page view shows the true spanning bracket — its serializer
   now keeps structural containers instead of flattening measures into a
   bare section.
+- **Harmony lanes** (the *harmony* select in the status bar): two typed
+  annotation lanes over MEI `<harm>` — **chord symbols** above the staff
+  and **Roman numeral analysis** below (`@type="rna"`), independent of
+  each other. Picking a lane opens a floating editor at the caret with a
+  **closed grammar**: only characters that can extend a valid symbol are
+  accepted (roots A–G, qualities m/maj/dim/aug/sus/add/alt, Δ/ø/°/±,
+  extensions and alterations, slash basses; numerals I–vii with °/ø/+,
+  figured-bass inversions 6/64/65/43/42/2, secondary /X, accidental
+  prefixes, N6 and It/Fr/Ger+6 — `o`/`0` normalize to °/ø). Live
+  validity coloring, **tab autocompletes** from suggestions, **enter
+  commits and advances** to the next event, arrows commit and move,
+  escape leaves the lane. Editing an event with an existing symbol loads
+  it for correction; committing empty deletes it. One undo step per
+  symbol, and the annotations ride copy/paste like every control event.
 - **Tuplets** (`shift+t` on a selection): 3 selected notes become a
   **triplet** (3:2), 6 a **sextuplet** (6:4) — the run shrinks to its
   tuplet time and the freed duration becomes rests after it, so the
@@ -338,7 +352,7 @@ Phase 5 in progress (2026-08-05): polish.
 - **Tabs**: a `+` button opens a fresh blank score (one treble staff, 4/4,
   four empty measures, named untitled-1, -2, …) ready for note entry, and
   **open file…** loads any `.mei`/`.xml` from disk into a new tab named
-  after the file. `node spikes/verify-phase5.mjs` (129 checks).
+  after the file. `node spikes/verify-phase5.mjs` (140 checks).
 
 ## Layout
 

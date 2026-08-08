@@ -95,6 +95,10 @@ Preferences, keymap customization, session restore, crash-safe autosave (command
 > measure repeats %/%% (shift+ù/").
 > Tuplets: shift+t on 3/6 selected notes (triplet/sextuplet, freed time
 > ↔ rests) — Phase 4's last entry gap closed.
+> Harmony lanes: chord symbols (above) + Roman numeral analysis (below)
+> as typed <harm> lanes with closed grammars, autosuggest, and
+> enter-commit-advance — the editor's v1 feature set is complete;
+> packaging is next.
 > Landed late in Phase 4 alongside: context editing (clef/key/meter
 > dropdowns), cross-measure slurs (selection + S), tie chains (selection
 > + t), per-note chord accidental picker, edge-tie render stubs.

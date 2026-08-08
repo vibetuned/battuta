@@ -58,7 +58,7 @@ await page.keyboard.press("Escape");
 // --- 2. context indicators: the selects live in the bar and show the
 // context at the caret (clef is per-staff, key/meter score-wide) ---
 const selVal = (t) => page.evaluate((t) => document.querySelector(`select[title*="${t}"]`)?.value, t);
-check("context + staves + voices selects sit in the status bar", await page.evaluate(() => document.querySelectorAll("[data-statusbar] select").length === 5));
+check("context + staves + voices + harmony selects sit in the status bar", await page.evaluate(() => document.querySelectorAll("[data-statusbar] select").length === 6));
 check(`caret at m1: clef/key/meter show the opening context (${await selVal("clef")}/${await selVal("key signature")}/${await selVal("meter")})`,
   (await selVal("clef")) === "G2" && (await selVal("key signature")) === "0" && (await selVal("meter")) === "4/4");
 await page.locator('.tile[data-index="2"] g[class~="note"] use').first().click({ force: true });
@@ -713,6 +713,61 @@ const tupDepthEnd = await page.evaluate(() => window.__SESSION__.stack.undoDepth
 for (let i = 0; i < tupDepthEnd - tupDepth0; i++) await page.keyboard.press("Control+z");
 await page.waitForFunction((d) => window.__SESSION__.stack.undoDepth === d, tupDepth0, { timeout: 15000 });
 check("tuplet round unwinds cleanly", true);
+
+// --- 7i. harmony lanes: chord symbols + roman numerals ---
+const harmDepth0 = await page.evaluate(() => window.__SESSION__.stack.undoDepth);
+await page.locator('g[id="cc-m2n1"] use').first().click({ force: true });
+await page.waitForFunction(() => document.querySelector("main").dataset.caret === "cc-m2n1", null, { timeout: 5000 });
+await page.selectOption('select[title*="harmony"]', "chord");
+await page.waitForFunction(() => document.querySelector("[data-harm-input]"), null, { timeout: 5000 });
+check("the chord lane opens its editor at the caret", true);
+for (const k of ["C", "m", "a", "j", "7"]) await page.keyboard.press(k);
+await page.waitForFunction(() => document.querySelector("[data-harm-input]").textContent.includes("Cmaj7"), null, { timeout: 5000 });
+check("typing builds a valid symbol", await page.evaluate(() => document.querySelector("[data-harm-input]").dataset.valid === "1"));
+await page.keyboard.press("H"); // not in the grammar: swallowed
+check("keys outside the closed grammar are refused", await page.evaluate(() => document.querySelector("[data-harm-input]").textContent.includes("Cmaj7") && !document.querySelector("[data-harm-input]").textContent.includes("H")));
+await page.keyboard.press("Enter");
+await page.waitForFunction(() => {
+  const m = window.__SESSION__.score.measures[1];
+  return m.children.some((c) => typeof c !== "string" && c.tag === "harm" && c.children.join("") === "Cmaj7");
+}, null, { timeout: 5000 });
+check("enter commits the chord symbol", true);
+check("…and advances to the next event", await page.evaluate(() => document.querySelector("main").dataset.caret === "cc-m3n1"));
+await page.waitForFunction(() => document.querySelector('.tile[data-index="1"] g[class~="harm"]'), null, { timeout: 15000 });
+check("Verovio draws it above the staff", true);
+for (const k of ["G", "/", "B"]) await page.keyboard.press(k);
+await page.keyboard.press("Enter");
+await page.waitForFunction(() => {
+  const m = window.__SESSION__.score.measures[2];
+  return m.children.some((c) => typeof c !== "string" && c.tag === "harm" && c.children.join("") === "G/B");
+}, null, { timeout: 5000 });
+check("slash chords commit too", true);
+// switch to the numeral lane: V + 6 + tab completes to V65
+await page.selectOption('select[title*="harmony"]', "rna");
+await page.locator('g[id="cc-m2n1"] use').first().click({ force: true });
+await page.waitForFunction(() => document.querySelector("main").dataset.caret === "cc-m2n1", null, { timeout: 5000 });
+for (const k of ["V", "6"]) await page.keyboard.press(k);
+await page.keyboard.press("Tab");
+await page.waitForFunction(() => document.querySelector("[data-harm-input]").textContent.includes("V65"), null, { timeout: 5000 });
+check("tab autocompletes from the suggestions", true);
+await page.keyboard.press("Enter");
+await page.waitForFunction(() => {
+  const m = window.__SESSION__.score.measures[1];
+  return m.children.some((c) => typeof c !== "string" && c.tag === "harm" && c.attrs.type === "rna" && c.children.join("") === "V65");
+}, null, { timeout: 5000 });
+check("the numeral lands below with type=rna, independent of the chord lane", await page.evaluate(() => {
+  const m = window.__SESSION__.score.measures[1];
+  const harms = m.children.filter((c) => typeof c !== "string" && c.tag === "harm");
+  return harms.length === 2 && harms.some((h) => h.attrs.place === "above") && harms.some((h) => h.attrs.place === "below");
+}));
+await page.keyboard.press("Escape");
+await page.waitForFunction(() => !document.querySelector("[data-harm-input]"), null, { timeout: 5000 });
+check("escape leaves the lane", true);
+const harmDepthEnd = await page.evaluate(() => window.__SESSION__.stack.undoDepth);
+for (let i = 0; i < harmDepthEnd - harmDepth0; i++) await page.keyboard.press("Control+z");
+await page.waitForFunction((d) => window.__SESSION__.stack.undoDepth === d, harmDepth0, { timeout: 15000 });
+check("harmony round unwinds cleanly", await page.evaluate(() =>
+  ![1, 2].some((i) => window.__SESSION__.score.measures[i].children.some((c) => typeof c !== "string" && c.tag === "harm"))));
 
 // --- 8. open file… from disk ---
 await page.setInputFiles('input[type="file"]', "/home/flux/projects/battuta/fixtures/Bach-JS_Ein_feste_Burg.mei");
