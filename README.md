@@ -6,413 +6,23 @@ screen is a projection of it, and every edit is a reversible command against
 it. Verovio does all notation rendering — battuta never draws notation.
 
 - [DESIGN.md](DESIGN.md) — architecture and editing model
-- [PLANNING.md](PLANNING.md) — phased plan with exit criteria
+- [PLANNING.md](PLANNING.md) — phased plan with exit criteria (remaining phases)
+- [CHANGELOG.md](CHANGELOG.md) — the full phase-by-phase record of what landed
 - [BENCHMARKS.md](BENCHMARKS.md) — Phase 0 spike results and the render-runner decision
 
 ## Status
 
-Phase 0 complete (2026-08-02): both riskiest assumptions validated with data.
+**0.0.1 released (2026-08-08).** The v1 editor is feature-complete —
+tiled Verovio rendering, text-editor caret and selection, reversible
+commands with byte-identical undo, note entry (keyboard + MIDI),
+copy/paste with the duration validator, context editing, articulations
+and ornaments, voices, voltas, tuplets, harmony lanes, a rebindable
+keymap — and packaged for Linux (deb + AppImage, app icon, `.mei` file
+association).
 
-- Slice rendering preserves `xml:id`s end to end (spike A: PASS)
-- Tiling beats full re-layout by 30–100× per edit (spike B: PASS)
-- Runner decision: **Verovio WASM in a Web Worker pool** — see BENCHMARKS.md
-  for the full bake-off (main thread vs worker vs native C++, plus the
-  persistent-document/`select()` variant, spike C: rejected)
-
-Phase 1 in progress (2026-08-02):
-
-- `@battuta/core`: MEI tree, score builder, **effective-context resolver**
-  (clef/key/meter/staff-lines/transposition per measure × staff; attribute and
-  child-element forms; interleaved scoreDef/staffDef; inline clefs) with a
-  19-test vitest suite plus a Verovio smoke test (507/507 corpus tiles render;
-  `npm test -w @battuta/core`, `node spikes/verify-core-tiles.mjs`)
-- Editor: worker pool (hardware-scaled), tile cache keyed by
-  context-hash + content-hash, virtualized tile grid (shared
-  IntersectionObserver), page-view toggle (full Verovio paged layout),
-  id-based click selection in both views
-- End-to-end check: `node spikes/verify-app.mjs` (context fixture renders
-  correct key/clef/meter per tile; 313-measure scroll; page view)
-- Control-event segmentation at tile boundaries: boundary-crossing
-  slurs/ties/phrases/hairpins are rewritten as tstamp-anchored continuation
-  stubs (incoming stubs injected from a per-score span index); verified at
-  the render level on both synthetic and corpus files
-- Tauri 2 shell in `apps/editor/src-tauri` with a real IPC benchmark
-  (results in BENCHMARKS.md); desktop packaging has one open WebKitGTK
-  issue, see Native/Tauri notes below
-
-Phase 2 in progress (2026-08-02): caret, selection, command engine.
-
-- `@battuta/core`: event index (chords are events, beams/tuplets are
-  transparent), caret navigation (left/right across measures, staff
-  up/down), event ranges for shift-selection; command engine with
-  apply/revert + dirty-region reporting, undo/redo stack; first edits:
-  transpose by step/octave, toggle accidental, delete-to-rests.
-  40 tests including fast-check properties: random command sequences —
-  with interleaved undo/redo — fully unwound restore the document
-  byte-identically (run against real corpus files).
-- Editor: click/keyboard caret (blinking bar projected from model position),
-  shift-click / shift-arrow selection, keymap (see in-app hint line),
-  edit-latency HUD. Dirty tiles re-render via cache-key change alone:
-  measured 19 ms edit→screen with exactly 1 tile re-rendered; undo/redo hit
-  the tile cache (~4 ms). Verify: `node spikes/verify-phase2.mjs` (16 checks).
-- Still open in Phase 2: block selection (measure-range × staff-range) —
-  model + drag UI; lands with its consumer (Phase 3 copy/paste).
-
-Phase 3 in progress (2026-08-02): copy/paste and arranging — the reason the
-project exists.
-
-- Edit view renders **bare tiles**: clef, key signature, meter, and
-  staff-group brackets are hidden (their values stay in force for pitch
-  spelling and staff positions). Symbols appear only on the first measure;
-  clef/keysig/meter are each re-drawn only on the tile where they *change*.
-  Done with MEI visibility attributes (`clef.visible`, `keysig.visible`,
-  `meter.form="invis"`, `system.leftline`), not CSS — Verovio reclaims the
-  space, so bare tiles are also narrower.
-- Tiles join into a **continuous system**: zero side margins, near-linear
-  duration spacing (`spacingLinear: 0.03`, `spacingNonLinear: 1.0`) so equal
-  durations get equal widths across tiles. Display zoom is a fixed,
-  user-selectable factor (header control, per document) — staff size is
-  constant across documents and a big ensemble is simply taller, like a real
-  score; zoom is never derived from tile height (lesson learned: deriving it
-  shrank orchestral staves). Verovio's per-tile measure numbers are
-  suppressed (each tile is a "system start").
-- **Row layout like a real score**: the editor owns the flow layout (greedy
-  fill by rendered tile widths). Each row starts with a synthesized
-  **system-start header** (clef + key signature + brackets over an invisible
-  measure, cached by context); tiles themselves draw only *changes* plus the
-  opening meter. Every tile displays in a uniform box with its **top staff
-  line pinned to a shared baseline** (max extents above/below the staff over
-  the document — ledger lines, lyrics, fermatas included).
-- **Uniform inter-staff spacing via two-pass feedback, per row**: pass 1
-  renders tiles unforced and parses the inter-staff gap their content needs
-  (lyrics push staves apart) plus the real ink extent above the top staff
-  line; pass 2 re-renders each row with the row's max need forced as
-  Verovio's `spacingStaff` (a minimum, so the max of all needs is reachable
-  by all). Row box heights hug their own content — a lyric-free row stays
-  compact. `spacingStaff` also pads above the *first* staff, so tiles pin
-  to the intrinsic ink extent and crop the padding. Staff lines verified
-  pixel-identical across each row. Chosen over rendering whole rows as
-  single slices, which would have made structural edits, row sizing, and
-  per-measure drag-and-drop harder.
-- Tabs have close buttons; zoom is per-document.
-- `@battuta/core`: exact-rational **duration model** (dots, tuplets, mRest,
-  grace, meter capacity) powering the paste validator; **block selection**
-  (measure-range × staff-range) and **clipboard fragments** (plain data +
-  readable MEI text for the system clipboard); `planPasteReplace` returns
-  typed refusals/warnings; `PasteReplaceMeasuresCommand` (replace-measures
-  policy) plus insert/delete/duplicate-measures commands. 54 tests; the
-  property suite fuzzes paste + structural commands against the corpus and
-  asserts byte-identical unwind AND the duration invariant after every step.
-- Editor: document **tabs** with a shared clipboard, **drag block selection**
-  across tiles/staves, ctrl+c/ctrl+v (paste refusals surface the validator's
-  reason; warnings ask), structural buttons (+m/−m/⧉m, also on numpad +/−/*), save-to-MEI download.
-- E2E (`node spikes/verify-phase3.mjs`): the target workflow start to
-  finish — block-copy chorale measures, paste into another document's other
-  staff, validator refuses a short measure into a full one, save, and the
-  exported file re-parses with zero duration problems and renders in a fresh
-  Verovio toolkit.
-- Still open in Phase 3: splice-at-caret and overlay-as-new-layer paste
-  policies; split/merge measure commands; side-by-side split view.
-
-Phase 4 in progress (2026-08-02): note entry + round-trip hardening.
-
-- **Note input mode** (`i` to toggle): overwrite-mode entry that is
-  duration-invariant by construction — equal swaps in place, shorter fills
-  the remainder with rests, longer consumes following events (refusing
-  loudly at beam/tuplet/measure boundaries); a–g pitches with
-  nearest-octave guessing, shift+A–G chord building, `r` rests, 7..1
-  durations (5 = quarter), `.` dot, s/v/n accidentals, `t` tie (back to the
-  predecessor — across the barline when the note opens the measure; works
-  outside input mode too, on the caret note; pitch-checked), `,` staccato, `;`/`!` accent, and `p` cycling
-  dynamics (none → p → mp → mf → f → none). **Web MIDI is a first-class input**: in
-  input mode, note-ons enter at the caret, keys held together build chords
-  (note-off tracking), devices hot-plug via `onstatechange`, the HUD shows
-  what is connected, and a note played outside input mode hints at pressing
-  `i`. **Keyboard-layout independent**: duration
-  digits also match by physical key position (`e.code`), so AZERTY's
-  unshifted number row works without Shift; the dot is `.` or `:` (both
-  character-based — `:` is unshifted on AZERTY), accent is `;` — no physical
-  key serves two different actions on any layout. The dot always applies to
-  a real event — the just-entered note, or the note/rest at the caret (in
-  or out of input mode) — re-entered in place with the duration difference
-  consumed from / released to the following rests; subsequent entries
-  inherit the resulting dot state (no separate prospective toggle).
-  **Web MIDI** note-on enters at the caret while in input mode.
-- **Round-trip hardening**: the session now keeps the FULL document tree —
-  `meiHead`, unknown elements/attributes, comments, `<?xml-model?>` PIs —
-  and save serializes all of it. Corpus tests prove serialization is a
-  fixpoint, no content is lost across cycles, and a reloaded save needs
-  zero new ids. Compatibility note: Verovio rejects comments before the
-  root element (PIs are fine), so prologue comments are preserved by moving
-  them just inside `<mei>`.
-- 172 core tests; the property fuzzer covers the whole command pool (a
-  stale modulo had silenced part of it) and promptly caught a real bug:
-  measures inserted or duplicated at a mid-piece context change landed
-  AFTER the interleaved def, adopting the next section's meter — a
-  duplicated 4/4 measure inside a fresh 7/8 region. Structural inserts now
-  stay in their source region (defs bind to the measure they precede);
-  `node spikes/verify-phase4.mjs` covers the exit criterion: transcribe a
-  passage from scratch by keyboard, no XML touched, durations always valid.
-- **Merge/split** (`m` / `x`): merge the caret event with the next — same
-  pitch (or both rests / identical chord pitch-sets), adjacent in the same
-  container, sum expressible as one written duration (quarter+eighth →
-  dotted quarter; half+eighth → refused) — keeps the first event's id and
-  dissolves the inner tie pair. Split halves any note/rest/chord in place
-  (dur×2, dots preserved: dotted half → two dotted quarters), ties
-  redistributed. Whole-measure rests participate too: `x` splits an mRest
-  into two half-capacity rest runs (meter-aware — 6/8 gives two dotted
-  quarters), and merging rests back up to the full measure collapses them
-  into an mRest — so the shortcuts work in freshly inserted measures. Backspace erases the *previous* note and steps back
-  (text-editor semantics); Delete stays at the caret.
-- **Context editing** (clef… / key… / meter… header dropdowns): change or
-  add a clef, key signature, or meter at the caret's measure, MEI-natively.
-  Mid-piece clef changes are written as **inline `<clef>` elements before
-  the barline** (the engraver's position) — interleaved `staffDef` clefs
-  render in tiles but are ignored by Verovio's full-document renders, so
-  the inline form is what survives page view and export.
-  At measure 1 the initial `scoreDef`/`staffDef` attributes are edited in
-  place (conflicting child elements and per-staff overrides removed);
-  mid-piece an interleaved `scoreDef` (key/meter, score-wide) or
-  `staffDef n` (clef, staff-local) is inserted before the measure — or
-  merged into one already sitting there, so repeated changes never stack
-  defs. Meter changes are validated against every measure up to the next
-  meter change and refused naming the first measure that no longer fits;
-  whole-measure rests always fit, so preparing empty sections works freely.
-  Downstream tiles re-render (context propagates), and the changed-context
-  header policy makes the new key/meter visible exactly where it changes.
-  One undo step each.
-- **Cross-measure slurs** (`S`): select notes with shift+click/shift+arrows
-  (any number of measures apart) — or just place the caret to slur to the
-  next event — and press `S`; the same pair again removes it. The `<slur>`
-  control event lives in the START measure of the real MEI document (no
-  shadow state, save stays a plain serialize): per-measure tiles render it
-  through the existing span segmentation — the start tile draws an outgoing
-  curve to the slice edge, the end tile an incoming stub, and measures the
-  curve merely passes over stay untouched. Staff-local, one undo step,
-  fully covered by the property fuzzer. (Verovio occasionally draws an
-  exuberant curve on a continuation stub — cosmetic, upstream.)
-- **Chord accidentals are per-note**: pressing s/v/n (or s/f/n outside
-  input mode) on a chord no longer sharps every note — a small picker pops
-  up at the chord listing its notes (`1:c4 2:e4 3:g4`); press the note's
-  letter or number to apply the accidental to just that note, esc to
-  cancel. One undo step. (MIDI entry is untouched — it knows exact
-  pitches.) Chord children aren't indexed events, so this rides a
-  dedicated `ChordNoteAccidentalCommand` anchored on the chord's id.
-- **Multi-measure ties** (`t` on a selection): a note held across measures
-  is a chain of ties, so selecting the same-pitch run and pressing `t`
-  ties every consecutive pair in one undo step, with proper MEI `@tie`
-  values (`i`/`m`/`t`, merging with ties that continue past the run's
-  edges); the same selection unties it. Refuses loudly on pitch changes or
-  gaps. Rendering fix underneath: Verovio *skips* an unmatched `@tie` half
-  in an isolated slice, so boundary-crossing ties never drew their curves
-  on either tile — the segmenter now injects explicit `<tie>` continuation
-  stubs for edge notes (incoming and outgoing), which also fixes the
-  plain cross-barline `t` tie from note entry.
-- Still open in Phase 4: file-watching for external edits (needs the
-  Tauri shell or the File System Access API). Tuplet entry landed in
-  Phase 5 (`shift+t` on a selection, see below).
-
-Phase 5 in progress (2026-08-05): polish.
-
-- **Status bar** (VSCode-style, bottom): `INPUT (i)` toggles note input on
-  click and becomes `1/8 ♪ (4)` while active — current duration, its
-  glyph (dot included), and the digit key that selects it, updating live;
-  the clef / key / meter selects live here too and always display the
-  **context in force at the caret** (clef per staff — stepping onto a
-  tenor-clef staff flips the indicator; key and meter score-wide), with
-  picking a value still applying the change at the caret's measure;
-  `MIDI ><` flips to a green `MIDI <>` with a device count when
-  controllers are present (hot-plug aware) and clicking it lists the
-  connected devices. A **staves select** sits beside the context ones,
-  showing the staff count: *add staff below* appends a treble staffDef and
-  an mRest staff to every measure (valid under any meter by construction);
-  *remove caret staff* takes out the caret's staff everywhere — its
-  staffDef, mid-piece staffDefs, and staff-anchored control events — one
-  undo step each, last staff refused.
-- **Fingering** (`alt+1..5`): sets the fingering on the target note or
-  chord — rendered by Verovio as a small digit above the staff (`<fing>`
-  control events; the same number again removes it, a different one
-  replaces it). `alt+shift+1..5` stacks additional fingers (chords,
-  substitutions) and removes exactly that number if present. Same target
-  rule as the dot — the just-entered note in input mode, else the caret
-  note — and matched by physical key, so AZERTY's shifted digit row works
-  identically. One undo step each. (`<fingGrp>` is unsupported by Verovio,
-  so plural fingering = several stacked `<fing>` elements.)
-- **Auto-beam** (`alt+b`): groups the caret measure's eighth-and-shorter
-  notes into beams — every measure the selection touches with one press —
-  with the longest beam spanning **half the measure regardless of meter**
-  (onset decides the half; rests and longer notes break groups; runs of
-  one stay unbeamed). Idempotent: existing beams are lifted and regrouped.
-  The other half of the policy: **beams are formatting, and rhythm edits
-  dissolve them** — entry, duration changes, merge/split, and
-  delete-to-rests unbeam their measure *first* (so overwrite entry never
-  refuses at a beam boundary) and no broken beams survive; re-beam with
-  `alt+b` once the rhythm settles. All one-undo-step, byte-identical
-  unwind (the un/re-beam travels with the edit).
-- **Single markings** (tester round): **marcato** = the accent key
-  shifted (`shift+;` — on AZERTY that's `.`, so the dot keeps its
-  unshifted forms `.`/`:` and gains nothing new to learn); **staccatissimo**
-  = the staccato key shifted (`<` / AZERTY `?`); **double sharp** = `S`
-  with no selection (with a selection `S` is still the slur; on chords it
-  opens the per-note picker with 𝄪); **fermata** = `h`; **coda** = `o`
-  (MEI `repeatMark func="coda"`); and `w` **circles the four ornaments**
-  — arpeggio (chords) → tremolo (`bTrem` wrap) → trill → mordent → off.
-  All follow the dot's target rule (just-entered note in input mode, else
-  the caret), toggle on repeat, one undo step each. The `o` key cycles the
-  full **repeat-mark family: coda → segno → fine → dal segno → da capo →
-  off** (all `repeatMark`s).
-- **Simile and measure repeats** (the physical `ù`/`'` key): unshifted
-  replaces **one beat** at the target with the simile slash (`<beatRpt/>`,
-  consuming sub-beat events exactly like overwrite entry, refusing at
-  boundaries; the slash toggles back to a beat rest); shifted (`%` on
-  AZERTY, `"` on QWERTY) cycles the caret measure's voice through
-  **content → `%` (mRpt) → `%%` (mRpt2, claiming the next measure) →
-  empty** — the original content returns via undo. The duration model
-  knows all three: measure repeats fill their measure, the beat repeat
-  counts as an unresolved beat.
-- **Block-selection feedback round**: with two selected notes of
-  *different* pitches, `m` cycles the first into a **grace note** —
-  acciaccatura (slashed) → appoggiatura → none — folding its written time
-  into the main note like a merge and giving it back on the way out
-  (same-pitch pairs still merge); `P` toggles a **pedal** line over the
-  selection (down at the first note, up at the last); and `shift+1..9` on a
-  block toggles that **volta number** on the bracket — numbers build up
-  into mixes like `[1, 2][3]` (one `<ending n="1, 2">`, one `n="3"`),
-  removing the last number removes the bracket, and ranges crossing an
-  existing ending are refused. Closing **barlines renormalize across the
-  bracket group**: every bracket with a later sibling ends with a repeat
-  barline, the last with a double barline — unless it closes the score,
-  whose final barline is left alone. Per-measure tiles draw their bracket
-  segment, and page view shows the true spanning bracket — its serializer
-  now keeps structural containers instead of flattening measures into a
-  bare section.
-- **Harmony lanes** (the *harmony* select in the status bar): two typed
-  annotation lanes over MEI `<harm>` — **chord symbols** above the staff
-  and **Roman numeral analysis** below (`@type="rna"`), independent of
-  each other. Picking a lane opens a floating editor at the caret with a
-  **closed grammar**: only characters that can extend a valid symbol are
-  accepted (roots A–G, qualities m/maj/dim/aug/sus/add/alt, Δ/ø/°/±,
-  extensions and alterations, slash basses; numerals I–vii with °/ø/+,
-  figured-bass inversions 6/64/65/43/42/2, secondary /X, accidental
-  prefixes, N6 and It/Fr/Ger+6 — `o`/`0` normalize to °/ø). Live
-  validity coloring, **tab autocompletes** from suggestions, **enter
-  commits and advances** to the next event, arrows commit and move,
-  escape leaves the lane. Editing an event with an existing symbol loads
-  it for correction; committing empty deletes it. One undo step per
-  symbol, and the annotations ride copy/paste like every control event.
-- **Tuplets** (`shift+t` on a selection): 3 selected notes become a
-  **triplet** (3:2), 6 a **sextuplet** (6:4) — the run shrinks to its
-  tuplet time and the freed duration becomes rests after it, so the
-  measure stays valid; a selection inside a tuplet **unwraps** it,
-  consuming those rests back (byte-identical round trip). Refuses wrong
-  counts, non-consecutive runs, mixed-duration runs whose freed time
-  isn't writable, and unwraps without their rests. Rhythm-edit rules
-  apply: the measure unbeams first, and members stay caret-addressable.
-  This closes the last Phase 4 leftover besides file watching.
-- **Multiple voices** (per staff, per measure): a *voices* dropdown in
-  the status bar shows the caret's voice, switches between the staff's
-  voices, and *add a voice* puts a new layer (whole-measure rests) into
-  that staff **from the caret's measure onward** — like clef/key/meter
-  changes; at m1 that means the whole score. Mid-piece additions draw
-  the engraver's **double barline** at the boundary (existing special
-  barlines are left alone). *Remove this voice* takes it out from the
-  caret's measure on, with its anchored control events; a staff's last
-  voice is refused. Note entry works in any voice exactly like voice 1
-  (Verovio stems voice 1 up, voice 2 down). **Voice colors**: where a
-  staff has more than one voice, voice 1 turns blue and voice 2 violet
-  (3 amber, 4 magenta) — zero-specificity CSS driven by Verovio's
-  `data-n`, so the caret/selection colors always win. Plain ↑/↓ traverse
-  voices before staves and continue onto the next/previous **line** when
-  the measure's slots run out (text-editor rows: entering at the top slot
-  going down, the bottom slot coming up, nearest note under the caret's
-  x); ←/→ stop at a voice's start and end (no jumping
-  across measures the voice doesn't reach), and inserted measures mirror
-  every voice of their neighbor. All single undo steps, byte-identical
-  revert.
-- **Repeats** (`r` on a block selection): wraps the selected measures in
-  repeat barlines (`@left="rptstart"` / `@right="rptend"` — the bis);
-  the same block again removes them, and undo restores any barline the
-  repeat overwrote (double bars survive). In input mode `r` still enters
-  rests.
-- **Copy/paste carries control events**: fingering, dynamics, hairpins,
-  and slurs whose anchors live inside the copied block travel with it —
-  pasted with freshly remapped anchor ids and retargeted staff numbers;
-  events reaching outside the block (half a hairpin) stay behind, and
-  control events attached to the *replaced* region are cleaned up rather
-  than left dangling. Paste also normalizes measure `@n` like the
-  structural ops, so stale numbering from older saves heals on the first
-  paste. Byte-identical undo covers all of it.
-- **Hairpins** (`p` with a selection): select a run of notes — across
-  measures too — and `p` cycles a hairpin over it: none → crescendo →
-  decrescendo → none (`<hairpin>` with startid/endid in the start
-  measure, rendered across tile boundaries by the span segmentation).
-  With no selection, `p` keeps cycling p/f dynamics on the note. One
-  undo step per press.
-- **Measure numbers stay sane**: insert/delete/duplicate renumber `@n`
-  sequentially (page view prints it at every system start — this used to
-  show compounding "4aaaa" template names). A surviving pickup keeps its
-  0-based numbering; non-numeric editorial numbering is never touched;
-  undo restores the original numbers exactly.
-- **Tabs**: a `+` button opens a fresh blank score (one treble staff, 4/4,
-  four empty measures, named untitled-1, -2, …) ready for note entry, and
-  **open file…** loads any `.mei`/`.xml` from disk into a new tab named
-  after the file. `node spikes/verify-phase5.mjs` (140 checks).
-
-Packaging in progress (2026-08-05): the Tauri shell is real.
-
-- **The embedded-asset build renders**: the Phase-0 WebKitGTK blank-webview
-  bug is gone with current WebKitGTK/Tauri (verified: `tauri://localhost`
-  loads, workers + WASM boot, tiles render). The startup IPC bench is now
-  gated behind `?ipcbench`.
-- **Native open/save**: `ctrl+o` opens a score through the system dialog
-  (XDG portal via `rfd` — native on Wayland), `ctrl+s` saves silently to
-  the score's known path, `ctrl+shift+s` (or an unsaved score) opens
-  save-as and renames the tab to the chosen file. In browsers the same
-  keys fall back to the file input and a download. The *save* button uses
-  the same path-aware logic.
-- **Native MIDI**: WebKitGTK has no Web MIDI API, so the shell bridges it —
-  a `midir` (ALSA) thread connects every input port, streams note on/off
-  to the webview as Tauri events, and polls for hot-plug every 2s; the
-  frontend feeds them into the exact same pipeline as Web MIDI (status-bar
-  indicator, device list, chords, advance-on-release). Building the shell
-  now needs `libasound2-dev`.
-- **Shortcut editor** (🌣 in the header — the Phase 5 headliner): every
-  key binding routed through a **keymap** — the editor lists all ~30
-  actions by group with their current keys, click a binding and press the
-  new key to rebind (letters carry case, alt carries, shift is explicit
-  for symbols), duplicates get a soft amber warning, *reset all* restores
-  defaults, and overrides persist in localStorage. Physical-code bindings
-  (durations, fingering, voltas) and system chords are listed but locked.
-  The old two-line keyboard hint is gone — the editor is the help.
-- **Status-bar navigation aids**: a caret position readout right of the
-  INPUT indicator — `[ m 10, s 2, v 1, n 6 ]` (measure, staff, voice,
-  note) — and a **zoom** button left of the MIDI square replacing the
-  header select: click for **+ / − / reset** (50%–250% in 25% steps), or
-  use `ctrl +` / `ctrl −` / `ctrl 0` anywhere (browser page-zoom
-  suppressed).
-- **Random ids + repair**: `newId()` is now random (`bt-` + 8 base36
-  chars, crypto-sourced) — counter enumeration kept re-minting ids that
-  already existed in previously saved files, and no seeding survives
-  every path. For documents that already accumulated duplicates, the
-  **⟲id** header button regenerates every `xml:id` with all
-  `#references` (startid/endid/plist/…) rewritten to follow — one undo
-  step. Saves are now **pretty-printed** (two-space indent; elements with
-  text content stay compact so mixed content is untouched; the parser
-  drops whitespace-only text, so formatted files reload to the identical
-  tree).
-- **App icon**: generated from `icons/battuta.svg` (the ♭+ Bussotti-sharps
-  mark) — full Tauri set (`32/128/256/512 png`, multi-res `.ico`,
-  `.icns`) wired into `bundle.icon`.
-- **Clean shell UI**: the packaged app starts on a fresh blank score (no
-  demo fixtures — the fixtures select is dev-only), and all performance
-  numbers (render timings, measure/pool stats, per-tile ms labels) hide
-  behind a **⏱ toggle** in the header — off by default in the shell, on
-  in dev where the e2e suites read them.
-- **Shell smoke**: `sh spikes/verify-tauri.sh` (needs a display and
-  `libasound2-dev`) — builds the embedded bundle, launches it, and asserts
-  the page loads over `tauri://`, tiles render, `save_score` writes real
-  MEI to disk, and the MIDI bridge delivers a fake device and note into
-  the UI.
+Phases 0–5 are done; the full record, phase by phase, lives in
+[CHANGELOG.md](CHANGELOG.md). Next up: reference layers for
+transcription and OMR correction mode — see [PLANNING.md](PLANNING.md).
 
 ## Layout
 
@@ -474,6 +84,36 @@ The deb installs the app icon, a desktop entry with `Exec=battuta-editor
 double-clicking a `.mei` file opens it in battuta (the shell passes the
 launch argument to the frontend via a pull-based `initial_score` command;
 production builds no longer embed the fixtures corpus, ~13 MB lighter).
+
+### macOS and Windows
+
+Tauri does not cross-compile — each OS builds its own bundle (the
+webview is the native one: WKWebView on macOS, WebView2 on Windows).
+Two options:
+
+- **CI (recommended)**: push a `v*` tag (or run the *release* workflow
+  manually) — `.github/workflows/release.yml` builds a universal macOS
+  `.dmg`, a Windows NSIS `-setup.exe`, and the Linux deb/AppImage, and
+  attaches all of them to a draft GitHub release.
+- **Locally on a Mac**: install Xcode command-line tools, rustup, and
+  Node, then `npm ci && npm run build -w @battuta/core` and
+  `cd apps/editor && npx tauri build --bundles app,dmg` (add
+  `--target universal-apple-darwin` after
+  `rustup target add aarch64-apple-darwin x86_64-apple-darwin` for one
+  binary covering both CPU families).
+- **Locally on Windows**: install Visual Studio Build Tools (C++
+  workload), rustup (MSVC toolchain), and Node, then the same two npm
+  commands and `npx tauri build --bundles nsis`.
+
+Platform notes: `--bundles` on the command line overrides the
+Linux-only `deb,appimage` list in tauri.conf.json. MIDI needs no extra
+work — `midir` uses CoreMIDI/WinMM natively. The `.mei` association
+comes from `fileAssociations` (Info.plist on macOS, installer registry
+on Windows); on macOS the opened file arrives as an `Opened` run-loop
+event rather than argv, which the shell also handles. Unsigned builds
+trip Gatekeeper (right-click → Open the first time, or pay for a
+Developer ID + notarization) and Windows SmartScreen ("More info → Run
+anyway", or a code-signing certificate).
 
 The native Verovio benchmark needs a
 [verovio](https://github.com/rism-digital/verovio) checkout built with

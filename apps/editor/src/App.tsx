@@ -25,6 +25,9 @@ interface OpenDoc {
 }
 
 /** Tauri v2 global invoke (withGlobalTauri), or null in the browser. */
+/** Tab name from a native path: both separators (Windows), any case. */
+const docNameFromPath = (path: string): string => path.split(/[\\/]/).pop()?.replace(/\.(mei|xml)$/i, "") || "score";
+
 const tauriInvoke = (): ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null => {
   const t = (window as unknown as { __TAURI__?: { core?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> } } }).__TAURI__;
   return t?.core?.invoke ?? null;
@@ -574,7 +577,7 @@ export default function App() {
       .then((r) => {
         const pair = r as [string, string] | null;
         if (!pair) newDoc();
-        else openXml(pair[0].split("/").pop()!.replace(/\.(mei|xml)$/, ""), pair[1], pair[0]);
+        else openXml(docNameFromPath(pair[0]), pair[1], pair[0]);
       })
       .catch(() => newDoc());
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -776,8 +779,7 @@ export default function App() {
         const pair = r as [string, string] | null;
         if (!pair) return; // cancelled
         const [path, xml] = pair;
-        const name = path.split("/").pop()?.replace(/\.(mei|xml)$/, "") ?? "score";
-        openXml(name, xml, path);
+        openXml(docNameFromPath(path), xml, path);
       })
       .catch((e) => setNotice(`open failed: ${e}`));
   }, [openXml]);

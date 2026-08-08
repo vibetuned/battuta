@@ -129,16 +129,23 @@ fn spawn_midi(app: tauri::AppHandle) {
     });
 }
 
-/// The score path handed to us at launch (file association / CLI arg).
-/// The frontend PULLS this once it has mounted — pushing it as an event
-/// would race the subscriber, exactly like the MIDI device list did.
-struct InitialFile(Option<String>);
+/// The score path handed to us at launch — argv on Linux/Windows, the
+/// `Opened` run-loop event on macOS (which never uses argv for file
+/// associations). The frontend PULLS this once it has mounted — pushing
+/// it as an event would race the subscriber, exactly like the MIDI
+/// device list did.
+struct InitialFile(std::sync::Mutex<Option<String>>);
+
+fn is_score_path(p: &str) -> bool {
+    let l = p.to_lowercase();
+    l.ends_with(".mei") || l.ends_with(".xml")
+}
 
 #[tauri::command]
 fn initial_score(state: tauri::State<InitialFile>) -> Option<(String, String)> {
-    let path = state.0.as_ref()?;
-    let contents = std::fs::read_to_string(path).ok()?;
-    Some((path.clone(), contents))
+    let path = state.0.lock().ok()?.clone()?;
+    let contents = std::fs::read_to_string(&path).ok()?;
+    Some((path, contents))
 }
 
 fn main() {
@@ -156,9 +163,9 @@ fn main() {
     } else {
         eprintln!("[shell] mode: embedded assets (self-contained build) v{}", env!("CARGO_PKG_VERSION"));
     }
-    let initial = std::env::args().nth(1).filter(|a| a.ends_with(".mei") || a.ends_with(".xml"));
+    let initial = std::env::args().nth(1).filter(|a| is_score_path(a));
     tauri::Builder::default()
-        .manage(InitialFile(initial))
+        .manage(InitialFile(std::sync::Mutex::new(initial)))
         .setup(|app| {
             use tauri::Manager;
             spawn_midi(app.app_handle().clone());
@@ -192,6 +199,27 @@ fn main() {
                  }, 7000);",
             );
         })
-        .run(tauri::generate_context!())
-        .expect("error while running battuta");
+        .build(tauri::generate_context!())
+        .expect("error while building battuta")
+        .run(|_app, _event| {
+            // macOS delivers file-association opens as an Opened event, not
+            // argv. At launch it fires while the webview is still loading,
+            // so seeding the state here wins the race with the frontend's
+            // initial_score pull. (Dropping a file onto an already-running
+            // instance would additionally need a frontend listener.)
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = &_event {
+                use tauri::Manager;
+                let path = urls
+                    .iter()
+                    .filter_map(|u| u.to_file_path().ok())
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .find(|p| is_score_path(p));
+                if let Some(p) = path {
+                    if let Ok(mut slot) = _app.state::<InitialFile>().0.lock() {
+                        *slot = Some(p);
+                    }
+                }
+            }
+        });
 }

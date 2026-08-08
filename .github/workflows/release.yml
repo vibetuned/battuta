@@ -1,0 +1,55 @@
+# Builds battuta for Linux, macOS, and Windows and attaches the bundles
+# to a draft GitHub release. Tauri cannot cross-compile (each platform
+# needs its native webview toolchain), so a matrix build IS the way to
+# ship mac/windows artifacts without owning the machines.
+#
+# Trigger: push a tag like v0.0.1, or run manually from the Actions tab.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  bundle:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04 # oldest LTS = broadest glibc compatibility
+            args: --bundles deb,appimage
+          - os: macos-latest # one universal binary for Apple Silicon + Intel
+            args: --target universal-apple-darwin --bundles app,dmg
+          - os: windows-latest # NSIS setup.exe; WebView2 bootstrapped by the installer
+            args: --bundles nsis
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - name: add macOS universal targets
+        if: startsWith(matrix.os, 'macos')
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - name: linux system deps
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libasound2-dev librsvg2-dev build-essential curl wget file \
+            libssl-dev
+      - run: npm ci
+      - run: npm run build -w @battuta/core
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/editor
+          tagName: v__VERSION__
+          releaseName: battuta v__VERSION__
+          releaseDraft: true
+          args: ${{ matrix.args }}
