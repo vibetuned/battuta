@@ -34,6 +34,9 @@ export async function maybeRunIpcBench(): Promise<void> {
     log(`console.error: ${args.map(String).join(" ").slice(0, 300)}`);
     origError(...args);
   };
+  // The bench itself only runs when explicitly requested (Phase 0 tooling);
+  // the error forwarding above stays on for headless shell diagnostics.
+  if (!new URLSearchParams(location.search).has("ipcbench")) return;
   log(`bench starting; ua=${navigator.userAgent}`);
   // Payload sizes match measured tile/page SVG sizes (BENCHMARKS.md).
   const sizes = [

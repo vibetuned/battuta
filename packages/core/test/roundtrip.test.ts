@@ -15,8 +15,9 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DOMParser } from "@xmldom/xmldom";
+import { scoreFrom } from "./helpers.js";
 import { parse } from "./helpers.js";
-import { fromDom, serializeDocument, buildScore, ensureIds, findAll, seedIds, newId, type CoreElement, type DomLikeElement, type DomLikeNode } from "../src/index.js";
+import { fromDom, serializeDocument, buildScore, ensureIds, findAll, newId, serializePretty, buildEventIndex, RegenerateIdsCommand, type CoreElement, type DomLikeElement, type DomLikeNode } from "../src/index.js";
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), "../../../fixtures");
 
@@ -94,12 +95,68 @@ describe("unknown-content preservation", () => {
   });
 });
 
-describe("id counter seeding (saved-file reload)", () => {
-  it("newId never re-mints an id present in a loaded document", () => {
-    const el = parse('<measure xml:id="bt-zz"><staff xml:id="bt-3"><layer xml:id="other-id"/></staff></measure>');
-    seedIds(el);
-    const fresh = newId();
-    expect(fresh.startsWith("bt-")).toBe(true);
-    expect(parseInt(fresh.slice(3), 36)).toBeGreaterThan(parseInt("zz", 36));
+describe("random ids and regeneration", () => {
+  it("newId is random, well-formed, and does not collide at document scale", () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 5000; i++) {
+      const id = newId();
+      expect(/^bt-[0-9a-z]{8}$/.test(id)).toBe(true);
+      expect(seen.has(id)).toBe(false);
+      seen.add(id);
+    }
   });
+
+  it("RegenerateIdsCommand rewrites every id AND the references to them", () => {
+    const { score } = scoreFrom(`<?xml version="1.0"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei">
+  <music><body><mdiv><score>
+    <scoreDef meter.count="4" meter.unit="4"><staffGrp><staffDef n="1" lines="5" clef.shape="G" clef.line="2"/></staffGrp></scoreDef>
+    <section>
+      <measure n="1" xml:id="dup">
+        <staff n="1"><layer n="1"><note pname="c" oct="4" dur="2" xml:id="a1"/><note pname="d" oct="4" dur="2" xml:id="dup"/></layer></staff>
+        <slur startid="#a1" endid="#dup"/>
+        <arpeg plist="#a1 #dup" staff="1"/>
+      </measure>
+    </section>
+  </score></mdiv></body></music></mei>`);
+    const cmd = new RegenerateIdsCommand();
+    const before = serializePretty(score.scoreEl);
+    cmd.apply({ score, index: buildEventIndex(score) });
+    expect(cmd.count).toBe(3); // the three explicitly-identified elements
+    const ids = new Set<string>();
+    const walk = (el: CoreElement): void => {
+      const id = el.attrs["xml:id"];
+      if (id) {
+        expect(ids.has(id)).toBe(false); // duplicates repaired
+        ids.add(id);
+      }
+      for (const c of el.children) if (typeof c !== "string") walk(c);
+    };
+    walk(score.scoreEl);
+    // references follow the map (slur/arpeg point at real, fresh ids)
+    const slur = findAll(score.scoreEl, "slur")[0]!;
+    for (const ref of [slur.attrs["startid"], slur.attrs["endid"]]) {
+      expect(ids.has(ref!.slice(1))).toBe(true);
+    }
+    const plist = findAll(score.scoreEl, "arpeg")[0]!.attrs["plist"]!;
+    for (const tok of plist.split(" ")) expect(ids.has(tok.slice(1))).toBe(true);
+    cmd.revert({ score, index: buildEventIndex(score) });
+    expect(serializePretty(score.scoreEl)).toBe(before);
+  });
+
+  it("pretty save is a fixpoint and keeps mixed content compact", () => {
+    const xml = `<?xml version="1.0"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei">
+  <music><body><mdiv><score>
+    <scoreDef meter.count="4" meter.unit="4"><staffGrp><staffDef n="1" lines="5" clef.shape="G" clef.line="2"/></staffGrp></scoreDef>
+    <section><measure n="1"><staff n="1"><layer n="1"><note pname="c" oct="4" dur="1" xml:id="p1"/></layer></staff><harm startid="#p1" staff="1">Cmaj7</harm></measure></section>
+  </score></mdiv></body></music></mei>`;
+    const root = fromDom(new DOMParser().parseFromString(xml, "application/xml").documentElement as unknown as DomLikeElement);
+    const once = serializeDocument(root);
+    expect(once).toContain("\n  <music>"); // actually indented
+    expect(once).toContain(">Cmaj7</harm>"); // text content stays inline
+    const again = serializeDocument(fromDom(new DOMParser().parseFromString(once, "application/xml").documentElement as unknown as DomLikeElement));
+    expect(again).toBe(once);
+  });
+
 });

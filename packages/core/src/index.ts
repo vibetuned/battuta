@@ -8,7 +8,7 @@
 
 export const CORE_VERSION = "0.1.0";
 
-export { fromDom, serialize, serializeDocument, deepClone, findFirst, findAll, childElements, hashString, COMMENT_TAG, PI_TAG } from "./xml.js";
+export { fromDom, serialize, serializeDocument, serializePretty, deepClone, findFirst, findAll, childElements, hashString, COMMENT_TAG, PI_TAG } from "./xml.js";
 export type { CoreElement, DomLikeElement, DomLikeNode } from "./xml.js";
 
 export { buildScore, refreshScore } from "./score.js";
@@ -40,10 +40,10 @@ export type { MeasureContext, StaffContext, ClefContext, MeterContext } from "./
 export { synthesizeTile, synthesizeScoreDef, synthesizeRowHeader } from "./tile.js";
 export type { TileSlice, TileHeader, TileHeaderSpec } from "./tile.js";
 
-export { newId, ensureIds, seedIds } from "./ids.js";
+export { newId, ensureIds } from "./ids.js";
 
 export { EVENT_TAGS, EventIndex, buildEventIndex, caretLeft, caretRight, caretVertical, eventRange } from "./events.js";
 export type { CaretPosition, EventRef } from "./events.js";
 
-export { CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand } from "./commands.js";
+export { CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand, RegenerateIdsCommand } from "./commands.js";
 export type { Command, CommandContext, DirtyRegion } from "./commands.js";

@@ -306,3 +306,59 @@ export class CommandStack {
     return this.undoStack.length;
   }
 }
+
+/**
+ * Give EVERY identified element in the score a fresh random id, rewriting
+ * all #references (startid/endid/plist/sameas/…) to follow — the repair
+ * for documents that accumulated duplicate ids under the old counter
+ * scheme. Elements sharing a duplicated id each get a distinct fresh one;
+ * references resolve to the FIRST occurrence (they were ambiguous before).
+ */
+export class RegenerateIdsCommand implements Command {
+  readonly label = "regenerate ids";
+  /** How many ids were reassigned (set by apply). */
+  count = 0;
+  private mementos: { el: CoreElement; before: Record<string, string> }[] = [];
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    this.mementos = [];
+    this.count = 0;
+    const map = new Map<string, string>();
+    const walk = (el: CoreElement, fn: (e: CoreElement) => void): void => {
+      fn(el);
+      for (const c of childElements(el)) walk(c, fn);
+    };
+    walk(ctx.score.scoreEl, (el) => {
+      const old = el.attrs["xml:id"];
+      if (!old) return;
+      this.mementos.push({ el, before: { ...el.attrs } });
+      const fresh = newId();
+      if (!map.has(old)) map.set(old, fresh); // first occurrence wins refs
+      el.attrs["xml:id"] = fresh;
+      this.count++;
+    });
+    walk(ctx.score.scoreEl, (el) => {
+      let touched = false;
+      let snapshot: Record<string, string> | null = null;
+      for (const [k, v] of Object.entries(el.attrs)) {
+        if (k === "xml:id" || !v.includes("#")) continue;
+        const next = v
+          .split(/\s+/)
+          .map((tok) => (tok.startsWith("#") && map.has(tok.slice(1)) ? `#${map.get(tok.slice(1))!}` : tok))
+          .join(" ");
+        if (next !== v) {
+          if (!touched && !this.mementos.some((m) => m.el === el)) snapshot = { ...el.attrs, [k]: v };
+          touched = true;
+          el.attrs[k] = next;
+        }
+      }
+      if (snapshot) this.mementos.push({ el, before: snapshot });
+    });
+    return ctx.score.measures.map((_, i) => ({ measureIndex: i, staffN: 0 }));
+  }
+
+  revert(ctx: CommandContext): DirtyRegion[] {
+    for (const m of [...this.mementos].reverse()) m.el.attrs = { ...m.before };
+    return ctx.score.measures.map((_, i) => ({ measureIndex: i, staffN: 0 }));
+  }
+}

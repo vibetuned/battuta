@@ -5,8 +5,8 @@
  * version, and tiles re-render off cache-key changes alone.
  */
 import {
-  buildScore, resolveContexts, buildEventIndex, ensureIds, seedIds, fromDom, serialize, serializeDocument, childElements, findAll, meterCapacity, frac,
-  CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand,
+  buildScore, resolveContexts, buildEventIndex, ensureIds, fromDom, serialize, serializeDocument, childElements, findAll, meterCapacity, frac,
+  CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand, RegenerateIdsCommand,
   copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, AddVoiceCommand, RemoveVoiceCommand, ToggleRepeatCommand, ToggleVoltaCommand,
   SetHarmCommand, harmTextAt, ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, TupletCommand, AutoBeamCommand, UnbeamThen, measuresOf, ChangeContextCommand, planContextChange,
   type CoreScore, type MeasureContext, type EventIndex, type Command, type DirtyRegion, type DomLikeElement, type DomLikeNode,
@@ -51,9 +51,6 @@ export class DocumentSession {
     // content kept verbatim, placement adjusted for compatibility.
     this.root.children.unshift(...prologueComments);
     this.score = buildScore(this.root);
-    // Files saved by battuta carry bt-* ids: move the id counter past them
-    // or this session would re-mint duplicates (caret/controls chaos).
-    seedIds(this.root);
     ensureIds(this.score.scoreDef);
     for (const m of this.score.measures) ensureIds(m);
     this.contexts = resolveContexts(this.score);
@@ -123,6 +120,12 @@ export class DocumentSession {
   }
   chordNoteAccidental(chordId: string, noteId: string, accid: "s" | "f" | "n" | "x"): DirtyRegion[] {
     return this.execute(new ChordNoteAccidentalCommand(chordId, noteId, accid));
+  }
+  /** Repair tool: fresh random ids everywhere, references rewritten. */
+  regenerateIds(): number {
+    const cmd = new RegenerateIdsCommand();
+    this.execute(cmd);
+    return cmd.count;
   }
   deleteToRests(ids: string[]): DirtyRegion[] {
     return this.execute(new UnbeamThen(new DeleteToRestsCommand(ids), measuresOf(this.score, this.index, ids)));

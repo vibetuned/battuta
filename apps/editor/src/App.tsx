@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, isHarmText, harmSuggestions, HARM_CHARS, type HarmKind, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
 import { RenderPool, type TileResult } from "./render/renderPool";
+import { loadKeymap, saveKeymapOverride, clearKeymapOverrides, keyMatches, type Keymap } from "./keymap";
+import { ShortcutEditor } from "./ShortcutEditor";
 import { DocumentSession } from "./session";
 
 const FIXTURES = [
@@ -18,6 +20,14 @@ interface OpenDoc {
   id: number;
   name: string;
   session: DocumentSession;
+  /** Disk path when opened/saved natively (Tauri shell). */
+  path?: string;
+}
+
+/** Tauri v2 global invoke (withGlobalTauri), or null in the browser. */
+const tauriInvoke = (): ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null => {
+  const t = (window as unknown as { __TAURI__?: { core?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> } } }).__TAURI__;
+  return t?.core?.invoke ?? null;
 }
 
 interface TileState {
@@ -105,7 +115,20 @@ ${Array.from({ length: 4 }, (_, i) => `      <measure n="${i + 1}"><staff n="1">
 `;
 
 /** Status-bar select chrome (dark, borderless like VSCode indicators). */
-const STATUSBAR_SELECT: React.CSSProperties = { background: "transparent", color: "#cdd", border: "1px solid #3a4656", borderRadius: 3, fontSize: 12, padding: "0 2px" };
+const STATUSBAR_SELECT: React.CSSProperties = {
+  // appearance:none + color-scheme:dark: WebKitGTK renders native select
+  // popups from the GTK side (tauri#11755) — this combination is the
+  // closest CSS gets; the chevron returns via the .sbsel background image.
+  appearance: "none",
+  WebkitAppearance: "none",
+  colorScheme: "dark",
+  background: "#1f2733",
+  color: "#cdd",
+  border: "1px solid #3a4656",
+  borderRadius: 3,
+  fontSize: 12,
+  padding: "0 16px 0 4px",
+};
 
 /** Clefs offered by the status-bar context select. */
 const CLEFS: Record<string, { shape: string; line: number; dis?: number; disPlace?: "above" | "below" }> = {
@@ -126,8 +149,8 @@ const durIndicator = (dur: string, dots: number): string => {
   return `${dur === "breve" ? "2/1" : `1/${dur}`}${dot} ${DUR_GLYPHS[dur] ?? dur}${dot}${key ? ` (${key})` : ""}`;
 };
 
-export const ZOOM_LEVELS = [0.3, 0.4, 0.5, 0.7, 0.9, 1.1, 1.3] as const;
-export const DEFAULT_ZOOM = 0.9;
+export const ZOOM_LEVELS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5] as const;
+export const DEFAULT_ZOOM = 1;
 
 /**
  * Virtualized, edit-aware tile grid. Visibility (IntersectionObserver) and
@@ -429,6 +452,10 @@ export default function App() {
   const [version, setVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /** ⏱ toggle: render timings, measure counts, pool stats (DEV default). */
+  const [showPerf, setShowPerf] = useState<boolean>(import.meta.env.DEV);
+  const [keymap, setKeymap] = useState<Keymap>(loadKeymap);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   /** Harmony lane: typed chord symbols / roman numerals at the caret. */
   const [harmLane, setHarmLane] = useState<HarmKind | null>(null);
   const [harmBuffer, setHarmBuffer] = useState("");
@@ -479,12 +506,12 @@ export default function App() {
 
   /** Open a document from raw MEI text (fixtures and disk files alike). */
   const openXml = useCallback(
-    (name: string, xml: string) => {
+    (name: string, xml: string, path?: string) => {
       setError(null);
       try {
         const s = new DocumentSession(xml);
-        if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__SESSION__ = s;
-        const doc: OpenDoc = { id: nextDocId++, name, session: s };
+        if (import.meta.env.DEV || "__TAURI__" in window) (window as unknown as Record<string, unknown>).__SESSION__ = s;
+        const doc: OpenDoc = { id: nextDocId++, name, session: s, ...(path ? { path } : {}) };
         setDocs((ds) => [...ds, doc]);
         setActiveId(doc.id);
         resetDocUiState();
@@ -512,7 +539,7 @@ export default function App() {
   const newDoc = useCallback(() => {
     try {
       const s = new DocumentSession(blankScore());
-      if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__SESSION__ = s;
+      if (import.meta.env.DEV || "__TAURI__" in window) (window as unknown as Record<string, unknown>).__SESSION__ = s;
       const id = nextDocId++;
       setDocs((ds) => {
         const n = ds.filter((d) => d.name.startsWith("untitled-")).length + 1;
@@ -532,7 +559,24 @@ export default function App() {
   useEffect(() => {
     if (openedInitial.current) return;
     openedInitial.current = true;
-    openDoc(FIXTURES[0]!);
+    if (import.meta.env.DEV) {
+      openDoc(FIXTURES[0]!);
+      return;
+    }
+    // Shell: a score double-clicked in the file manager arrives as a
+    // launch argument; pull it (a Rust-side emit would race this mount).
+    const invoke = tauriInvoke();
+    if (!invoke) {
+      newDoc();
+      return;
+    }
+    invoke("initial_score")
+      .then((r) => {
+        const pair = r as [string, string] | null;
+        if (!pair) newDoc();
+        else openXml(pair[0].split("/").pop()!.replace(/\.(mei|xml)$/, ""), pair[1], pair[0]);
+      })
+      .catch(() => newDoc());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -544,7 +588,7 @@ export default function App() {
     resetDocUiState();
     const s = docs.find((d) => d.id === id)?.session;
     if (s) {
-      if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__SESSION__ = s;
+      if (import.meta.env.DEV || "__TAURI__" in window) (window as unknown as Record<string, unknown>).__SESSION__ = s;
       setVersion(s.version);
     }
   };
@@ -559,7 +603,7 @@ export default function App() {
       setZoom(next ? zoomByDoc.current.get(next.id) ?? DEFAULT_ZOOM : DEFAULT_ZOOM);
       resetDocUiState();
       if (next) {
-        if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__SESSION__ = next.session;
+        if (import.meta.env.DEV || "__TAURI__" in window) (window as unknown as Record<string, unknown>).__SESSION__ = next.session;
         setVersion(next.session.version);
       }
     }
@@ -720,13 +764,81 @@ export default function App() {
     [session],
   );
 
+  /** ctrl+o: native dialog in the shell, the hidden file input in browsers. */
+  const openScore = useCallback(() => {
+    const invoke = tauriInvoke();
+    if (!invoke) {
+      fileInputRef.current?.click();
+      return;
+    }
+    invoke("open_score")
+      .then((r) => {
+        const pair = r as [string, string] | null;
+        if (!pair) return; // cancelled
+        const [path, xml] = pair;
+        const name = path.split("/").pop()?.replace(/\.(mei|xml)$/, "") ?? "score";
+        openXml(name, xml, path);
+      })
+      .catch((e) => setNotice(`open failed: ${e}`));
+  }, [openXml]);
+
+  /** ctrl+s / ctrl+shift+s: silent save to the known path, else save-as
+   * dialog (shell); browsers keep the download. */
+  const saveActive = useCallback(
+    (saveAs = false) => {
+      if (!session || !active) return;
+      const xml = session.saveDocument();
+      const invoke = tauriInvoke();
+      if (!invoke) {
+        const blob = new Blob([xml], { type: "application/xml" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `${active.name}.mei`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        setNotice(`downloaded ${active.name}.mei`);
+        return;
+      }
+      if (!saveAs && active.path) {
+        invoke("save_score", { path: active.path, contents: xml })
+          .then(() => setNotice(`saved ${active.path}`))
+          .catch((e) => setNotice(`save failed: ${e}`));
+        return;
+      }
+      invoke("save_score_as", { contents: xml, suggested: `${active.name}.mei` })
+        .then((r) => {
+          const path = r as string | null;
+          if (!path) return; // cancelled
+          const name = path.split("/").pop()?.replace(/\.mei$/, "") ?? active.name;
+          setDocs((ds) => ds.map((d) => (d.id === active.id ? { ...d, path, name } : d)));
+          setNotice(`saved ${path}`);
+        })
+        .catch((e) => setNotice(`save failed: ${e}`));
+    },
+    [session, active],
+  );
+  const saveDoc = () => saveActive(false);
+
+  /** ctrl+± and the loupe buttons step through the fixed zoom levels. */
+  const zoomStep = useCallback(
+    (dir: -1 | 1) => {
+      setZoom((z) => {
+        const at = ZOOM_LEVELS.reduce((best, lv, i) => (Math.abs(lv - z) < Math.abs(ZOOM_LEVELS[best]! - z) ? i : best), 0);
+        return ZOOM_LEVELS[Math.max(0, Math.min(ZOOM_LEVELS.length - 1, at + dir))]!;
+      });
+    },
+    [],
+  );
+
   // Keyboard: navigation, selection, edits, undo/redo.
   useEffect(() => {
     if (!session) return;
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      if (shortcutsOpen) return; // the shortcut editor owns the keyboard
       const mod = e.ctrlKey || e.metaKey;
+      const hit = (id: string) => keyMatches(keymap[id], e);
 
       if (mod && e.key.toLowerCase() === "z") {
         e.preventDefault();
@@ -734,6 +846,31 @@ export default function App() {
           e.shiftKey ? session.redo() : session.undo();
           afterCommand(session);
         }
+        return;
+      }
+      if (mod && (e.key === "+" || e.key === "=")) {
+        e.preventDefault(); // never the browser's page zoom
+        zoomStep(1);
+        return;
+      }
+      if (mod && e.key === "-") {
+        e.preventDefault();
+        zoomStep(-1);
+        return;
+      }
+      if (mod && e.key === "0") {
+        e.preventDefault();
+        setZoom(DEFAULT_ZOOM);
+        return;
+      }
+      if (mod && e.key.toLowerCase() === "s") {
+        e.preventDefault(); // the browser's own save dialog must never win
+        saveActive(e.shiftKey);
+        return;
+      }
+      if (mod && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        openScore();
         return;
       }
       if (mod && e.key.toLowerCase() === "y") {
@@ -775,7 +912,7 @@ export default function App() {
         return;
       }
       // Numpad +/−/* mirror the +m/−m/⧉m buttons (physical codes: layout-proof).
-      if (e.code === "NumpadAdd" || e.code === "NumpadSubtract" || e.code === "NumpadMultiply") {
+      if (!mod && (e.code === "NumpadAdd" || e.code === "NumpadSubtract" || e.code === "NumpadMultiply")) {
         e.preventDefault();
         structural(e.code === "NumpadAdd" ? "insert" : e.code === "NumpadSubtract" ? "delete" : "duplicate");
         return;
@@ -783,10 +920,10 @@ export default function App() {
       if (!caret) return;
 
       // --- note input mode: letters enter, digits set duration ---
-      if (!entryMode && e.key === "i" && !mod) {
+      if (!entryMode && hit("inputMode") && !mod) {
         e.preventDefault();
         setEntryMode(true);
-        setNotice("note input: a–g pitch · shift+A–G chord · r rest · 1–7 duration (5=quarter) · . dot · s/v/n sharp/flat/natural · t tie · , stacc · ; accent · shift+F/P dynamics · esc exit");
+        setNotice("note input: a–g pitch · shift+A–G chord · 1–7 duration · esc exit · all keys under 🌣");
         return;
       }
       if (accidPick) {
@@ -868,7 +1005,7 @@ export default function App() {
         }
         return;
       }
-      if (e.key === "S") {
+      if (hit("slurDoubleSharp") && !mod) {
         e.preventDefault();
         // With a selection: slur between its ends (unchanged). On a single
         // target: DOUBLE SHARP — shift+s, mirroring plain s (tester ask).
@@ -909,42 +1046,42 @@ export default function App() {
         };
         // marcato: the accent key SHIFTED (AZERTY shift+; = "." · QWERTY
         // shift+; = ":" · shift+. = ">"); the dot keeps the unshifted forms
-        if (e.shiftKey && (e.key === "." || e.key === ":" || e.key === ">") && target) {
+        if (hit("marcato") && target) {
           markTry(() => session.toggleArtic([target], "marc"), "marcato");
           return;
         }
         // staccatissimo: the staccato key shifted ("<" QWERTY, "?" AZERTY)
-        if ((e.key === "<" || e.key === "?") && target) {
+        if (hit("staccatissimo") && target) {
           markTry(() => session.toggleArtic([target], "stacciss"), "staccatissimo");
           return;
         }
-        if (e.key === "h" && target) {
+        if (hit("fermata") && target) {
           markTry(() => session.toggleMark(target, "fermata"), "fermata");
           return;
         }
-        if (e.key === "o" && target) {
+        if (hit("coda") && target) {
           markTry(() => session.toggleMark(target, "coda"), "coda");
           return;
         }
         // simile slash: the ù/' key (physical Quote) replaces one beat
-        if ((e.key === "'" || e.key === "ù") && target) {
+        if (hit("simile") && target) {
           markTry(() => session.simile(target), "simile");
           return;
         }
         // measure repeats: shift on the same key ("%" AZERTY, '"' QWERTY)
         // cycles content → % → %% → empty at the caret's voice
-        if ((e.key === "%" || e.key === '"') && caret) {
+        if (hit("measureRepeat") && caret) {
           markTry(() => session.measureRepeat(caret), "measure repeat");
           return;
         }
         // one key circles the four ornaments: arpeggio (chords) → tremolo
         // → trill → mordent → off
-        if (e.key === "w" && target) {
+        if (hit("ornament") && target) {
           markTry(() => session.cycleOrnament(target), "ornament");
           return;
         }
       }
-      if (e.key === "t" && !mod && selection.length >= 2) {
+      if (hit("tie") && !mod && selection.length >= 2) {
         e.preventDefault();
         // Multi-measure tie: the selected run becomes one tie chain
         // (i/m/t), one undo step; same selection again unties it.
@@ -957,7 +1094,7 @@ export default function App() {
         }
         return;
       }
-      if (e.key === "t" && !mod) {
+      if (hit("tie") && !mod) {
         // Tie the note back to its predecessor — ACROSS the barline when it
         // opens the measure (same gesture everywhere); only with no previous
         // note at all (piece start, rest before) does it tie forward.
@@ -978,7 +1115,7 @@ export default function App() {
         }
         return;
       }
-      if (e.key === "m" && !mod && !e.altKey && selection.length === 2) {
+      if (hit("merge") && !mod && selection.length === 2) {
         // Two selected notes: same pitch still merges; DIFFERENT pitches
         // cycle the first into a grace note — acciaccatura → appoggiatura
         // → none — folding its time into the second (tester ask).
@@ -1012,7 +1149,7 @@ export default function App() {
           return;
         }
       }
-      if (e.key === "T" && !mod && !e.altKey && selection.length >= 1) {
+      if (hit("tuplet") && !mod && selection.length >= 1) {
         // shift+t: 3 selected notes -> triplet, 6 -> sextuplet; a selection
         // inside a tuplet unwraps it (freed time <-> rests after).
         e.preventDefault();
@@ -1025,7 +1162,7 @@ export default function App() {
         }
         return;
       }
-      if (e.key === "P" && !mod && !e.altKey && selection.length >= 2) {
+      if (hit("pedal") && !mod && selection.length >= 2) {
         // Pedal line over the selection: down at the first note, up at the
         // last; the same selection removes it.
         e.preventDefault();
@@ -1056,7 +1193,7 @@ export default function App() {
           return;
         }
       }
-      if (e.key === "r" && !mod && !e.altKey && !entryMode && block) {
+      if (hit("repeatBarlines") && !mod && !entryMode && block) {
         // "r" on a block selection toggles repeat barlines around it — the
         // bis. In input mode r still enters rests.
         e.preventDefault();
@@ -1069,7 +1206,7 @@ export default function App() {
         }
         return;
       }
-      if (e.key === "p" && !mod && !e.altKey && selection.length >= 2) {
+      if (hit("dynamics") && !mod && selection.length >= 2) {
         // With a block of notes selected, "p" cycles a hairpin over it:
         // none -> crescendo -> decrescendo -> none (single-note "p" still
         // cycles p/f dynamics).
@@ -1083,7 +1220,7 @@ export default function App() {
         }
         return;
       }
-      if (e.altKey && !mod && e.key.toLowerCase() === "b") {
+      if (hit("beam") && !mod) {
         // alt+b: auto-beam the caret's measure (or every measure the
         // selection touches) — beam groups span at most half the measure.
         e.preventDefault();
@@ -1161,28 +1298,28 @@ export default function App() {
           }
           return;
         }
-        if (e.key === "r") {
+        if (hit("rest")) {
           e.preventDefault();
           enterAtCaret({ kind: "rest" });
           return;
         }
-        if ((e.key === "s" || e.key === "v" || e.key === "n") && applyTo) {
+        if ((hit("sharp") || hit("flat") || hit("natural")) && applyTo) {
           e.preventDefault();
-          const accid = e.key === "v" ? "f" : (e.key as "s" | "n");
+          const accid: "s" | "f" | "n" = hit("flat") ? "f" : hit("sharp") ? "s" : "n";
           if (openAccidPicker(applyTo, accid)) return;
           session.toggleAccidental([applyTo], accid);
           afterCommand(session);
           return;
         }
-        if ((e.key === "," || e.key === ";") && applyTo) {
+        if ((hit("staccato") || hit("accent")) && applyTo) {
           e.preventDefault();
-          session.toggleArtic([applyTo], e.key === "," ? "stacc" : "acc");
+          session.toggleArtic([applyTo], hit("staccato") ? "stacc" : "acc");
           afterCommand(session);
           return;
         }
         // Dynamics: plain "p" cycles none -> p -> f -> none (layout-proof;
         // alt+f/p kept as a secondary, though browsers may steal alt+F).
-        if (!e.altKey && e.key === "p" && applyTo) {
+        if (hit("dynamics") && applyTo) {
           e.preventDefault();
           session.cycleDynam(applyTo);
           afterCommand(session);
@@ -1201,7 +1338,7 @@ export default function App() {
       // applies to a real event — the just-entered note, or the note/rest at
       // the caret (existing notes includable). Subsequent entries inherit
       // the resulting dot state; there is no separate prospective toggle.
-      if ((((e.key === "." || e.key === ":") && !e.shiftKey) || e.code === "NumpadDecimal") && !mod && !e.altKey) {
+      if ((hit("dot") || (e.code === "NumpadDecimal" && !e.altKey)) && !mod) {
         const target = entryMode && lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId;
         if (!target) return;
         e.preventDefault();
@@ -1220,17 +1357,17 @@ export default function App() {
       }
 
       // merge with next / split in half — same-pitch cleanup for AMT output.
-      if ((e.key === "m" || e.key === "x") && !mod && !e.altKey) {
+      if ((hit("merge") || hit("split")) && !mod) {
         const target = entryMode && lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId;
         if (!target) return;
         e.preventDefault();
         try {
-          if (e.key === "m") session.mergeWithNext(target);
+          if (hit("merge")) session.mergeWithNext(target);
           else session.splitInHalf(target);
           afterCommand(session);
           setNotice(null);
         } catch (err) {
-          setNotice(`${e.key === "m" ? "merge" : "split"} refused: ${err instanceof Error ? err.message : err}`);
+          setNotice(`${hit("merge") ? "merge" : "split"} refused: ${err instanceof Error ? err.message : err}`);
         }
         return;
       }
@@ -1331,11 +1468,12 @@ export default function App() {
             setCaret(next);
           }
         }
-      } else if (e.key === "s" || e.key === "f" || e.key === "n") {
+      } else if (hit("sharp") || hit("flat") || hit("natural")) {
         const ids = editTargets();
         if (!ids.length) return;
-        if (ids.length === 1 && openAccidPicker(ids[0]!, e.key as "s" | "f" | "n")) return;
-        session.toggleAccidental(ids, e.key as "s" | "f" | "n");
+        const accid: "s" | "f" | "n" = hit("flat") ? "f" : hit("sharp") ? "s" : "n";
+        if (ids.length === 1 && openAccidPicker(ids[0]!, accid)) return;
+        session.toggleAccidental(ids, accid);
         afterCommand(session);
       } else if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
@@ -1368,13 +1506,14 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [session, caret, block, editTargets, afterCommand, entryMode, caretId, enterAtCaret, nearestOctave, structural, selection, accidPick, openAccidPicker, harmLane, harmBuffer]);
+  }, [session, caret, block, editTargets, afterCommand, entryMode, caretId, enterAtCaret, nearestOctave, structural, selection, accidPick, openAccidPicker, harmLane, harmBuffer, saveActive, openScore, zoomStep, keymap, shortcutsOpen]);
 
   // --- Web MIDI: note-ons enter at the caret while input mode is active;
   // keys held together build a CHORD (like MuseScore). Devices hot-plug via
   // onstatechange, and the HUD shows what is connected.
   const [midiDevices, setMidiDevices] = useState<string[]>([]);
   const [midiPanel, setMidiPanel] = useState(false);
+  const [zoomPanel, setZoomPanel] = useState(false);
   const heldNotes = useRef(new Set<number>());
   const entryModeRef = useRef(entryMode);
   entryModeRef.current = entryMode;
@@ -1486,7 +1625,27 @@ export default function App() {
       onstatechange: (() => void) | null;
     }
     const nav = navigator as Navigator & { requestMIDIAccess?: () => Promise<MidiAccess> };
-    if (!nav.requestMIDIAccess) return;
+    if (!nav.requestMIDIAccess) {
+      // WebKitGTK has no Web MIDI: in the Tauri shell the Rust side bridges
+      // midir over events — same note/device pipeline from here on.
+      const t = (window as unknown as { __TAURI__?: { event?: { listen?: (ev: string, cb: (e: { payload: unknown }) => void) => Promise<() => void> } } }).__TAURI__;
+      if (!t?.event?.listen) return;
+      const subs = [
+        t.event.listen("midi-note", (e) => {
+          const [note, on] = e.payload as [number, boolean];
+          if (on) midiNoteOnRef.current(note);
+          else midiNoteOff(note);
+        }),
+        t.event.listen("midi-devices", (e) => {
+          const names = e.payload as string[];
+          // the bridge re-emits every 2s: only re-render on real changes
+          setMidiDevices((prev) => (prev.length === names.length && prev.every((n, i) => n === names[i]) ? prev : names));
+        }),
+      ];
+      return () => {
+        for (const s of subs) void s.then((un) => un());
+      };
+    }
     let closed = false;
     const onMessage = (e: { data: Uint8Array | null }) => {
       const d = e.data;
@@ -1665,15 +1824,7 @@ export default function App() {
         (block ? ` · block m${block.measureFrom + 1}–${block.measureTo + 1} / staff ${block.staffFrom}–${block.staffTo}` : "") +
         "";
 
-  const saveDoc = () => {
-    if (!session || !active) return;
-    const blob = new Blob([session.saveDocument()], { type: "application/xml" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `${active.name}-edited.mei`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
+
 
 
   const selectionCss = selection.length
@@ -1695,8 +1846,8 @@ export default function App() {
   }
 
   return (
-    <div style={{ fontFamily: "system-ui, sans-serif", padding: 12, paddingBottom: 36 }}>
-      <header style={{ display: "flex", gap: 10, alignItems: "baseline", marginBottom: 4, flexWrap: "wrap" }}>
+    <div className={showPerf ? undefined : "no-perf"} style={{ fontFamily: "system-ui, sans-serif", padding: 12, paddingBottom: 36 }}>
+      <header style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap", position: "sticky", top: 0, zIndex: 35, background: "#fff", margin: "-12px -12px 4px", padding: "12px 12px 6px", borderBottom: "1px solid #e3e7ec" }}>
         <strong>battuta</strong>
         <span className="tabs">
           {docs.map((d) => (
@@ -1718,14 +1869,16 @@ export default function App() {
             +
           </button>
         </span>
-        <select value="" onChange={(e) => { e.target.blur(); if (e.target.value) openDoc(e.target.value); }}>
-          <option value="">open…</option>
-          {FIXTURES.map((f) => (
-            <option key={f} value={f}>
-              {f}
-            </option>
-          ))}
-        </select>
+        {import.meta.env.DEV && (
+          <select value="" onChange={(e) => { e.target.blur(); if (e.target.value) openDoc(e.target.value); }}>
+            <option value="">open…</option>
+            {FIXTURES.map((f) => (
+              <option key={f} value={f}>
+                {f}
+              </option>
+            ))}
+          </select>
+        )}
         <input
           ref={fileInputRef}
           type="file"
@@ -1742,29 +1895,57 @@ export default function App() {
         />
         <button onClick={() => fileInputRef.current?.click()}>open file…</button>
         <button onClick={() => setView(view === "tiles" ? "pages" : "tiles")}>{view === "tiles" ? "page view" : "edit view"}</button>
-        <select value={zoom} onChange={(e) => { e.target.blur(); setZoom(Number(e.target.value)); }} title="zoom (staff size)">
-          {ZOOM_LEVELS.map((z) => (
-            <option key={z} value={z}>
-              {Math.round(z * 100)}%
-            </option>
-          ))}
-        </select>
+
         <button onClick={() => structural("insert")}>+m</button>
         <button onClick={() => structural("delete")}>−m</button>
         <button onClick={() => structural("duplicate")}>⧉m</button>
         <button onClick={saveDoc}>save</button>
+        <button title="show/hide performance numbers" data-perf-toggle onClick={() => setShowPerf((p) => !p)} style={{ opacity: showPerf ? 1 : 0.45 }}>
+          ⏱
+        </button>
+        <button
+          title="regenerate all xml:ids — repairs documents that accumulated duplicated ids"
+          data-regen-ids
+          onClick={() => {
+            if (!session) return;
+            const n = session.regenerateIds();
+            setCaret(null);
+            setSelection([]);
+            setBlock(null);
+            anchor.current = null;
+            lastEntered.current = null;
+            afterCommand(session);
+            setNotice(`${n} ids regenerated (references follow; ctrl+z restores)`);
+          }}
+        >
+          ⟲id
+        </button>
+        <button title="shortcuts — view and rebind every key" data-shortcuts-toggle onClick={() => setShortcutsOpen(true)}>
+          🌣
+        </button>
         <span style={{ color: "#666", fontSize: 13 }} data-status>
-          {status}
+          {showPerf ? status : ""}
         </span>
       </header>
-      <div style={{ color: "#999", fontSize: 12, marginBottom: 2 }}>
-        {entryMode
-          ? "INPUT · a–g pitch · shift+A–G chord · r rest · 7..1 duration (5=quarter) · . dot · s/v/n ♯/♭/♮ · t tie · , stacc · ; accent · shift+F/P dyn · esc exit"
-          : "click note: caret · drag staves: block · i input mode · ←→ move · ↑↓ staff · shift extend · alt+↑↓ transpose · s/f/n accidental · m merge · x split · del → rest · bksp erases previous · ctrl+c/v copy/paste · ctrl+z undo"}
-      </div>
       <div style={{ color: notice?.startsWith("paste refused") ? "#c22" : "#276", fontSize: 12, marginBottom: 4, minHeight: 15 }} data-notice>
         {notice ?? ""}
       </div>
+      {shortcutsOpen && (
+        <ShortcutEditor
+          keymap={keymap}
+          onRebind={(id, b) => {
+            saveKeymapOverride(id, b);
+            setKeymap(loadKeymap());
+            setNotice(`"${keymap[id]?.label ?? id}" rebound to ${b.keys.join(" ")}`);
+          }}
+          onReset={() => {
+            clearKeymapOverrides();
+            setKeymap(loadKeymap());
+            setNotice("shortcuts reset to defaults");
+          }}
+          onClose={() => setShortcutsOpen(false)}
+        />
+      )}
       {accidPick && (
         <div data-accid-pick style={{ position: "fixed", left: accidPick.x, top: accidPick.y, background: "#233", color: "#fff", padding: "4px 8px", borderRadius: 4, fontSize: 12, zIndex: 40, pointerEvents: "none", boxShadow: "0 2px 8px rgba(0,0,0,.35)" }}>
           {accidPick.accid === "s" ? "♯" : accidPick.accid === "f" ? "♭" : accidPick.accid === "x" ? "𝄪" : "♮"} on{" "}
@@ -1778,6 +1959,10 @@ export default function App() {
         .tile svg, .rowhdr svg { width: 100%; height: 100%; display: block; }
         .tile g.mNum { display: none; } /* every tile is a "system start"; our .ms label already numbers it */
         .tile .ms { position: absolute; top: -4px; right: 2px; font-size: 10px; color: #bbb; z-index: 1; }
+        .no-perf .tile .ms { display: none; }
+        [data-statusbar] { color-scheme: dark; }
+        [data-statusbar] select option { background: #1f2733; color: #cdd; }
+        .sbsel { background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23718096'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 4px center; }
         .tile .placeholder { background: #f6f6f6; border-radius: 4px;
           color: #bbb; font-size: 11px; display: flex; align-items: center; justify-content: center; }
         .pages .page { max-width: 900px; margin: 0 auto 16px; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
@@ -1832,13 +2017,16 @@ export default function App() {
         >
           {entryMode ? durIndicator(entryDur, entryDots) : "INPUT (i)"}
         </button>
+        <span data-caret-indicator style={{ color: caret ? "#cdd" : "#566", fontVariantNumeric: "tabular-nums" }} title="caret: measure, staff, voice, note">
+          {caret ? `[ m ${caret.measureIndex + 1}, s ${caret.staffN}, v ${caret.layerN}, n ${caret.eventIndex + 1} ]` : "[ — ]"}
+        </span>
         <span style={{ flex: 1 }} />
         {/* Current context at the caret; picking a value applies the change
             there. Blur on change: a focused select swallows the keyboard. */}
         <select
           value=""
           title="staves (add below / remove the caret's)"
-          style={STATUSBAR_SELECT}
+          className="sbsel" style={STATUSBAR_SELECT}
           disabled={!session}
           onChange={(e) => {
             const op = e.target.value;
@@ -1876,7 +2064,7 @@ export default function App() {
         <select
           value=""
           title="voices (caret staff: switch, add, remove)"
-          style={STATUSBAR_SELECT}
+          className="sbsel" style={STATUSBAR_SELECT}
           disabled={!session || !caret}
           onChange={(e) => {
             const op = e.target.value;
@@ -1927,7 +2115,7 @@ export default function App() {
         <select
           value=""
           title="harmony lanes (chord symbols above, roman numerals below)"
-          style={STATUSBAR_SELECT}
+          className="sbsel" style={STATUSBAR_SELECT}
           disabled={!session || !caret}
           onChange={(e) => {
             const kind = e.target.value as HarmKind | "";
@@ -1942,7 +2130,7 @@ export default function App() {
           <option value="chord">chord symbols (above)</option>
           <option value="rna">roman numerals (below)</option>
         </select>
-        <select value={shownClef} title="clef at caret (staff-local)" style={STATUSBAR_SELECT} disabled={!session} onChange={(e) => { e.target.blur(); applyContext("clef", e.target.value); }}>
+        <select value={shownClef} title="clef at caret (staff-local)" className="sbsel" style={STATUSBAR_SELECT} disabled={!session} onChange={(e) => { e.target.blur(); applyContext("clef", e.target.value); }}>
           {shownClef && !CLEFS[shownClef] && <option value={shownClef}>{shownClef}</option>}
           {!shownClef && <option value="">clef</option>}
           {Object.keys(CLEFS).map((k) => (
@@ -1951,7 +2139,7 @@ export default function App() {
             </option>
           ))}
         </select>
-        <select value={shownKeysig} title="key signature at caret (score-wide)" style={STATUSBAR_SELECT} disabled={!session} onChange={(e) => { e.target.blur(); applyContext("key", e.target.value); }}>
+        <select value={shownKeysig} title="key signature at caret (score-wide)" className="sbsel" style={STATUSBAR_SELECT} disabled={!session} onChange={(e) => { e.target.blur(); applyContext("key", e.target.value); }}>
           {!shownKeysig && <option value="">key</option>}
           {["7f", "6f", "5f", "4f", "3f", "2f", "1f", "0", "1s", "2s", "3s", "4s", "5s", "6s", "7s"].map((k) => (
             <option key={k} value={k}>
@@ -1959,13 +2147,38 @@ export default function App() {
             </option>
           ))}
         </select>
-        <select value={shownMeter} title="meter at caret (score-wide; refuses if content no longer fits)" style={STATUSBAR_SELECT} disabled={!session} onChange={(e) => { e.target.blur(); applyContext("meter", e.target.value); }}>
+        <select value={shownMeter} title="meter at caret (score-wide; refuses if content no longer fits)" className="sbsel" style={STATUSBAR_SELECT} disabled={!session} onChange={(e) => { e.target.blur(); applyContext("meter", e.target.value); }}>
           {shownMeter && !["4/4", "3/4", "2/4", "2/2", "6/8", "9/8", "12/8", "5/4", "7/8", "5/8", "3/8"].includes(shownMeter) && <option value={shownMeter}>{shownMeter}</option>}
           {!shownMeter && <option value="">meter</option>}
           {["4/4", "3/4", "2/4", "2/2", "6/8", "9/8", "12/8", "5/4", "7/8", "5/8", "3/8"].map((m) => (
             <option key={m}>{m}</option>
           ))}
         </select>
+        <span style={{ position: "relative" }}>
+          {zoomPanel && (
+            <div data-zoom-panel style={{ position: "absolute", right: 0, bottom: 26, background: "#233040", color: "#dde", padding: "6px 8px", borderRadius: 4, whiteSpace: "nowrap", boxShadow: "0 2px 10px rgba(0,0,0,.4)", display: "flex", gap: 6, alignItems: "center" }}>
+              <button data-zoom-out title="zoom out (ctrl −)" onClick={() => zoomStep(-1)} style={{ fontSize: 13, padding: "0 8px" }}>
+                −
+              </button>
+              <span style={{ fontVariantNumeric: "tabular-nums", minWidth: 38, textAlign: "center" }}>{Math.round(zoom * 100)}%</span>
+              <button data-zoom-in title="zoom in (ctrl +)" onClick={() => zoomStep(1)} style={{ fontSize: 13, padding: "0 8px" }}>
+                +
+              </button>
+              <button data-zoom-reset title="reset zoom (ctrl 0)" onClick={() => setZoom(DEFAULT_ZOOM)} style={{ fontSize: 12, padding: "0 8px" }}>
+                reset
+              </button>
+            </div>
+          )}
+          <button
+            data-zoom-toggle
+            data-zoom={zoom}
+            title={`zoom ${Math.round(zoom * 100)}% (ctrl +/− · ctrl 0 resets)`}
+            onClick={() => setZoomPanel((o) => !o)}
+            style={{ border: "none", cursor: "pointer", borderRadius: 3, padding: "1px 8px", fontSize: 12, fontFamily: "inherit", background: "transparent", color: "#aab" }}
+          >
+            zoom
+          </button>
+        </span>
         <span style={{ position: "relative" }}>
           {midiPanel && (
             <div data-midi-list style={{ position: "absolute", right: 0, bottom: 26, background: "#233040", color: "#dde", padding: "6px 10px", borderRadius: 4, whiteSpace: "nowrap", boxShadow: "0 2px 10px rgba(0,0,0,.4)" }}>

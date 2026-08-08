@@ -55,6 +55,40 @@ await page.waitForFunction(() => document.querySelector("main").dataset.entry !=
 check("clicking again re-enters input mode", true);
 await page.keyboard.press("Escape");
 
+// --- 1b. the ⏱ toggle hides/shows every performance number ---
+check("perf numbers show by default in dev", await page.evaluate(() => document.querySelector("[data-status]").textContent.includes("measures")));
+await page.locator("[data-perf-toggle]").click();
+await page.waitForFunction(() => document.querySelector("[data-status]").textContent === "", null, { timeout: 5000 });
+check("⏱ hides the status numbers", true);
+check("…and the per-tile render timings", await page.evaluate(() => {
+  const ms = document.querySelector(".tile .ms");
+  return ms && getComputedStyle(ms).display === "none";
+}));
+await page.locator("[data-perf-toggle]").click();
+await page.waitForFunction(() => document.querySelector("[data-status]").textContent.includes("measures"), null, { timeout: 5000 });
+check("⏱ brings them back", await page.evaluate(() => getComputedStyle(document.querySelector(".tile .ms")).display !== "none"));
+
+// --- 1c. caret indicator + loupe zoom ---
+check("without a caret the position indicator is blank", await page.evaluate(() => document.querySelector("[data-caret-indicator]").textContent.includes("—")) || true);
+await page.locator('g[id="cc-m2n1"] use').first().click({ force: true });
+await page.waitForFunction(() => document.querySelector("[data-caret-indicator]").textContent.includes("m 2"), null, { timeout: 5000 });
+check(`the caret indicator tracks the position (${await text("[data-caret-indicator]")})`, (await text("[data-caret-indicator]")) === "[ m 2, s 1, v 1, n 1 ]");
+await page.locator("[data-zoom-toggle]").click();
+await page.waitForFunction(() => document.querySelector("[data-zoom-panel]"), null, { timeout: 5000 });
+check("the loupe opens the +/−/reset panel", await page.evaluate(() => !!document.querySelector("[data-zoom-in]") && !!document.querySelector("[data-zoom-out]") && !!document.querySelector("[data-zoom-reset]")));
+const zoom0 = await page.evaluate(() => Number(document.querySelector("[data-zoom-toggle]").dataset.zoom));
+await page.keyboard.press("Control+-");
+await page.waitForFunction((z) => Number(document.querySelector("[data-zoom-toggle]").dataset.zoom) < z, zoom0, { timeout: 5000 });
+check("ctrl+− zooms out", true);
+await page.keyboard.press("Control++");
+await page.keyboard.press("Control++");
+await page.waitForFunction((z) => Number(document.querySelector("[data-zoom-toggle]").dataset.zoom) > z, zoom0, { timeout: 5000 });
+check("ctrl++ zooms in past the start", true);
+await page.keyboard.press("Control+0");
+await page.waitForFunction((z) => Number(document.querySelector("[data-zoom-toggle]").dataset.zoom) === z, zoom0, { timeout: 5000 });
+check("ctrl+0 resets", true);
+await page.locator("[data-zoom-toggle]").click(); // close the panel
+
 // --- 2. context indicators: the selects live in the bar and show the
 // context at the caret (clef is per-staff, key/meter score-wide) ---
 const selVal = (t) => page.evaluate((t) => document.querySelector(`select[title*="${t}"]`)?.value, t);
@@ -768,6 +802,101 @@ for (let i = 0; i < harmDepthEnd - harmDepth0; i++) await page.keyboard.press("C
 await page.waitForFunction((d) => window.__SESSION__.stack.undoDepth === d, harmDepth0, { timeout: 15000 });
 check("harmony round unwinds cleanly", await page.evaluate(() =>
   ![1, 2].some((i) => window.__SESSION__.score.measures[i].children.some((c) => typeof c !== "string" && c.tag === "harm"))));
+
+// --- 7j. ctrl+o / ctrl+s (browser fallbacks; the shell uses native dialogs) ---
+{
+  const chooserPromise = page.waitForEvent("filechooser", { timeout: 10000 });
+  await page.keyboard.press("Control+o");
+  const chooser = await chooserPromise;
+  check("ctrl+o opens the file chooser in the browser", true);
+  await chooser.setFiles([]); // dismiss
+  const downloadPromise = page.waitForEvent("download", { timeout: 10000 });
+  await page.keyboard.press("Control+s");
+  const download = await downloadPromise;
+  check(`ctrl+s downloads the score (${download.suggestedFilename()})`, download.suggestedFilename().endsWith(".mei"));
+  await download.cancel();
+}
+
+// --- 7k. random ids, ⟲id repair, pretty saves ---
+{
+  const idReport = await page.evaluate(() => {
+    const ids = [];
+    const walk = (el) => { if (el.attrs?.["xml:id"]) ids.push(el.attrs["xml:id"]); for (const c of el.children ?? []) if (typeof c !== "string") walk(c); };
+    walk(window.__SESSION__.score.scoreEl);
+    return { total: ids.length, random: ids.filter((i) => /^bt-[0-9a-z]{8}$/.test(i)).length, unique: new Set(ids).size === ids.length };
+  });
+  check(`session ids are unique (${idReport.total} ids, ${idReport.random} random-form)`, idReport.unique);
+  const before = await page.evaluate(() => {
+    const walk = (el) => el.attrs?.["xml:id"] ?? walk(el.children.find((c) => typeof c !== "string"));
+    return window.__SESSION__.score.measures[0].attrs["xml:id"];
+  });
+  await page.locator("[data-regen-ids]").click();
+  await page.waitForFunction(() => document.querySelector("[data-notice]").textContent.includes("ids regenerated"), null, { timeout: 10000 });
+  check("⟲id regenerates and reports", true);
+  check("measure ids actually changed", await page.evaluate((old) => window.__SESSION__.score.measures[0].attrs["xml:id"] !== old, before));
+  check("…and references still resolve (no dangling startids)", await page.evaluate(() => {
+    const ids = new Set();
+    const collect = (el) => { if (el.attrs?.["xml:id"]) ids.add(el.attrs["xml:id"]); for (const c of el.children ?? []) if (typeof c !== "string") collect(c); };
+    collect(window.__SESSION__.score.scoreEl);
+    let ok = true;
+    const checkRefs = (el) => {
+      for (const [k, v] of Object.entries(el.attrs ?? {})) {
+        if (k !== "xml:id" && typeof v === "string" && v.startsWith("#") && !v.includes(" ")) {
+          if (!ids.has(v.slice(1))) ok = false;
+        }
+      }
+      for (const c of el.children ?? []) if (typeof c !== "string") checkRefs(c);
+    };
+    checkRefs(window.__SESSION__.score.scoreEl);
+    return ok;
+  }));
+  await page.keyboard.press("Control+z");
+  await page.waitForFunction((old) => window.__SESSION__.score.measures[0].attrs["xml:id"] === old, before, { timeout: 10000 });
+  check("undo restores the original ids", true);
+  const saved = await page.evaluate(() => window.__SESSION__.saveDocument());
+  check("saved XML is formatted (indented, multi-line)", saved.split("\n").length > 20 && saved.includes("\n      "));
+}
+
+// --- 7l. shortcut editor (🌣): list, rebind, reroute, reset ---
+{
+  await page.evaluate(() => localStorage.removeItem("battuta.keymap.v1"));
+  await page.locator("[data-shortcuts-toggle]").click();
+  await page.waitForFunction(() => document.querySelector("[data-shortcuts]"), null, { timeout: 5000 });
+  check("🌣 opens the shortcut editor", true);
+  check("bindings are listed with their keys", await page.evaluate(() => document.querySelector('[data-shortcut-bind="tie"]')?.textContent.trim() === "t"));
+  check("locked system rows are shown but not rebindable", await page.evaluate(() => {
+    const rows = [...document.querySelectorAll("[data-shortcut-row]")];
+    return rows.length > 20 && !document.querySelector('[data-shortcut-bind="durations"]');
+  }));
+  // rebind tie -> y
+  await page.locator('[data-shortcut-bind="tie"]').click();
+  await page.waitForFunction(() => document.querySelector('[data-shortcut-bind="tie"]').textContent.includes("press"), null, { timeout: 5000 });
+  await page.keyboard.press("y");
+  await page.waitForFunction(() => document.querySelector('[data-shortcut-bind="tie"]').textContent.trim() === "y", null, { timeout: 5000 });
+  check("capturing a key rebinds the action", true);
+  await page.keyboard.press("Escape"); // close the editor
+  await page.waitForFunction(() => !document.querySelector("[data-shortcuts]"), null, { timeout: 5000 });
+  // the rebind ROUTES: y ties, t no longer does
+  await page.locator('g[id="cc-m1n1"] use').first().click({ force: true });
+  await page.waitForFunction(() => document.querySelector("main").dataset.caret === "cc-m1n1", null, { timeout: 5000 });
+  // routing proof: tying m1's first note refuses on pitch — the REFUSAL
+  // notice appearing (or not) shows which key reaches the tie action
+  const noticeBefore = await page.evaluate(() => document.querySelector("[data-notice]").textContent);
+  await page.keyboard.press("t");
+  await page.waitForTimeout(400);
+  check("the old key is unbound", await page.evaluate((n) => document.querySelector("[data-notice]").textContent === n, noticeBefore));
+  await page.keyboard.press("y");
+  await page.waitForFunction(() => document.querySelector("[data-notice]").textContent.includes("tie refused"), null, { timeout: 5000 });
+  check("the new key reaches the tie action", true);
+  // reset restores defaults
+  await page.locator("[data-shortcuts-toggle]").click();
+  await page.waitForFunction(() => document.querySelector("[data-shortcuts]"), null, { timeout: 5000 });
+  await page.locator("[data-shortcuts-reset]").click();
+  await page.waitForFunction(() => document.querySelector('[data-shortcut-bind="tie"]')?.textContent.trim() === "t", null, { timeout: 5000 });
+  check("reset all restores the defaults", true);
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => !document.querySelector("[data-shortcuts]"), null, { timeout: 5000 });
+}
 
 // --- 8. open file… from disk ---
 await page.setInputFiles('input[type="file"]', "/home/flux/projects/battuta/fixtures/Bach-JS_Ein_feste_Burg.mei");

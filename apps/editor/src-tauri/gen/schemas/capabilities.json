@@ -1,1 +1,1 @@
-{}
+{"default":{"identifier":"default","description":"core APIs for the main window (event listeners for MIDI)","local":true,"windows":["*"],"permissions":["core:default"]}}

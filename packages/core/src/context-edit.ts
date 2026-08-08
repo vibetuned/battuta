@@ -73,6 +73,14 @@ interface InsertedDef {
 
 const CLEF_ATTRS = ["clef.shape", "clef.line", "clef.dis", "clef.dis.place"];
 
+function setInlineClefAttrs(el: CoreElement, clef: ClefSpec): void {
+  for (const a of ["shape", "line", "dis", "dis.place"]) delete el.attrs[a];
+  el.attrs["shape"] = clef.shape;
+  el.attrs["line"] = String(clef.line);
+  if (clef.dis) el.attrs["dis"] = String(clef.dis);
+  if (clef.disPlace) el.attrs["dis.place"] = clef.disPlace;
+}
+
 function setClefAttrs(el: CoreElement, clef: ClefSpec): void {
   for (const a of CLEF_ATTRS) delete el.attrs[a];
   el.attrs["clef.shape"] = clef.shape;
@@ -190,22 +198,33 @@ export class ChangeContextCommand implements Command {
         }
       }
       if (spec.clef) {
-        let staffDef = preceding.find((d) => d.tag === "staffDef" && Number(d.attrs["n"] ?? "1") === spec.staffN);
-        if (staffDef) this.touchAttrs(staffDef);
-        else {
-          staffDef = { tag: "staffDef", attrs: { n: String(spec.staffN) }, children: [] };
-          ensureIds(staffDef);
-          const measureAt = parent.children.indexOf(measure);
-          parent.children.splice(measureAt, 0, staffDef);
-          this.insertedDefs.push({ parent, el: staffDef });
+        // Mid-piece clef changes are INLINE <clef> elements at the end of
+        // the PREVIOUS measure's layer — the engraver's position (before
+        // the barline), and the only form Verovio applies in full-document
+        // renders (interleaved staffDef clefs are ignored there).
+        const prev = ctx.score.measures[this.measureIndex - 1];
+        const staff = prev && childElements(prev).find((c) => c.tag === "staff" && Number(c.attrs["n"] ?? "1") === spec.staffN);
+        const layer = staff && childElements(staff).find((c) => c.tag === "layer");
+        if (!layer) throw new Error(`no staff ${spec.staffN} before m${this.measureIndex + 1} to carry the clef change`);
+        const last = layer.children[layer.children.length - 1];
+        if (last && typeof last !== "string" && last.tag === "clef") {
+          this.touchAttrs(last);
+          setInlineClefAttrs(last, spec.clef);
+        } else {
+          const clefEl: CoreElement = { tag: "clef", attrs: {}, children: [] };
+          setInlineClefAttrs(clefEl, spec.clef);
+          ensureIds(clefEl);
+          layer.children.push(clefEl);
+          this.insertedDefs.push({ parent: layer, el: clefEl });
         }
-        setClefAttrs(staffDef, spec.clef);
       }
     }
     // Inserted defs must enter the score's item walk for the resolver.
     if (this.insertedDefs.length) refreshScore(ctx.score);
-    // Context propagates to everything downstream.
-    return ctx.score.measures.slice(this.measureIndex).map((_, i) => ({ measureIndex: this.measureIndex + i, staffN: this.spec.staffN ?? 0 }));
+    // Context propagates downstream; an inline clef also touches the
+    // PREVIOUS measure's content (the glyph before the barline).
+    const from = Math.max(0, this.spec.clef && this.measureIndex > 0 ? this.measureIndex - 1 : this.measureIndex);
+    return ctx.score.measures.slice(from).map((_, i) => ({ measureIndex: from + i, staffN: this.spec.staffN ?? 0 }));
   }
 
   revert(ctx: CommandContext): DirtyRegion[] {
@@ -217,6 +236,7 @@ export class ChangeContextCommand implements Command {
     for (const r of [...this.removedChildren].reverse()) r.parent.children.splice(r.at, 0, r.el);
     for (const m of [...this.attrMementos].reverse()) m.el.attrs = { ...m.before };
     if (this.insertedDefs.length) refreshScore(ctx.score);
-    return ctx.score.measures.slice(this.measureIndex).map((_, i) => ({ measureIndex: this.measureIndex + i, staffN: this.spec.staffN ?? 0 }));
+    const from = Math.max(0, this.spec.clef && this.measureIndex > 0 ? this.measureIndex - 1 : this.measureIndex);
+    return ctx.score.measures.slice(from).map((_, i) => ({ measureIndex: from + i, staffN: this.spec.staffN ?? 0 }));
   }
 }

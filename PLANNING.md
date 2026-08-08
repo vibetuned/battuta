@@ -99,6 +99,15 @@ Preferences, keymap customization, session restore, crash-safe autosave (command
 > as typed <harm> lanes with closed grammars, autosuggest, and
 > enter-commit-advance — the editor's v1 feature set is complete;
 > packaging is next.
+> Packaging (started): embedded-asset Tauri build RENDERS (old WebKitGTK
+> blank-webview bug gone); native ctrl+o/ctrl+s/ctrl+shift+s via rfd
+> portal dialogs with path-aware saves; browser fallbacks kept;
+> spikes/verify-tauri.sh smoke (needs a display). Native MIDI bridged via
+> midir/ALSA events (WebKitGTK has no Web MIDI); needs libasound2-dev.
+> Remaining: release bundling (deb/AppImage), file associations, file
+> watching. Icon done (battuta.svg → full set). Shortcut editor done
+> (🌣: keymap-routed bindings, rebind/reset, localStorage). Ready for
+> the 0.0.1 release.
 > Landed late in Phase 4 alongside: context editing (clef/key/meter
 > dropdowns), cross-measure slurs (selection + S), tie chains (selection
 > + t), per-note chord accidental picker, edge-tie render stubs.

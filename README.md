@@ -145,7 +145,7 @@ Phase 4 in progress (2026-08-02): note entry + round-trip hardening.
   zero new ids. Compatibility note: Verovio rejects comments before the
   root element (PIs are fine), so prologue comments are preserved by moving
   them just inside `<mei>`.
-- 170 core tests; the property fuzzer covers the whole command pool (a
+- 172 core tests; the property fuzzer covers the whole command pool (a
   stale modulo had silenced part of it) and promptly caught a real bug:
   measures inserted or duplicated at a mid-piece context change landed
   AFTER the interleaved def, adopting the next section's meter — a
@@ -166,6 +166,10 @@ Phase 4 in progress (2026-08-02): note entry + round-trip hardening.
   (text-editor semantics); Delete stays at the caret.
 - **Context editing** (clef… / key… / meter… header dropdowns): change or
   add a clef, key signature, or meter at the caret's measure, MEI-natively.
+  Mid-piece clef changes are written as **inline `<clef>` elements before
+  the barline** (the engraver's position) — interleaved `staffDef` clefs
+  render in tiles but are ignored by Verovio's full-document renders, so
+  the inline form is what survives page view and export.
   At measure 1 the initial `scoreDef`/`staffDef` attributes are edited in
   place (conflicting child elements and per-staff overrides removed);
   mid-piece an interleaved `scoreDef` (key/meter, score-wide) or
@@ -354,6 +358,62 @@ Phase 5 in progress (2026-08-05): polish.
   **open file…** loads any `.mei`/`.xml` from disk into a new tab named
   after the file. `node spikes/verify-phase5.mjs` (140 checks).
 
+Packaging in progress (2026-08-05): the Tauri shell is real.
+
+- **The embedded-asset build renders**: the Phase-0 WebKitGTK blank-webview
+  bug is gone with current WebKitGTK/Tauri (verified: `tauri://localhost`
+  loads, workers + WASM boot, tiles render). The startup IPC bench is now
+  gated behind `?ipcbench`.
+- **Native open/save**: `ctrl+o` opens a score through the system dialog
+  (XDG portal via `rfd` — native on Wayland), `ctrl+s` saves silently to
+  the score's known path, `ctrl+shift+s` (or an unsaved score) opens
+  save-as and renames the tab to the chosen file. In browsers the same
+  keys fall back to the file input and a download. The *save* button uses
+  the same path-aware logic.
+- **Native MIDI**: WebKitGTK has no Web MIDI API, so the shell bridges it —
+  a `midir` (ALSA) thread connects every input port, streams note on/off
+  to the webview as Tauri events, and polls for hot-plug every 2s; the
+  frontend feeds them into the exact same pipeline as Web MIDI (status-bar
+  indicator, device list, chords, advance-on-release). Building the shell
+  now needs `libasound2-dev`.
+- **Shortcut editor** (🌣 in the header — the Phase 5 headliner): every
+  key binding routed through a **keymap** — the editor lists all ~30
+  actions by group with their current keys, click a binding and press the
+  new key to rebind (letters carry case, alt carries, shift is explicit
+  for symbols), duplicates get a soft amber warning, *reset all* restores
+  defaults, and overrides persist in localStorage. Physical-code bindings
+  (durations, fingering, voltas) and system chords are listed but locked.
+  The old two-line keyboard hint is gone — the editor is the help.
+- **Status-bar navigation aids**: a caret position readout right of the
+  INPUT indicator — `[ m 10, s 2, v 1, n 6 ]` (measure, staff, voice,
+  note) — and a **zoom** button left of the MIDI square replacing the
+  header select: click for **+ / − / reset** (50%–250% in 25% steps), or
+  use `ctrl +` / `ctrl −` / `ctrl 0` anywhere (browser page-zoom
+  suppressed).
+- **Random ids + repair**: `newId()` is now random (`bt-` + 8 base36
+  chars, crypto-sourced) — counter enumeration kept re-minting ids that
+  already existed in previously saved files, and no seeding survives
+  every path. For documents that already accumulated duplicates, the
+  **⟲id** header button regenerates every `xml:id` with all
+  `#references` (startid/endid/plist/…) rewritten to follow — one undo
+  step. Saves are now **pretty-printed** (two-space indent; elements with
+  text content stay compact so mixed content is untouched; the parser
+  drops whitespace-only text, so formatted files reload to the identical
+  tree).
+- **App icon**: generated from `icons/battuta.svg` (the ♭+ Bussotti-sharps
+  mark) — full Tauri set (`32/128/256/512 png`, multi-res `.ico`,
+  `.icns`) wired into `bundle.icon`.
+- **Clean shell UI**: the packaged app starts on a fresh blank score (no
+  demo fixtures — the fixtures select is dev-only), and all performance
+  numbers (render timings, measure/pool stats, per-tile ms labels) hide
+  behind a **⏱ toggle** in the header — off by default in the shell, on
+  in dev where the e2e suites read them.
+- **Shell smoke**: `sh spikes/verify-tauri.sh` (needs a display and
+  `libasound2-dev`) — builds the embedded bundle, launches it, and asserts
+  the page loads over `tauri://`, tiles render, `save_score` writes real
+  MEI to disk, and the MIDI bridge delivers a fake device and note into
+  the UI.
+
 ## Layout
 
 ```
@@ -379,16 +439,41 @@ Spikes and benchmarks: see the reproduce block at the top of
 ## Native/Tauri notes
 
 The Tauri shell lives in `apps/editor/src-tauri` (Tauri 2; needs
-`libwebkit2gtk-4.1-dev` and Rust). To run it against the dev server:
+`libwebkit2gtk-4.1-dev` and Rust). Two modes — the binary prints which one
+it is running at startup:
 
 ```sh
-npm run dev --workspace @battuta/editor   # serves on :5173
-cd apps/editor/src-tauri && cargo run --release
+# Self-contained (embedded assets, no server — what users will run):
+npm run build -w @battuta/editor
+cd apps/editor/src-tauri && cargo app     # alias: run --release --features custom-protocol
+
+# Against the dev server (hot reload while hacking):
+npm run dev -w @battuta/editor            # serves on :5173
+cd apps/editor/src-tauri && cargo run --release   # loads localhost:5173 — BLANK without the dev server
 ```
 
-Self-contained builds (`cargo build --release --features custom-protocol`
-after `npm run build -w @battuta/editor`) currently show a blank webview on
-WebKitGTK 2.52 — see the packaging note at the end of BENCHMARKS.md.
+The old WebKitGTK 2.52 blank-webview issue no longer reproduces;
+`sh spikes/verify-tauri.sh` smoke-tests the self-contained build
+(including launching with a `.mei` argument — the file-association path).
+
+### Packaging (0.0.1)
+
+```sh
+npm install                     # @tauri-apps/cli is a root devDependency
+cd apps/editor && npx tauri build
+```
+
+Artifacts land in `apps/editor/src-tauri/target/release/bundle/`:
+`deb/battuta_0.0.1_amd64.deb` and `appimage/battuta_0.0.1_amd64.AppImage`.
+Bundling needs `libasound2-dev` (MIDI) and, for the AppImage,
+`librsvg2-dev`; in sandboxes without FUSE set `APPIMAGE_EXTRACT_AND_RUN=1`.
+
+The deb installs the app icon, a desktop entry with `Exec=battuta-editor
+%F`, and a shared-mime-info package mapping `*.mei` →
+`application/x-mei+xml` — after `sudo apt install ./battuta_0.0.1_amd64.deb`,
+double-clicking a `.mei` file opens it in battuta (the shell passes the
+launch argument to the frontend via a pull-based `initial_score` command;
+production builds no longer embed the fixtures corpus, ~13 MB lighter).
 
 The native Verovio benchmark needs a
 [verovio](https://github.com/rism-digital/verovio) checkout built with

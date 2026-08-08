@@ -42,13 +42,23 @@ describe("ChangeContextCommand", () => {
     expect(defs).toHaveLength(1);
   });
 
-  it("clef changes are staff-local via an interleaved staffDef", () => {
+  it("clef changes are staff-local via an INLINE clef before the barline", () => {
     const { score } = scoreFrom(mei(`${measure(1)} ${measure(2)}`));
     new ChangeContextCommand(1, { clef: { shape: "C", line: 3 }, staffN: 2 }).apply(ctxFor(score));
     const contexts = resolveContexts(score);
     expect(contexts[1]!.get(2)!.clef).toEqual({ shape: "C", line: 3 });
     expect(contexts[1]!.get(1)!.clef).toEqual({ shape: "G", line: 2 }); // untouched
     expect(contexts[0]!.get(2)!.clef).toEqual({ shape: "F", line: 4 }); // before: unchanged
+    // the encoding survives full-document renders: an inline <clef> at the
+    // end of the PREVIOUS measure's staff-2 layer (not a staffDef)
+    const clefs = findAll(score.measures[0]!, "clef");
+    expect(clefs).toHaveLength(1);
+    expect(clefs[0]!.attrs["shape"]).toBe("C");
+    expect(score.items.filter((i) => i.kind === "def")).toHaveLength(0);
+    // changing again MERGES into the same inline clef (no stacking)
+    new ChangeContextCommand(1, { clef: { shape: "F", line: 3 }, staffN: 2 }).apply(ctxFor(score));
+    expect(findAll(score.measures[0]!, "clef")).toHaveLength(1);
+    expect(resolveContexts(score)[1]!.get(2)!.clef).toEqual({ shape: "F", line: 3 });
   });
 
   it("meter plan refuses when existing content no longer fits, allows mRests", () => {

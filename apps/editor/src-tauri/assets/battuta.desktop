@@ -1,0 +1,10 @@
+[Desktop Entry]
+Categories={{categories}}
+Comment={{comment}}
+Exec={{exec}} %F
+Icon={{icon}}
+Name={{name}}
+StartupWMClass=battuta-editor
+Terminal=false
+Type=Application
+MimeType=application/x-mei+xml;

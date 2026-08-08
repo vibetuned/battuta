@@ -1,16 +1,62 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "battuta",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "identifier": "dev.battuta.editor",
   "build": {
+    "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173"
   },
   "app": {
     "withGlobalTauri": true,
-    "windows": [{ "title": "battuta", "width": 1280, "height": 860 }],
-    "security": { "csp": null }
+    "windows": [
+      {
+        "title": "battuta",
+        "width": 1280,
+        "height": 860
+      }
+    ],
+    "security": {
+      "csp": null
+    }
   },
-  "bundle": { "active": false, "icon": ["icons/icon.png"] }
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "appimage"],
+    "category": "Music",
+    "shortDescription": "MEI score editor",
+    "longDescription": "battuta is a local-first music score editor built on the MEI encoding: the MEI document is the single source of truth, Verovio does all rendering, and every edit is a reversible command.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png",
+      "icons/icon.ico",
+      "icons/icon.icns"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["mei"],
+        "name": "mei",
+        "description": "MEI music score",
+        "mimeType": "application/x-mei+xml",
+        "role": "Editor"
+      }
+    ],
+    "linux": {
+      "deb": {
+        "depends": ["libasound2t64 | libasound2"],
+        "desktopTemplate": "assets/battuta.desktop",
+        "files": {
+          "/usr/share/mime/packages/battuta.xml": "assets/battuta-mime.xml"
+        }
+      },
+      "appimage": {
+        "files": {
+          "/usr/share/mime/packages/battuta.xml": "assets/battuta-mime.xml"
+        }
+      }
+    }
+  }
 }

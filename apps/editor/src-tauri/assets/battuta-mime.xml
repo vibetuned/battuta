@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Teaches shared-mime-info what a .mei file is; the .desktop file's
+     MimeType line is inert without this mapping installed. -->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-mei+xml">
+    <comment>MEI music score</comment>
+    <sub-class-of type="application/xml"/>
+    <glob pattern="*.mei"/>
+    <magic priority="60">
+      <match type="string" offset="0:256" value="music-encoding.org"/>
+    </magic>
+  </mime-type>
+</mime-info>

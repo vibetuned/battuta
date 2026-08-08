@@ -85,8 +85,26 @@ export function serialize(el: CoreElement): string {
  * Serialize a full document: XML declaration, prologue nodes (xml-model
  * processing instructions, license comments), then the root element.
  */
+/**
+ * Human-readable serialization: elements indented two spaces per level.
+ * Elements with TEXT content serialize compactly on one line (indenting
+ * inside mixed content would change it); fromDom drops whitespace-only
+ * text nodes, so pretty output reloads to the identical tree (fixpoint).
+ */
+export function serializePretty(el: CoreElement, depth = 0): string {
+  const pad = "  ".repeat(depth);
+  if (el.tag === COMMENT_TAG || el.tag === PI_TAG) return pad + serialize(el);
+  const hasText = el.children.some((c) => typeof c === "string");
+  if (el.children.length === 0 || hasText) return pad + serialize(el);
+  const attrs = Object.entries(el.attrs)
+    .map(([k, v]) => ` ${k}="${escapeAttr(v)}"`)
+    .join("");
+  const inner = el.children.map((c) => serializePretty(c as CoreElement, depth + 1)).join("\n");
+  return `${pad}<${el.tag}${attrs}>\n${inner}\n${pad}</${el.tag}>`;
+}
+
 export function serializeDocument(root: CoreElement, prologue: CoreElement[] = []): string {
-  return [`<?xml version="1.0" encoding="UTF-8"?>`, ...prologue.map(serialize), serialize(root)].join("\n") + "\n";
+  return [`<?xml version="1.0" encoding="UTF-8"?>`, ...prologue.map(serialize), serializePretty(root)].join("\n") + "\n";
 }
 
 export function deepClone(el: CoreElement): CoreElement {
