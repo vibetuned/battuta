@@ -942,6 +942,19 @@ export default function App() {
           return;
         }
       }
+      if (e.key === "T" && !mod && !e.altKey && selection.length >= 1) {
+        // shift+t: 3 selected notes -> triplet, 6 -> sextuplet; a selection
+        // inside a tuplet unwraps it (freed time <-> rests after).
+        e.preventDefault();
+        try {
+          session.toggleTuplet(selection);
+          afterCommand(session);
+          setNotice(null);
+        } catch (err) {
+          setNotice(`tuplet refused: ${err instanceof Error ? err.message : err}`);
+        }
+        return;
+      }
       if (e.key === "P" && !mod && !e.altKey && selection.length >= 2) {
         // Pedal line over the selection: down at the first note, up at the
         // last; the same selection removes it.

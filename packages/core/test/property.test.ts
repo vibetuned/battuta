@@ -14,7 +14,7 @@ import {
   TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, DeleteToRestsCommand,
   PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, AddVoiceCommand, RemoveVoiceCommand, ToggleRepeatCommand,
   ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand,
-  ChainTieCommand, ChordNoteAccidentalCommand, ToggleFingCommand, CycleHairpinCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, ToggleVoltaCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, AutoBeamCommand, UnbeamMeasuresCommand, chordNotes, MergeEventsCommand, SplitEventCommand, ChangeContextCommand, planContextChange,
+  ChainTieCommand, ChordNoteAccidentalCommand, ToggleFingCommand, CycleHairpinCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, ToggleVoltaCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, TupletCommand, AutoBeamCommand, UnbeamMeasuresCommand, chordNotes, MergeEventsCommand, SplitEventCommand, ChangeContextCommand, planContextChange,
   validateMeasureDurations, frac,
   type Command, type CommandContext, type CoreScore,
 } from "../src/index.js";
@@ -46,7 +46,7 @@ function makeCommand(ctx: CommandContext, d: CmdDescriptor): Command | null {
   const PNAMES = ["c", "d", "e", "f", "g", "a", "b"] as const;
   // Modulo must cover every case + default, or the tail of the pool is
   // silently never fuzzed (this was % 12 for a while: cases 12+ were dead).
-  switch (d.kind % 32) {
+  switch (d.kind % 33) {
     case 0: return new TransposeStepCommand(ids, (d.param % 5) - 2 || 1);
     case 1: return new TransposeOctaveCommand(ids, d.param % 2 === 0 ? 1 : -1);
     case 2: return new ToggleAccidentalCommand(ids, (["s", "f", "n"] as const)[d.param % 3]!);
@@ -137,6 +137,13 @@ function makeCommand(ctx: CommandContext, d: CmdDescriptor): Command | null {
       return new BeatRepeatCommand(allEvents[(d.targetSeeds[0] ?? 0) % allEvents.length]!, frac(1, 4), "4", frac(4, 4));
     }
     case 30: return new MeasureRepeatCycleCommand(m, (d.param % 2) + 1, 1);
+    case 31: {
+      // a consecutive run of 3 events (wrap) or whatever sits at the seed
+      // (unwrap when inside a tuplet); invalid runs throw -> no-op
+      const all = [...ctx.index.byId.values()].map((r) => r.id);
+      const at = (d.targetSeeds[0] ?? 0) % all.length;
+      return new TupletCommand(all.slice(at, at + 3));
+    }
     case 23:
       // add/remove voice from a random measure; invalid removals throw -> no-op
       return d.param % 2 === 0 ? new AddVoiceCommand((d.param % 2) + 1, m) : new RemoveVoiceCommand((d.param % 2) + 1, (d.param % 3) + 1, m);
@@ -148,7 +155,7 @@ function makeCommand(ctx: CommandContext, d: CmdDescriptor): Command | null {
 }
 
 const cmdArb = fc.record({
-  kind: fc.integer({ min: 0, max: 31 }),
+  kind: fc.integer({ min: 0, max: 32 }),
   targetSeeds: fc.array(fc.nat(), { minLength: 1, maxLength: 6 }),
   param: fc.nat(),
 });

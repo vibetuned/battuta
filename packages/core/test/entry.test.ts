@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildEventIndex, serialize, frac, fEq, decomposeDuration, validateMeasureDurations, findAll,
   ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand,
-  MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand,
+  MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, TupletCommand,
   type CommandContext,
 } from "../src/index.js";
 import { scoreFrom, mei } from "./helpers.js";
@@ -747,6 +747,72 @@ describe("simile and measure repeats", () => {
       expect(funcs()).toEqual([want]);
     }
     new ToggleMarkCommand("s1", "coda").apply(ctxFor(score));
+    expect(serialize(score.scoreEl)).toBe(before);
+  });
+});
+
+describe("TupletCommand", () => {
+  const body = `
+    <measure n="1" xml:id="m1">
+      <staff n="1"><layer n="1"><note pname="c" oct="4" dur="4" xml:id="t1"/><note pname="d" oct="4" dur="4" xml:id="t2"/><note pname="e" oct="4" dur="4" xml:id="t3"/><rest dur="4" xml:id="t4"/></layer></staff>
+      <staff n="2"><layer n="1"><mRest/></layer></staff>
+    </measure>`;
+  const sextBody = `
+    <measure n="1" xml:id="m1">
+      <staff n="1"><layer n="1">${[1, 2, 3, 4, 5, 6].map((i) => `<note pname="c" oct="4" dur="8" xml:id="x${i}"/>`).join("")}<note pname="g" oct="4" dur="4" xml:id="x7"/></layer></staff>
+      <staff n="2"><layer n="1"><mRest/></layer></staff>
+    </measure>`;
+
+  it("3 quarters become a 3:2 triplet with the freed quarter as a rest", () => {
+    const { score } = scoreFrom(mei(body));
+    new TupletCommand(["t1", "t2", "t3"]).apply(ctxFor(score));
+    const tuplets = findAll(score.measures[0]!, "tuplet");
+    expect(tuplets).toHaveLength(1);
+    expect(tuplets[0]!.attrs["num"]).toBe("3");
+    expect(tuplets[0]!.attrs["numbase"]).toBe("2");
+    expect(findAll(tuplets[0]!, "note")).toHaveLength(3);
+    expect(validateMeasureDurations(score.measures[0]!, { count: "4", unit: "4" }, 1)).toHaveLength(0);
+    const index = buildEventIndex(score);
+    expect(index.byId.get("t2")?.eventIndex).toBe(1); // members still indexed
+  });
+
+  it("6 eighths become a 6:4 sextuplet; unwrap restores byte-identically", () => {
+    const { score } = scoreFrom(mei(sextBody));
+    const before = serialize(score.scoreEl);
+    new TupletCommand(["x1", "x2", "x3", "x4", "x5", "x6"]).apply(ctxFor(score));
+    const tuplet = findAll(score.measures[0]!, "tuplet")[0]!;
+    expect(tuplet.attrs["num"]).toBe("6");
+    expect(validateMeasureDurations(score.measures[0]!, { count: "4", unit: "4" }, 1)).toHaveLength(0);
+    // selection inside the tuplet unwraps: freed rest consumed back
+    new TupletCommand(["x1", "x2", "x3", "x4", "x5", "x6"]).apply(ctxFor(score));
+    expect(serialize(score.scoreEl)).toBe(before);
+  });
+
+  it("refuses wrong counts, non-consecutive runs, and unwraps without rests", () => {
+    const { score } = scoreFrom(mei(body));
+    expect(() => new TupletCommand(["t1", "t2"]).apply(ctxFor(score))).toThrow(/3 notes.*6/);
+    expect(() => new TupletCommand(["t1", "t2", "t4"]).apply(ctxFor(score))).toThrow(/consecutive/);
+    // wrap, then delete the freed rest so the unwrap has nothing to consume
+    new TupletCommand(["t1", "t2", "t3"]).apply(ctxFor(score));
+    const idx = buildEventIndex(score);
+    const layer = idx.eventsAt(0, 1, 1);
+    // consume the two trailing rests by entering a half note over them
+    const restId = layer[3]!;
+    new ReplaceEntryCommand(restId, { kind: "note", pname: "g", oct: 4, dur: "2" }, frac(4, 4)).apply(ctxFor(score));
+    expect(() => new TupletCommand(["t1", "t2", "t3"]).apply(ctxFor(score))).toThrow(/rests after/);
+  });
+
+  it("apply-then-revert is byte-identical (both directions)", () => {
+    const { score } = scoreFrom(mei(body));
+    const before = serialize(score.scoreEl);
+    const wrap = new TupletCommand(["t1", "t2", "t3"]);
+    wrap.apply(ctxFor(score));
+    const wrapped = serialize(score.scoreEl);
+    const un = new TupletCommand(["t1", "t2", "t3"]);
+    un.apply(ctxFor(score));
+    un.revert(ctxFor(score));
+    expect(serialize(score.scoreEl)).toBe(wrapped);
+    wrap.revert(ctxFor(score));
     expect(serialize(score.scoreEl)).toBe(before);
   });
 });

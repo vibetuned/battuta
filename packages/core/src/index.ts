@@ -17,7 +17,7 @@ export type { CoreScore, ScoreItem, DefItem, MeasureItem } from "./score.js";
 export { frac, fAdd, fMul, fEq, fCmp, F0, eventDuration, layerDuration, meterCapacity, validateMeasureDurations, decomposeDuration } from "./durations.js";
 export type { Fraction, LayerDuration, DurationProblem } from "./durations.js";
 
-export { ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand } from "./entry.js";
+export { ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, TupletCommand } from "./entry.js";
 export type { EntrySpec, MarkKind } from "./entry.js";
 
 export { normalizeBlock, copyBlock, fragmentToText, materializeStaff, findStaffInMeasure } from "./clipboard.js";

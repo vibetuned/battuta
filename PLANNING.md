@@ -93,6 +93,8 @@ Preferences, keymap customization, session restore, crash-safe autosave (command
 > toggle that number; mixes like [1,2][3]; group barlines renormalize).
 > Repeat family: o cycles coda/segno/fine/D.S./D.C.; simile slash (ù/'),
 > measure repeats %/%% (shift+ù/").
+> Tuplets: shift+t on 3/6 selected notes (triplet/sextuplet, freed time
+> ↔ rests) — Phase 4's last entry gap closed.
 > Landed late in Phase 4 alongside: context editing (clef/key/meter
 > dropdowns), cross-measure slurs (selection + S), tie chains (selection
 > + t), per-note chord accidental picker, edge-tie render stubs.

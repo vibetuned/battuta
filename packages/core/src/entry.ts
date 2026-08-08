@@ -12,7 +12,7 @@ import { CoreElement, childElements } from "./xml.js";
 import { refreshScore } from "./score.js";
 import { Command, CommandContext, DirtyRegion } from "./commands.js";
 import { EVENT_TAGS } from "./events.js";
-import { Fraction, fAdd, fCmp, frac, eventDuration, decomposeDuration } from "./durations.js";
+import { Fraction, fAdd, fCmp, fMul, frac, eventDuration, decomposeDuration } from "./durations.js";
 import { newId } from "./ids.js";
 
 export interface EntrySpec {
@@ -1185,6 +1185,115 @@ export class MeasureRepeatCycleCommand implements Command {
 
   revert(_ctx: CommandContext): DirtyRegion[] {
     for (const m of [...this.mementos].reverse()) m.layer.children = m.before;
+    return this.region;
+  }
+}
+
+/**
+ * Tuplets from a selection: 3 events → triplet (3:2), 6 → sextuplet (6:4).
+ * Wrapping shrinks the run to numbase/num of its written time, so the
+ * freed time becomes rests AFTER the tuplet (duration invariant intact);
+ * a selection inside an existing tuplet unwraps it, consuming those rests
+ * back. Refuses runs whose freed time is not expressible as rests
+ * (mixed-duration corner cases) and unwraps without enough rests after.
+ */
+export class TupletCommand implements Command {
+  readonly label = "toggle tuplet";
+  private memento: SpliceMemento | null = null;
+  private region: DirtyRegion[] = [];
+
+  constructor(private readonly ids: string[]) {}
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    if (this.ids.length === 0) throw new Error("nothing selected");
+    const refs = this.ids.map((id) => {
+      const r = ctx.index.byId.get(id);
+      if (!r) throw new Error("tuplet target not found");
+      return r;
+    });
+    const first = refs[0]!;
+    if (!refs.every((r) => r.measureIndex === first.measureIndex && r.staffN === first.staffN && r.layerN === first.layerN)) {
+      throw new Error("a tuplet lives in one measure, staff, and voice");
+    }
+    const measure = ctx.score.measures[first.measureIndex]!;
+    const hits = this.ids.map((id) => {
+      const h = locateWithParent(measure, id);
+      if (!h) throw new Error("tuplet target not in measure");
+      return h;
+    });
+    this.region = [{ measureIndex: first.measureIndex, staffN: first.staffN }];
+    const parent = hits[0]!.parent;
+
+    if (parent.tag === "tuplet") {
+      // ---- unwrap ----
+      const tupletHit = locateWithParent(measure, parent.attrs["xml:id"] ?? "");
+      if (!tupletHit) throw new Error("tuplet wrapper not found");
+      const num = Number(parent.attrs["num"] ?? "3");
+      const numbase = Number(parent.attrs["numbase"] ?? "2");
+      const events = childElements(parent).filter((c) => EVENT_TAGS.has(c.tag));
+      let written = frac(0, 1);
+      for (const e of events) {
+        const d = eventDuration(e);
+        if (d === null) throw new Error("cannot read a tuplet member's duration");
+        written = fAdd(written, d);
+      }
+      const occupies = fMul(written, frac(numbase, num));
+      let extra = fAdd(written, { num: -occupies.num, den: occupies.den });
+      // consume following RESTS in the tuplet's container for the growth
+      const removed: CoreElement[] = [tupletHit.el];
+      let cursor = tupletHit.at + 1;
+      while (fCmp(extra, frac(0, 1)) > 0) {
+        const next = tupletHit.parent.children[cursor];
+        if (next === undefined || typeof next === "string" || next.tag !== "rest") {
+          throw new Error("unwrapping needs the tuplet's freed time back as rests after it");
+        }
+        const d = eventDuration(next);
+        if (d === null) throw new Error("cannot consume a rest of unknown duration");
+        removed.push(next);
+        extra = fAdd(extra, { num: -d.num, den: d.den });
+        cursor++;
+      }
+      // extra <= 0: overshoot becomes rests again after the unwrapped run
+      const overshoot = { num: -extra.num, den: extra.den };
+      const inserted = [...parent.children.filter((c): c is CoreElement => typeof c !== "string"), ...makeRests(overshoot)];
+      tupletHit.parent.children.splice(tupletHit.at, removed.length, ...inserted);
+      this.memento = { parent: tupletHit.parent, at: tupletHit.at, removed, inserted };
+      return this.region;
+    }
+
+    // ---- wrap ----
+    if (!hits.every((h) => h.parent === parent)) throw new Error("tuplet members must share a container");
+    const sorted = [...hits].sort((a, b) => a.at - b.at);
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i]!.at !== sorted[0]!.at + i) throw new Error("tuplet members must be consecutive");
+    }
+    const ratio = this.ids.length === 3 ? { num: 3, numbase: 2 } : this.ids.length === 6 ? { num: 6, numbase: 4 } : null;
+    if (!ratio) throw new Error("select 3 notes for a triplet or 6 for a sextuplet");
+    let written = frac(0, 1);
+    for (const h of sorted) {
+      const d = eventDuration(h.el);
+      if (d === null) throw new Error("tuplet members need written durations");
+      written = fAdd(written, d);
+    }
+    const freed = fMul(written, frac(ratio.num - ratio.numbase, ratio.num));
+    let rests: CoreElement[];
+    try {
+      rests = makeRests(freed);
+    } catch {
+      throw new Error("this run's freed time cannot be written as rests — use equal durations");
+    }
+    const members = sorted.map((h) => h.el);
+    const tuplet: CoreElement = { tag: "tuplet", attrs: { "xml:id": newId(), num: String(ratio.num), numbase: String(ratio.numbase) }, children: members };
+    const inserted = [tuplet, ...rests];
+    parent.children.splice(sorted[0]!.at, members.length, ...inserted);
+    this.memento = { parent, at: sorted[0]!.at, removed: members, inserted };
+    return this.region;
+  }
+
+  revert(_ctx: CommandContext): DirtyRegion[] {
+    if (!this.memento) return [];
+    const m = this.memento;
+    m.parent.children.splice(m.at, m.inserted.length, ...m.removed);
     return this.region;
   }
 }

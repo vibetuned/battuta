@@ -145,7 +145,7 @@ Phase 4 in progress (2026-08-02): note entry + round-trip hardening.
   zero new ids. Compatibility note: Verovio rejects comments before the
   root element (PIs are fine), so prologue comments are preserved by moving
   them just inside `<mei>`.
-- 161 core tests; the property fuzzer covers the whole command pool (a
+- 165 core tests; the property fuzzer covers the whole command pool (a
   stale modulo had silenced part of it) and promptly caught a real bug:
   measures inserted or duplicated at a mid-piece context change landed
   AFTER the interleaved def, adopting the next section's meter — a
@@ -204,8 +204,9 @@ Phase 4 in progress (2026-08-02): note entry + round-trip hardening.
   on either tile — the segmenter now injects explicit `<tie>` continuation
   stubs for edge notes (incoming and outgoing), which also fixes the
   plain cross-barline `t` tie from note entry.
-- Still open in Phase 4: tuplet entry; file-watching for external edits
-  (needs the Tauri shell or the File System Access API).
+- Still open in Phase 4: file-watching for external edits (needs the
+  Tauri shell or the File System Access API). Tuplet entry landed in
+  Phase 5 (`shift+t` on a selection, see below).
 
 Phase 5 in progress (2026-08-05): polish.
 
@@ -281,6 +282,15 @@ Phase 5 in progress (2026-08-05): polish.
   segment, and page view shows the true spanning bracket — its serializer
   now keeps structural containers instead of flattening measures into a
   bare section.
+- **Tuplets** (`shift+t` on a selection): 3 selected notes become a
+  **triplet** (3:2), 6 a **sextuplet** (6:4) — the run shrinks to its
+  tuplet time and the freed duration becomes rests after it, so the
+  measure stays valid; a selection inside a tuplet **unwraps** it,
+  consuming those rests back (byte-identical round trip). Refuses wrong
+  counts, non-consecutive runs, mixed-duration runs whose freed time
+  isn't writable, and unwraps without their rests. Rhythm-edit rules
+  apply: the measure unbeams first, and members stay caret-addressable.
+  This closes the last Phase 4 leftover besides file watching.
 - **Multiple voices** (per staff, per measure): a *voices* dropdown in
   the status bar shows the caret's voice, switches between the staff's
   voices, and *add a voice* puts a new layer (whole-measure rests) into
@@ -328,7 +338,7 @@ Phase 5 in progress (2026-08-05): polish.
 - **Tabs**: a `+` button opens a fresh blank score (one treble staff, 4/4,
   four empty measures, named untitled-1, -2, …) ready for note entry, and
   **open file…** loads any `.mei`/`.xml` from disk into a new tab named
-  after the file. `node spikes/verify-phase5.mjs` (124 checks).
+  after the file. `node spikes/verify-phase5.mjs` (129 checks).
 
 ## Layout
 

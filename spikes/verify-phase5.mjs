@@ -672,6 +672,48 @@ check("simile/repeat round unwinds cleanly", await page.evaluate(() => {
   return !s.includes("beatRpt") && !s.includes("mRpt");
 }));
 
+// --- 7h. tuplets: shift+t on 3 selected notes (6 = sextuplet) ---
+const tupDepth0 = await page.evaluate(() => window.__SESSION__.stack.undoDepth);
+await page.locator('g[id="cc-m1n1"] use').first().click({ force: true });
+await page.waitForFunction(() => document.querySelector("main").dataset.caret === "cc-m1n1", null, { timeout: 5000 });
+await page.keyboard.press("i");
+await page.keyboard.press("5");
+for (const k of ["c", "d", "e"]) await page.keyboard.press(k);
+await page.keyboard.press("Escape");
+await page.waitForFunction(() => window.__SESSION__.index.eventsAt(0, 1, 1).length === 4, null, { timeout: 10000 });
+const trip1 = await page.evaluate(() => window.__SESSION__.index.eventsAt(0, 1, 1)[0]);
+await page.waitForFunction((id) => document.querySelector(`g[id="${id}"]`), trip1, { timeout: 15000 });
+for (let t = 0; t < 5; t++) {
+  const ok = await page.locator(`g[id="${trip1}"] use`).first().click({ force: true })
+    .then(() => page.waitForFunction((id) => document.querySelector("main").dataset.caret === id, trip1, { timeout: 1500 }))
+    .catch(() => null);
+  if (ok) break;
+}
+await page.keyboard.press("Shift+ArrowRight");
+await page.keyboard.press("Shift+ArrowRight");
+await page.waitForFunction(() => Number(document.querySelector("main").dataset.selection) === 3, null, { timeout: 5000 });
+await page.keyboard.press("T");
+await page.waitForFunction(() => JSON.stringify(window.__SESSION__.score.measures[0]).includes('"tuplet"'), null, { timeout: 5000 });
+check("shift+t wraps the 3 selected notes in a triplet", await page.evaluate(() => {
+  const m = window.__SESSION__.score.measures[0];
+  const find = (el) => el.tag === "tuplet" ? el : (el.children ?? []).reduce((a, c) => a || (typeof c !== "string" ? find(c) : null), null);
+  const t = find(m);
+  return t && t.attrs.num === "3" && t.attrs.numbase === "2" && t.children.length === 3;
+}));
+await page.waitForFunction(() => document.querySelector('.tile[data-index="0"] g[class~="tuplet"]'), null, { timeout: 15000 });
+check("Verovio draws the triplet", true);
+check("members stay caret-addressable inside the tuplet", await page.evaluate((id) => {
+  const ref = window.__SESSION__.index.byId.get(id);
+  return ref && ref.eventIndex === 0 && window.__SESSION__.index.eventsAt(0, 1, 1).length >= 4;
+}, trip1));
+await page.keyboard.press("T"); // selection still points at the members
+await page.waitForFunction(() => !JSON.stringify(window.__SESSION__.score.measures[0]).includes('"tuplet"'), null, { timeout: 5000 });
+check("shift+t again unwraps it (freed rest consumed back)", true);
+const tupDepthEnd = await page.evaluate(() => window.__SESSION__.stack.undoDepth);
+for (let i = 0; i < tupDepthEnd - tupDepth0; i++) await page.keyboard.press("Control+z");
+await page.waitForFunction((d) => window.__SESSION__.stack.undoDepth === d, tupDepth0, { timeout: 15000 });
+check("tuplet round unwinds cleanly", true);
+
 // --- 8. open file… from disk ---
 await page.setInputFiles('input[type="file"]', "/home/flux/projects/battuta/fixtures/Bach-JS_Ein_feste_Burg.mei");
 await page.waitForFunction(() => [...document.querySelectorAll(".tabs .tab")].some((t) => t.textContent.includes("Bach-JS_Ein_feste_Burg")), null, { timeout: 10000 });
