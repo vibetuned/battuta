@@ -15,7 +15,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DOMParser } from "@xmldom/xmldom";
-import { fromDom, serializeDocument, buildScore, ensureIds, findAll, type CoreElement, type DomLikeElement, type DomLikeNode } from "../src/index.js";
+import { parse } from "./helpers.js";
+import { fromDom, serializeDocument, buildScore, ensureIds, findAll, seedIds, newId, type CoreElement, type DomLikeElement, type DomLikeNode } from "../src/index.js";
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), "../../../fixtures");
 
@@ -90,5 +91,15 @@ describe("unknown-content preservation", () => {
     expect(out).toContain(`xmlns="http://www.music-encoding.org/ns/mei"`);
     const p2 = parseDocument(out);
     expect(serializeDocument(p2.root, p2.prologue)).toBe(out);
+  });
+});
+
+describe("id counter seeding (saved-file reload)", () => {
+  it("newId never re-mints an id present in a loaded document", () => {
+    const el = parse('<measure xml:id="bt-zz"><staff xml:id="bt-3"><layer xml:id="other-id"/></staff></measure>');
+    seedIds(el);
+    const fresh = newId();
+    expect(fresh.startsWith("bt-")).toBe(true);
+    expect(parseInt(fresh.slice(3), 36)).toBeGreaterThan(parseInt("zz", 36));
   });
 });

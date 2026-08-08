@@ -82,7 +82,10 @@ Preferences, keymap customization, session restore, crash-safe autosave (command
 > groups; rhythm edits dissolve beams first — beams are formatting),
 > hairpins (selection + p: none → < → > → none; single-note p cycles
 > p/mp/mf/f), repeats (r on a block = 𝄆 𝄇), control events travel with
-> copy/paste, measure renumbering after structural ops and paste.
+> copy/paste, measure renumbering after structural ops and paste,
+> multiple voices (per-staff AND per-measure: add/remove from the caret's
+> measure like context changes, boundary double barline, voice colors
+> blue/violet via layer@n, ↑/↓ traverse voices before staves).
 > Landed late in Phase 4 alongside: context editing (clef/key/meter
 > dropdowns), cross-measure slurs (selection + S), tie chains (selection
 > + t), per-note chord accidental picker, edge-tie render stubs.

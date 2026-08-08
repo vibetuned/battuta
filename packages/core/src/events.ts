@@ -82,40 +82,48 @@ export function buildEventIndex(score: CoreScore): EventIndex {
   return index;
 }
 
-/** Next event in reading order within the same staff/layer, across measures. */
+/** Next event in reading order within the same staff/layer. Stops at the
+ * voice's edge: if the NEXT measure has no such layer (per-measure voices),
+ * the caret stays — no teleporting across the gap. */
 export function caretRight(index: EventIndex, score: CoreScore, pos: CaretPosition): CaretPosition | null {
   const here = index.eventsAt(pos.measureIndex, pos.staffN, pos.layerN);
   if (pos.eventIndex + 1 < here.length) return { ...pos, eventIndex: pos.eventIndex + 1 };
-  for (let m = pos.measureIndex + 1; m < score.measures.length; m++) {
-    if (index.eventsAt(m, pos.staffN, pos.layerN).length > 0) {
-      return { measureIndex: m, staffN: pos.staffN, layerN: pos.layerN, eventIndex: 0 };
-    }
-  }
-  return null;
+  const m = pos.measureIndex + 1;
+  if (m >= score.measures.length) return null;
+  if (index.eventsAt(m, pos.staffN, pos.layerN).length === 0) return null; // the voice ends here
+  return { measureIndex: m, staffN: pos.staffN, layerN: pos.layerN, eventIndex: 0 };
 }
 
-/** Previous event in reading order within the same staff/layer. */
+/** Previous event in reading order within the same staff/layer; stops where
+ * the voice starts (see caretRight). */
 export function caretLeft(index: EventIndex, _score: CoreScore, pos: CaretPosition): CaretPosition | null {
   if (pos.eventIndex > 0) return { ...pos, eventIndex: pos.eventIndex - 1 };
-  for (let m = pos.measureIndex - 1; m >= 0; m--) {
-    const events = index.eventsAt(m, pos.staffN, pos.layerN);
-    if (events.length > 0) return { measureIndex: m, staffN: pos.staffN, layerN: pos.layerN, eventIndex: events.length - 1 };
-  }
-  return null;
+  const m = pos.measureIndex - 1;
+  if (m < 0) return null;
+  const events = index.eventsAt(m, pos.staffN, pos.layerN);
+  if (events.length === 0) return null; // the voice starts here
+  return { measureIndex: m, staffN: pos.staffN, layerN: pos.layerN, eventIndex: events.length - 1 };
 }
 
-/** Move to the adjacent staff (direction -1 = up/previous, +1 = down/next). */
+/**
+ * Move vertically (direction -1 = up, +1 = down) through the measure's
+ * flattened (staff, voice) slots: staff 1 voice 1 → staff 1 voice 2 →
+ * staff 2 voice 1 → … — voices come before the next staff.
+ */
 export function caretVertical(index: EventIndex, pos: CaretPosition, direction: -1 | 1): CaretPosition | null {
-  const staves = index.stavesPerMeasure.get(pos.measureIndex) ?? [];
-  const at = staves.indexOf(pos.staffN);
+  const slots: { staffN: number; layerN: number }[] = [];
+  for (const staffN of index.stavesPerMeasure.get(pos.measureIndex) ?? []) {
+    for (const layerN of index.layersPerStaff.get(`${pos.measureIndex}/${staffN}`) ?? []) {
+      slots.push({ staffN, layerN });
+    }
+  }
+  const at = slots.findIndex((s) => s.staffN === pos.staffN && s.layerN === pos.layerN);
   if (at < 0) return null;
-  const target = staves[at + direction];
-  if (target === undefined) return null;
-  const layers = index.layersPerStaff.get(`${pos.measureIndex}/${target}`) ?? [];
-  const layerN = layers.includes(pos.layerN) ? pos.layerN : (layers[0] ?? 1);
-  const events = index.eventsAt(pos.measureIndex, target, layerN);
+  const target = slots[at + direction];
+  if (!target) return null;
+  const events = index.eventsAt(pos.measureIndex, target.staffN, target.layerN);
   if (events.length === 0) return null;
-  return { measureIndex: pos.measureIndex, staffN: target, layerN, eventIndex: Math.min(pos.eventIndex, events.length - 1) };
+  return { measureIndex: pos.measureIndex, staffN: target.staffN, layerN: target.layerN, eventIndex: Math.min(pos.eventIndex, events.length - 1) };
 }
 
 /**

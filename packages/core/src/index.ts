@@ -26,7 +26,7 @@ export type { BlockSelection, ClipboardFragment, ClipboardStaff } from "./clipbo
 export { planContextChange, ChangeContextCommand } from "./context-edit.js";
 export type { ContextChangeSpec, ClefSpec, ContextPlan } from "./context-edit.js";
 
-export { planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, ToggleRepeatCommand, emptyMeasureLike } from "./arrange.js";
+export { planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, AddVoiceCommand, RemoveVoiceCommand, ToggleRepeatCommand, emptyMeasureLike } from "./arrange.js";
 export type { PastePlan } from "./arrange.js";
 
 export { AutoBeamCommand, UnbeamMeasuresCommand, UnbeamThen, measuresOf } from "./beam.js";
@@ -37,7 +37,7 @@ export type { MeasureContext, StaffContext, ClefContext, MeterContext } from "./
 export { synthesizeTile, synthesizeScoreDef, synthesizeRowHeader } from "./tile.js";
 export type { TileSlice, TileHeader, TileHeaderSpec } from "./tile.js";
 
-export { newId, ensureIds } from "./ids.js";
+export { newId, ensureIds, seedIds } from "./ids.js";
 
 export { EVENT_TAGS, EventIndex, buildEventIndex, caretLeft, caretRight, caretVertical, eventRange } from "./events.js";
 export type { CaretPosition, EventRef } from "./events.js";

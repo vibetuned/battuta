@@ -5,9 +5,9 @@
  * version, and tiles re-render off cache-key changes alone.
  */
 import {
-  buildScore, resolveContexts, buildEventIndex, ensureIds, fromDom, serialize, serializeDocument, childElements, findAll, meterCapacity, frac,
+  buildScore, resolveContexts, buildEventIndex, ensureIds, seedIds, fromDom, serialize, serializeDocument, childElements, findAll, meterCapacity, frac,
   CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand,
-  copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, ToggleRepeatCommand,
+  copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, AddVoiceCommand, RemoveVoiceCommand, ToggleRepeatCommand,
   ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, AutoBeamCommand, UnbeamThen, measuresOf, ChangeContextCommand, planContextChange,
   type CoreScore, type MeasureContext, type EventIndex, type Command, type DirtyRegion, type DomLikeElement, type DomLikeNode,
   type BlockSelection, type ClipboardFragment, type PastePlan, type EntrySpec, type CoreElement, type CaretPosition, type ContextChangeSpec,
@@ -51,6 +51,9 @@ export class DocumentSession {
     // content kept verbatim, placement adjusted for compatibility.
     this.root.children.unshift(...prologueComments);
     this.score = buildScore(this.root);
+    // Files saved by battuta carry bt-* ids: move the id counter past them
+    // or this session would re-mint duplicates (caret/controls chaos).
+    seedIds(this.root);
     ensureIds(this.score.scoreDef);
     for (const m of this.score.measures) ensureIds(m);
     this.contexts = resolveContexts(this.score);
@@ -145,6 +148,15 @@ export class DocumentSession {
   }
   toggleRepeat(from: number, to: number): DirtyRegion[] {
     return this.execute(new ToggleRepeatCommand(from, to));
+  }
+  /** Adds a voice (layer) to the staff from a measure onward; returns n. */
+  addVoice(staffN: number, from = 0): number {
+    const cmd = new AddVoiceCommand(staffN, from);
+    this.execute(cmd);
+    return cmd.layerN;
+  }
+  removeVoice(staffN: number, layerN: number, from = 0): DirtyRegion[] {
+    return this.execute(new RemoveVoiceCommand(staffN, layerN, from));
   }
   /** Adds a staff below the existing ones; returns its number. */
   addStaff(): number {

@@ -58,7 +58,7 @@ await page.keyboard.press("Escape");
 // --- 2. context indicators: the selects live in the bar and show the
 // context at the caret (clef is per-staff, key/meter score-wide) ---
 const selVal = (t) => page.evaluate((t) => document.querySelector(`select[title*="${t}"]`)?.value, t);
-check("context + staves selects sit in the status bar", await page.evaluate(() => document.querySelectorAll("[data-statusbar] select").length === 4));
+check("context + staves + voices selects sit in the status bar", await page.evaluate(() => document.querySelectorAll("[data-statusbar] select").length === 5));
 check(`caret at m1: clef/key/meter show the opening context (${await selVal("clef")}/${await selVal("key signature")}/${await selVal("meter")})`,
   (await selVal("clef")) === "G2" && (await selVal("key signature")) === "0" && (await selVal("meter")) === "4/4");
 await page.locator('.tile[data-index="2"] g[class~="note"] use').first().click({ force: true });
@@ -250,6 +250,101 @@ check("beam round unwinds cleanly (m3 back to an mRest)", await page.evaluate(()
   return walk(m) && !JSON.stringify(m).includes('"beam"');
 }));
 
+// --- 7v. voices: dropdown per staff — add, enter, switch, remove ---
+const voiceSel = 'select[title*="voices"]';
+await page.locator('.tile[data-index="0"] g[class~="mRest"]').first().click({ force: true });
+await page.waitForFunction(() => document.querySelector("main").dataset.caret !== "", null, { timeout: 5000 });
+check(`voices dropdown shows the caret's voice (${await page.evaluate((s) => document.querySelector(s)?.selectedOptions[0]?.textContent, voiceSel)})`,
+  (await page.evaluate((s) => document.querySelector(s)?.selectedOptions[0]?.textContent, voiceSel)) === "voice 1");
+await page.selectOption(voiceSel, "add");
+await page.waitForFunction(() => JSON.stringify(window.__SESSION__.index.layersPerStaff.get("0/1")) === "[1,2]", null, { timeout: 10000 });
+check("add a voice puts layer 2 in every measure of the staff", await page.evaluate(() =>
+  window.__SESSION__.score.measures.every((_, i) => JSON.stringify(window.__SESSION__.index.layersPerStaff.get(`${i}/1`)) === "[1,2]")));
+await page.waitForFunction(() => document.querySelectorAll('.tile[data-index="0"] g[class~="mRest"]').length === 2, null, { timeout: 15000 });
+check("both voices render (two whole rests in m1)", true);
+check("the caret jumped into the new voice", await page.evaluate((s) => document.querySelector(s)?.selectedOptions[0]?.textContent === "voice 2", voiceSel));
+// enter a note into voice 2
+await page.keyboard.press("i");
+await page.keyboard.press("5");
+await page.keyboard.press("c");
+await page.keyboard.press("Escape");
+await page.waitForFunction(() => {
+  const ids = window.__SESSION__.index.eventsAt(0, 1, 2);
+  return ids.length >= 2 && window.__SESSION__.index.byId.get(ids[0])?.tag === "note";
+}, null, { timeout: 10000 });
+check("note entry works inside voice 2", true);
+check("voice 1 is untouched", await page.evaluate(() => {
+  const ids = window.__SESSION__.index.eventsAt(0, 1, 1);
+  return ids.length === 1 && window.__SESSION__.index.byId.get(ids[0])?.tag === "mRest";
+}));
+// switch back to voice 1 via the dropdown
+await page.selectOption(voiceSel, "go:1");
+await page.waitForFunction((s) => document.querySelector(s)?.selectedOptions[0]?.textContent === "voice 1", voiceSel, { timeout: 5000 });
+check("dropdown switches the caret between voices", true);
+// remove the caret's voice (voice 1 — legal, voice 2 remains), then the
+// true last-voice refusal
+await page.selectOption(voiceSel, "remove");
+await page.waitForFunction(() => JSON.stringify(window.__SESSION__.index.layersPerStaff.get("0/1")) === "[2]", null, { timeout: 10000 });
+check("removing the caret's voice takes it out everywhere (voice 2 remains)", true);
+await page.selectOption(voiceSel, "remove"); // caret followed to voice 2 — now the last
+await page.waitForFunction(() => document.querySelector("[data-notice]").textContent.includes("last voice"), null, { timeout: 5000 });
+check("the last voice is refused", true);
+for (let i = 0; i < 3; i++) await page.keyboard.press("Control+z"); // remove, entry, add
+await page.waitForFunction(() => JSON.stringify(window.__SESSION__.index.layersPerStaff.get("0/1")) === "[1]" &&
+  window.__SESSION__.score.measures.every((m) => !JSON.stringify(m).includes('"n":"2"') || true), null, { timeout: 10000 });
+check("voice round unwinds cleanly", await page.evaluate(() => {
+  const ids = window.__SESSION__.index.eventsAt(0, 1, 1);
+  return window.__SESSION__.index.layersPerStaff.get("0/1").length === 1 && window.__SESSION__.index.byId.get(ids[0])?.tag === "mRest";
+}));
+
+// --- 7v2. per-measure voices: add from m3, boundary dbl, colors, arrows ---
+await page.locator('.tile[data-index="2"] g[class~="mRest"]').first().click({ force: true });
+await page.waitForFunction(() => document.querySelector("main").dataset.caret !== "", null, { timeout: 5000 });
+await page.selectOption(voiceSel, "add");
+await page.waitForFunction(() => JSON.stringify(window.__SESSION__.index.layersPerStaff.get("2/1")) === "[1,2]", null, { timeout: 10000 });
+check("voice added from m3 exists in m3+", await page.evaluate(() =>
+  JSON.stringify(window.__SESSION__.index.layersPerStaff.get("3/1")) === "[1,2]"));
+check("…but not before it", await page.evaluate(() =>
+  JSON.stringify(window.__SESSION__.index.layersPerStaff.get("0/1")) === "[1]" &&
+  JSON.stringify(window.__SESSION__.index.layersPerStaff.get("1/1")) === "[1]"));
+check("the boundary measure gets a double barline", await page.evaluate(() => window.__SESSION__.score.measures[1].attrs.right === "dbl"));
+await page.waitForFunction(() => document.querySelector('.tile[data-index="2"] g[class~="layer"][data-n="2"]'), null, { timeout: 15000 });
+check("layer groups carry data-n for the voice colors", true);
+await page.waitForFunction(() => document.querySelector('.tile[data-index="3"] g[class~="layer"][data-n="2"]'), null, { timeout: 15000 });
+check("the violet voice-2 rule is live (checked away from the caret)", await page.evaluate(() => {
+  // the caret sits in m3 and its blue rightly overrides — probe m4 instead
+  const el = document.querySelector('.tile[data-index="3"] g[class~="layer"][data-n="2"] *');
+  return el && getComputedStyle(el).fill.includes("130, 80, 223"); // #8250df
+}));
+// plain arrows cross voices before staves
+await page.keyboard.press("ArrowUp"); // voice 2 -> voice 1
+await page.waitForFunction(() => {
+  const ref = window.__SESSION__.index.byId.get(document.querySelector("main").dataset.caret);
+  return ref && ref.layerN === 1 && ref.staffN === 1;
+}, null, { timeout: 5000 });
+await page.keyboard.press("ArrowDown"); // back into voice 2
+await page.waitForFunction(() => {
+  const ref = window.__SESSION__.index.byId.get(document.querySelector("main").dataset.caret);
+  return ref && ref.layerN === 2 && ref.staffN === 1;
+}, null, { timeout: 5000 });
+check("↑/↓ traverse voices before staves", true);
+// nav stops at the voice's edge instead of teleporting (user bug)
+const vCaret = await page.evaluate(() => document.querySelector("main").dataset.caret);
+await page.keyboard.press("ArrowLeft"); // m2 has no voice 2: stay put
+await page.waitForTimeout(300);
+check("← at the voice's start stays put", await page.evaluate((c) => document.querySelector("main").dataset.caret === c, vCaret));
+// inserting a measure next to two-voice measures mirrors both voices
+await page.keyboard.press("NumpadAdd");
+await page.waitForFunction(() => window.__SESSION__.score.measures.length === 5, null, { timeout: 10000 });
+check("an inserted measure inherits BOTH voices from its neighbor", await page.evaluate(() =>
+  JSON.stringify(window.__SESSION__.index.layersPerStaff.get("3/1")) === "[1,2]"));
+await page.keyboard.press("Control+z"); // the insert
+await page.keyboard.press("Control+z"); // the voice range
+await page.waitForFunction(() => window.__SESSION__.score.measures.length === 4 &&
+  JSON.stringify(window.__SESSION__.index.layersPerStaff.get("2/1")) === "[1]" &&
+  window.__SESSION__.score.measures[1].attrs.right === undefined, null, { timeout: 10000 });
+check("undo removes the insert, the range, the barline, everything", true);
+
 // --- 7b. caret overlay follows row reflows (insert breaking a line) ---
 await page.setViewportSize({ width: 760, height: 950 }); // force multi-row layout
 await page.locator(".tabs .tab").first().click();
@@ -279,6 +374,29 @@ const rowsAfter = await page.evaluate(() => document.querySelectorAll(".score-ro
 check(`caret overlay tracks the reflowed row (${rowsBefore}→${rowsAfter} rows)`, rowsAfter >= 2);
 await page.keyboard.press("Control+z");
 await page.waitForFunction(() => window.__SESSION__.score.measures.length === 10, null, { timeout: 10000 });
+// ↓ walks staves/voices, then CROSSES to the next line (text-editor rows)
+const rowMap = await page.evaluate(() => [...document.querySelectorAll(".score-row")].map((r) => [...r.querySelectorAll(".tile")].map((t) => Number(t.dataset.index))));
+const row0m = rowMap[0][0];
+const row0note = await page.evaluate((m) => window.__SESSION__.index.eventsAt(m, 1, 1)[0], row0m);
+await page.locator(`g[id="${row0note}"] use`).first().click({ force: true });
+await page.waitForFunction((id) => document.querySelector("main").dataset.caret === id, row0note, { timeout: 5000 });
+await page.keyboard.press("ArrowDown"); // staff 1 -> staff 2, same measure
+await page.waitForFunction((m) => {
+  const ref = window.__SESSION__.index.byId.get(document.querySelector("main").dataset.caret);
+  return ref && ref.staffN === 2 && ref.measureIndex === m;
+}, row0m, { timeout: 5000 });
+await page.keyboard.press("ArrowDown"); // bottom slot -> next LINE
+await page.waitForFunction((rows) => {
+  const ref = window.__SESSION__.index.byId.get(document.querySelector("main").dataset.caret);
+  return ref && ref.staffN === 1 && rows[1].includes(ref.measureIndex);
+}, rowMap, { timeout: 5000 });
+check("↓ from the bottom slot continues to the next line", true);
+await page.keyboard.press("ArrowUp"); // back up: previous line, BOTTOM slot
+await page.waitForFunction((rows) => {
+  const ref = window.__SESSION__.index.byId.get(document.querySelector("main").dataset.caret);
+  return ref && ref.staffN === 2 && rows[0].includes(ref.measureIndex);
+}, rowMap, { timeout: 5000 });
+check("↑ from the top slot returns to the previous line's bottom slot", true);
 await page.setViewportSize({ width: 1500, height: 950 });
 
 // --- 7c. hairpins: selection + p cycles < > off (single-note p = dynam) ---
@@ -367,6 +485,48 @@ check("open file… creates a tab named after the file", true);
 await page.waitForFunction(() => document.querySelectorAll(".tile .ms").length >= 14, null, { timeout: 60000 });
 check("the disk file renders completely", true);
 check(`its staff count reads correctly (${await stavesLabel()})`, (await stavesLabel()) === "staves (2)");
+
+// --- 9. reloading a battuta-saved file must not re-mint its bt-* ids ---
+{
+  await page.locator(".tabs .tab").first().click();
+  await page.waitForFunction(() => document.querySelectorAll(".tile .ms").length >= 10, null, { timeout: 30000 });
+  const savedXml = await page.evaluate(() => window.__SESSION__.saveDocument());
+  const { writeFileSync, mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(tmpdir() + "/bt-resave-");
+  writeFileSync(dir + "/resaved.mei", savedXml);
+  await page.setInputFiles('input[type="file"]', dir + "/resaved.mei");
+  await page.waitForFunction(() => [...document.querySelectorAll(".tabs .tab")].some((t) => t.textContent.includes("resaved")), null, { timeout: 10000 });
+  await page.waitForFunction(() => document.querySelectorAll(".tile .ms").length >= 10, null, { timeout: 60000 });
+  // edit the reloaded file: add a voice and two measures
+  await page.locator('.tile[data-index="0"] g[class~="note"] use').first().click({ force: true });
+  await page.waitForFunction(() => document.querySelector("main").dataset.caret !== "", null, { timeout: 5000 });
+  await page.selectOption('select[title*="voices"]', "add");
+  await page.waitForFunction(() => JSON.stringify(window.__SESSION__.index.layersPerStaff.get("0/1")) === "[1,2]", null, { timeout: 10000 });
+  await page.keyboard.press("NumpadAdd");
+  await page.keyboard.press("NumpadAdd");
+  await page.waitForFunction(() => window.__SESSION__.score.measures.length === 12, null, { timeout: 10000 });
+  const idReport = await page.evaluate(() => {
+    const seen = new Set();
+    const dups = [];
+    const walk = (el) => {
+      const id = el.attrs?.["xml:id"];
+      if (id) {
+        if (seen.has(id)) dups.push(id);
+        seen.add(id);
+      }
+      for (const c of el.children ?? []) if (typeof c !== "string") walk(c);
+    };
+    walk(window.__SESSION__.root);
+    const caretRef = window.__SESSION__.index.byId.get(document.querySelector("main").dataset.caret);
+    const fresh = window.__SESSION__.score.measures[caretRef.measureIndex];
+    const strays = fresh.children.filter((c) => typeof c !== "string" && c.tag !== "staff").map((c) => c.tag);
+    return { dups, caretMeasure: caretRef.measureIndex, strays, total: seen.size };
+  });
+  check(`no duplicate ids after editing a re-saved file (${idReport.total} ids)`, idReport.dups.length === 0);
+  check("the caret is really in the new measure (no id aliasing)", idReport.caretMeasure === 2);
+  check(`fresh measures carry no foreign slurs or dynamics ([${idReport.strays}])`, idReport.strays.length === 0);
+}
 
 } finally {
   await browser.close();

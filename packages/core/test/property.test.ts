@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import {
   buildEventIndex, serialize, ensureIds, resolveContexts, CommandStack, copyBlock, planPasteReplace,
   TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, DeleteToRestsCommand,
-  PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, ToggleRepeatCommand,
+  PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, AddVoiceCommand, RemoveVoiceCommand, ToggleRepeatCommand,
   ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand,
   ChainTieCommand, ChordNoteAccidentalCommand, ToggleFingCommand, CycleHairpinCommand, AutoBeamCommand, UnbeamMeasuresCommand, chordNotes, MergeEventsCommand, SplitEventCommand, ChangeContextCommand, planContextChange,
   validateMeasureDurations, frac,
@@ -46,7 +46,7 @@ function makeCommand(ctx: CommandContext, d: CmdDescriptor): Command | null {
   const PNAMES = ["c", "d", "e", "f", "g", "a", "b"] as const;
   // Modulo must cover every case + default, or the tail of the pool is
   // silently never fuzzed (this was % 12 for a while: cases 12+ were dead).
-  switch (d.kind % 24) {
+  switch (d.kind % 25) {
     case 0: return new TransposeStepCommand(ids, (d.param % 5) - 2 || 1);
     case 1: return new TransposeOctaveCommand(ids, d.param % 2 === 0 ? 1 : -1);
     case 2: return new ToggleAccidentalCommand(ids, (["s", "f", "n"] as const)[d.param % 3]!);
@@ -121,6 +121,9 @@ function makeCommand(ctx: CommandContext, d: CmdDescriptor): Command | null {
       return new CycleHairpinCommand(ids[0]!, other); // invalid pairs throw -> no-op
     }
     case 22: return new ToggleRepeatCommand(m, Math.min(m + (d.param % 3), nMeasures - 1));
+    case 23:
+      // add/remove voice from a random measure; invalid removals throw -> no-op
+      return d.param % 2 === 0 ? new AddVoiceCommand((d.param % 2) + 1, m) : new RemoveVoiceCommand((d.param % 2) + 1, (d.param % 3) + 1, m);
     default: {
       const allEvents = [...ctx.index.byId.values()].map((r) => r.id);
       return new SplitEventCommand(allEvents[(d.targetSeeds[0] ?? 0) % allEvents.length]!);
@@ -129,7 +132,7 @@ function makeCommand(ctx: CommandContext, d: CmdDescriptor): Command | null {
 }
 
 const cmdArb = fc.record({
-  kind: fc.integer({ min: 0, max: 23 }),
+  kind: fc.integer({ min: 0, max: 24 }),
   targetSeeds: fc.array(fc.nat(), { minLength: 1, maxLength: 6 }),
   param: fc.nat(),
 });

@@ -268,14 +268,20 @@ function restoreNumbers(memo: NumberMemento): void {
   }
 }
 
-/** Synthesize an empty measure matching a template's staff/layer shape. */
+/** Synthesize an empty measure matching a template's staff AND voice shape
+ * (every layer of every staff comes back as a whole-measure rest). */
 export function emptyMeasureLike(template: CoreElement): CoreElement {
   const measure: CoreElement = { tag: "measure", attrs: { n: template.attrs["n"] ? `${template.attrs["n"]}a` : "" }, children: [] };
   for (const staff of childElements(template).filter((c) => c.tag === "staff")) {
+    const layers = childElements(staff).filter((c) => c.tag === "layer");
     measure.children.push({
       tag: "staff",
       attrs: { n: staff.attrs["n"] ?? "1" },
-      children: [{ tag: "layer", attrs: { n: "1" }, children: [{ tag: "mRest", attrs: {}, children: [] }] }],
+      children: (layers.length ? layers : [null]).map((l) => ({
+        tag: "layer",
+        attrs: { n: l?.attrs["n"] ?? "1" },
+        children: [{ tag: "mRest", attrs: {}, children: [] }],
+      })),
     });
   }
   ensureIds(measure);
@@ -568,5 +574,144 @@ export class ToggleRepeatCommand implements Command {
     if (m.right === undefined) delete m.last.attrs["right"];
     else m.last.attrs["right"] = m.right;
     return [];
+  }
+}
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * Voices are layers. Adding a voice puts <layer n="max+1"><mRest/></layer>
+ * into the staff in EVERY measure — visible, clickable, duration-valid
+ * under any meter, and the caret grid stays uniform (same policy as
+ * AddStaffCommand). Removing a voice takes the layer out everywhere and
+ * cleans up control events anchored inside it; the last voice of a staff
+ * is refused.
+ */
+export class AddVoiceCommand implements Command {
+  readonly label: string;
+  /** The new voice's layer number, set by apply (range max + 1). */
+  layerN = 0;
+  private added: RemovedChild[] = [];
+  private barline: { el: CoreElement; before: string | undefined } | null = null;
+
+  constructor(
+    private readonly staffN: number,
+    private readonly from = 0,
+  ) {
+    this.label = `add voice to staff ${staffN} from m${from + 1}`;
+  }
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    this.added = [];
+    this.barline = null;
+    const n = String(this.staffN);
+    const range = ctx.score.measures.slice(this.from);
+    const staves = range
+      .map((m) => childElements(m).find((c) => c.tag === "staff" && (c.attrs["n"] ?? "1") === n))
+      .filter((s): s is CoreElement => s !== undefined);
+    if (staves.length === 0) throw new Error(`no staff ${n} to add a voice to`);
+    let max = 0;
+    for (const staff of staves) {
+      for (const layer of childElements(staff).filter((c) => c.tag === "layer")) {
+        max = Math.max(max, Number(layer.attrs["n"] ?? "1"));
+      }
+    }
+    this.layerN = max + 1;
+    for (const staff of staves) {
+      const layer: CoreElement = { tag: "layer", attrs: { n: String(this.layerN) }, children: [{ tag: "mRest", attrs: {}, children: [] }] };
+      ensureIds(layer);
+      const layers = staff.children.filter((c) => typeof c !== "string" && c.tag === "layer") as CoreElement[];
+      const last = layers[layers.length - 1];
+      const at = last ? staff.children.indexOf(last) + 1 : staff.children.length;
+      staff.children.splice(at, 0, layer);
+      this.added.push({ parent: staff, at, el: layer });
+    }
+    // Engraving convention: a double barline where a voice appears
+    // mid-piece (left alone when a special barline is already there).
+    if (this.from > 0) {
+      const prev = ctx.score.measures[this.from - 1];
+      if (prev && prev.attrs["right"] === undefined) {
+        this.barline = { el: prev, before: undefined };
+        prev.attrs["right"] = "dbl";
+      }
+    }
+    return ctx.score.measures.slice(Math.max(0, this.from - 1)).map((_, i) => ({ measureIndex: Math.max(0, this.from - 1) + i, staffN: 0 }));
+  }
+
+  revert(ctx: CommandContext): DirtyRegion[] {
+    if (this.barline) {
+      if (this.barline.before === undefined) delete this.barline.el.attrs["right"];
+      else this.barline.el.attrs["right"] = this.barline.before;
+    }
+    for (const a of [...this.added].reverse()) {
+      const i = a.parent.children.indexOf(a.el);
+      if (i >= 0) a.parent.children.splice(i, 1);
+    }
+    return ctx.score.measures.slice(Math.max(0, this.from - 1)).map((_, i) => ({ measureIndex: Math.max(0, this.from - 1) + i, staffN: 0 }));
+  }
+}
+
+export class RemoveVoiceCommand implements Command {
+  readonly label: string;
+  private removed: RemovedChild[] = [];
+
+  constructor(
+    private readonly staffN: number,
+    private readonly layerN: number,
+    private readonly from = 0,
+  ) {
+    this.label = `remove voice ${layerN} from staff ${staffN} from m${from + 1}`;
+  }
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    this.removed = [];
+    const sn = String(this.staffN);
+    const ln = String(this.layerN);
+    const range = ctx.score.measures.slice(this.from);
+    // Refuse when this layer is the only one anywhere it appears in range.
+    for (const measure of range) {
+      const staff = childElements(measure).find((c) => c.tag === "staff" && (c.attrs["n"] ?? "1") === sn);
+      if (!staff) continue;
+      const layers = childElements(staff).filter((c) => c.tag === "layer");
+      if (layers.some((l) => (l.attrs["n"] ?? "1") === ln) && layers.length === 1) {
+        throw new Error("cannot remove the last voice of a staff");
+      }
+    }
+    const removedIds = new Set<string>();
+    const collect = (e: CoreElement): void => {
+      const id = e.attrs["xml:id"];
+      if (id) removedIds.add(id);
+      for (const c of childElements(e)) collect(c);
+    };
+    const take = (parent: CoreElement, el: CoreElement) => {
+      const at = parent.children.indexOf(el);
+      this.removed.push({ parent, at, el });
+      parent.children.splice(at, 1);
+    };
+    for (const measure of range) {
+      const staff = childElements(measure).find((c) => c.tag === "staff" && (c.attrs["n"] ?? "1") === sn);
+      if (!staff) continue;
+      const layer = childElements(staff).find((c) => c.tag === "layer" && (c.attrs["n"] ?? "1") === ln);
+      if (!layer) continue;
+      collect(layer);
+      take(staff, layer);
+    }
+    if (this.removed.length === 0) throw new Error(`no voice ${ln} on staff ${sn}`);
+    // Control events anchored inside the removed voice go too.
+    for (const measure of ctx.score.measures) {
+      for (const child of [...childElements(measure)]) {
+        if (child.tag === "staff") continue;
+        const refs = controlRefs(child);
+        if (refs.length && refs.some((r) => removedIds.has(r))) take(measure, child);
+      }
+    }
+    refreshScore(ctx.score); // span elements may have left the tree
+    return ctx.score.measures.map((_, i) => ({ measureIndex: i, staffN: this.staffN }));
+  }
+
+  revert(ctx: CommandContext): DirtyRegion[] {
+    for (const r of [...this.removed].reverse()) r.parent.children.splice(r.at, 0, r.el);
+    refreshScore(ctx.score);
+    return ctx.score.measures.map((_, i) => ({ measureIndex: i, staffN: this.staffN }));
   }
 }

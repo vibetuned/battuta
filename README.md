@@ -145,7 +145,7 @@ Phase 4 in progress (2026-08-02): note entry + round-trip hardening.
   zero new ids. Compatibility note: Verovio rejects comments before the
   root element (PIs are fine), so prologue comments are preserved by moving
   them just inside `<mei>`.
-- 134 core tests; the property fuzzer covers the whole command pool (a
+- 145 core tests; the property fuzzer covers the whole command pool (a
   stale modulo had silenced part of it) and promptly caught a real bug:
   measures inserted or duplicated at a mid-piece context change landed
   AFTER the interleaved def, adopting the next section's meter — a
@@ -244,6 +244,26 @@ Phase 5 in progress (2026-08-05): polish.
   refuses at a beam boundary) and no broken beams survive; re-beam with
   `alt+b` once the rhythm settles. All one-undo-step, byte-identical
   unwind (the un/re-beam travels with the edit).
+- **Multiple voices** (per staff, per measure): a *voices* dropdown in
+  the status bar shows the caret's voice, switches between the staff's
+  voices, and *add a voice* puts a new layer (whole-measure rests) into
+  that staff **from the caret's measure onward** — like clef/key/meter
+  changes; at m1 that means the whole score. Mid-piece additions draw
+  the engraver's **double barline** at the boundary (existing special
+  barlines are left alone). *Remove this voice* takes it out from the
+  caret's measure on, with its anchored control events; a staff's last
+  voice is refused. Note entry works in any voice exactly like voice 1
+  (Verovio stems voice 1 up, voice 2 down). **Voice colors**: where a
+  staff has more than one voice, voice 1 turns blue and voice 2 violet
+  (3 amber, 4 magenta) — zero-specificity CSS driven by Verovio's
+  `data-n`, so the caret/selection colors always win. Plain ↑/↓ traverse
+  voices before staves and continue onto the next/previous **line** when
+  the measure's slots run out (text-editor rows: entering at the top slot
+  going down, the bottom slot coming up, nearest note under the caret's
+  x); ←/→ stop at a voice's start and end (no jumping
+  across measures the voice doesn't reach), and inserted measures mirror
+  every voice of their neighbor. All single undo steps, byte-identical
+  revert.
 - **Repeats** (`r` on a block selection): wraps the selected measures in
   repeat barlines (`@left="rptstart"` / `@right="rptend"` — the bis);
   the same block again removes them, and undo restores any barline the
@@ -271,7 +291,7 @@ Phase 5 in progress (2026-08-05): polish.
 - **Tabs**: a `+` button opens a fresh blank score (one treble staff, 4/4,
   four empty measures, named untitled-1, -2, …) ready for note entry, and
   **open file…** loads any `.mei`/`.xml` from disk into a new tab named
-  after the file. `node spikes/verify-phase5.mjs` (61 checks).
+  after the file. `node spikes/verify-phase5.mjs` (85 checks).
 
 ## Layout
 

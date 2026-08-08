@@ -29,6 +29,8 @@ const TILE_OPTIONS = {
   // across tiles, so joined measures read like one continuous system.
   spacingLinear: 0.03,
   spacingNonLinear: 1.0,
+  // data-n on layer groups drives the per-voice colors in the editor CSS.
+  svgAdditionalAttribute: ["layer@n"],
 };
 const PAGE_OPTIONS = {
   breaks: "auto",

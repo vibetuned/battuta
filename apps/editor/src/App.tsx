@@ -1078,7 +1078,53 @@ export default function App() {
           e.shiftKey ? session.transposeOctave(ids, dir) : session.transposeStep(ids, dir);
           afterCommand(session);
         } else {
-          const next = caretVertical(session.index, caret, e.key === "ArrowUp" ? -1 : 1);
+          const dir = e.key === "ArrowUp" ? -1 : 1;
+          let next = caretVertical(session.index, caret, dir);
+          if (!next) {
+            // Out of (staff, voice) slots in this measure: continue to the
+            // adjacent LINE like a text editor — the measure of the next row
+            // under the caret's x, nearest event, top slot going down /
+            // bottom slot coming up.
+            const main = mainRef.current;
+            const caretG = caretId ? main?.querySelector(`g[id="${CSS.escape(caretId)}"]`) : null;
+            const tile = caretG?.closest(".tile") as HTMLElement | null;
+            const row = tile?.closest(".score-row");
+            const rows = main ? [...main.querySelectorAll(".score-row")] : [];
+            const r = row ? rows.indexOf(row) : -1;
+            const targetRow = r >= 0 ? rows[r + dir] : undefined;
+            if (targetRow && caretG) {
+              const x = caretG.getBoundingClientRect().left;
+              let best: { m: number; d: number } | null = null;
+              for (const t of targetRow.querySelectorAll<HTMLElement>(".tile[data-index]")) {
+                const tr = t.getBoundingClientRect();
+                const d = x >= tr.left && x <= tr.right ? 0 : Math.min(Math.abs(x - tr.left), Math.abs(x - tr.right));
+                if (!best || d < best.d) best = { m: Number(t.dataset["index"]), d };
+              }
+              if (best) {
+                const slots: { staffN: number; layerN: number }[] = [];
+                for (const staffN of session.index.stavesPerMeasure.get(best.m) ?? []) {
+                  for (const layerN of session.index.layersPerStaff.get(`${best.m}/${staffN}`) ?? []) slots.push({ staffN, layerN });
+                }
+                const slot = dir === 1 ? slots[0] : slots[slots.length - 1];
+                if (slot) {
+                  const events = session.index.eventsAt(best.m, slot.staffN, slot.layerN);
+                  // nearest event to the caret's x within the target measure
+                  let ei = 0;
+                  let bd = Infinity;
+                  events.forEach((id, i) => {
+                    const g = main?.querySelector(`g[id="${CSS.escape(id)}"]`);
+                    if (!g) return;
+                    const d = Math.abs(g.getBoundingClientRect().left - x);
+                    if (d < bd) {
+                      bd = d;
+                      ei = i;
+                    }
+                  });
+                  if (events.length) next = { measureIndex: best.m, staffN: slot.staffN, layerN: slot.layerN, eventIndex: ei };
+                }
+              }
+            }
+          }
           if (next) {
             anchor.current = null;
             setSelection([]);
@@ -1538,6 +1584,12 @@ export default function App() {
         .pages .page { max-width: 900px; margin: 0 auto 16px; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
         .pages .page svg { width: 100%; height: auto; display: block; }
         g[id]:hover { cursor: pointer; }
+        /* Voice colors (zero specificity via :where — caret/selection win):
+           voice 1 turns blue only where a second voice exists. */
+        :where(g.staff:has(g.layer[data-n="2"]) g.layer[data-n="1"]) * { fill: #1f6feb; stroke: #1f6feb; }
+        :where(g.layer[data-n="2"]) * { fill: #8250df; stroke: #8250df; }
+        :where(g.layer[data-n="3"]) * { fill: #bf8700; stroke: #bf8700; }
+        :where(g.layer[data-n="4"]) * { fill: #bf3989; stroke: #bf3989; }
         .caret { position: absolute; width: 2px; background: #06c; pointer-events: none; animation: blink 1.1s step-end infinite; }
         @keyframes blink { 50% { opacity: 0.15; } }
         .tabs .tab { border: 1px solid #ccc; background: #f6f6f6; padding: 2px 8px; cursor: pointer; }
@@ -1614,6 +1666,57 @@ export default function App() {
           <option value="">{session ? `staves (${session.staffCount})` : "staves"}</option>
           <option value="add">add staff below</option>
           <option value="remove">remove caret staff</option>
+        </select>
+        <select
+          value=""
+          title="voices (caret staff: switch, add, remove)"
+          style={STATUSBAR_SELECT}
+          disabled={!session || !caret}
+          onChange={(e) => {
+            const op = e.target.value;
+            e.target.blur();
+            if (!session || !caret || !op) return;
+            try {
+              if (op === "add") {
+                const n = session.addVoice(caret.staffN, caret.measureIndex);
+                afterCommand(session);
+                const next = { measureIndex: caret.measureIndex, staffN: caret.staffN, layerN: n, eventIndex: 0 };
+                caretRef.current = next;
+                setCaret(next);
+                setNotice(`voice ${n} added to staff ${caret.staffN} from m${caret.measureIndex + 1} — caret is in it`);
+              } else if (op === "remove") {
+                const gone = caret.layerN;
+                session.removeVoice(caret.staffN, gone, caret.measureIndex);
+                afterCommand(session);
+                const layers = session.index.layersPerStaff.get(`${caret.measureIndex}/${caret.staffN}`) ?? [];
+                const next = layers.length ? { measureIndex: caret.measureIndex, staffN: caret.staffN, layerN: layers[0]!, eventIndex: 0 } : null;
+                caretRef.current = next;
+                setCaret(next);
+                setSelection([]);
+                lastEntered.current = null;
+                setNotice(`voice ${gone} removed from staff ${caret.staffN} from m${caret.measureIndex + 1} (ctrl+z restores it)`);
+              } else if (op.startsWith("go:")) {
+                const layerN = Number(op.slice(3));
+                const events = session.index.eventsAt(caret.measureIndex, caret.staffN, layerN);
+                if (!events.length) return;
+                const next = { measureIndex: caret.measureIndex, staffN: caret.staffN, layerN, eventIndex: Math.min(caret.eventIndex, events.length - 1) };
+                caretRef.current = next;
+                lastEntered.current = null;
+                setCaret(next);
+              }
+            } catch (err) {
+              setNotice(`voices: ${err instanceof Error ? err.message : err}`);
+            }
+          }}
+        >
+          <option value="">{caret ? `voice ${caret.layerN}` : "voice"}</option>
+          {(session && caret ? session.index.layersPerStaff.get(`${caret.measureIndex}/${caret.staffN}`) ?? [] : []).map((l) => (
+            <option key={l} value={`go:${l}`}>
+              {l === caret?.layerN ? `voice ${l} ✓` : `switch to voice ${l}`}
+            </option>
+          ))}
+          <option value="add">{caret && caret.measureIndex > 0 ? `add a voice (from m${caret.measureIndex + 1})` : "add a voice"}</option>
+          <option value="remove">{caret && caret.measureIndex > 0 ? `remove this voice (from m${caret.measureIndex + 1})` : "remove this voice"}</option>
         </select>
         <select value={shownClef} title="clef at caret (staff-local)" style={STATUSBAR_SELECT} disabled={!session} onChange={(e) => { e.target.blur(); applyContext("clef", e.target.value); }}>
           {shownClef && !CLEFS[shownClef] && <option value={shownClef}>{shownClef}</option>}

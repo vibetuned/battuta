@@ -8,6 +8,9 @@ import {
   ChangeContextCommand, resolveContexts,
   AddStaffCommand, RemoveStaffCommand,
   ToggleRepeatCommand,
+  AddVoiceCommand, RemoveVoiceCommand,
+  caretVertical,
+  caretRight, caretLeft,
 } from "../src/index.js";
 import { scoreFrom, mei, measure, parse } from "./helpers.js";
 
@@ -417,5 +420,167 @@ describe("ToggleRepeatCommand", () => {
     cmd.revert({ score, index: buildEventIndex(score) });
     expect(serialize(score.scoreEl)).toBe(before);
     expect(() => new ToggleRepeatCommand(0, 9).apply({ score, index: buildEventIndex(score) })).toThrow(/out of the score/);
+  });
+});
+
+describe("per-measure voice ranges", () => {
+  const three = () => scoreFrom(mei(`${measure(1)} ${measure(2)} ${measure(3)}`));
+  const layersAt = (score: ReturnType<typeof three>["score"], m: number) => buildEventIndex(score).layersPerStaff.get(`${m}/1`) ?? [];
+
+  it("adding from m2 leaves m1 alone and draws the boundary double bar", () => {
+    const { score } = three();
+    const cmd = new AddVoiceCommand(1, 1);
+    cmd.apply({ score, index: buildEventIndex(score) });
+    expect(cmd.layerN).toBe(2);
+    expect(layersAt(score, 0)).toEqual([1]);
+    expect(layersAt(score, 1)).toEqual([1, 2]);
+    expect(layersAt(score, 2)).toEqual([1, 2]);
+    expect(score.measures[0]!.attrs["right"]).toBe("dbl"); // the bis convention
+    const before = serialize(score.scoreEl);
+    void before;
+  });
+
+  it("does not clobber an existing special barline; revert restores byte-identically", () => {
+    const { score } = three();
+    score.measures[0]!.attrs["right"] = "rptend";
+    const before = serialize(score.scoreEl);
+    const cmd = new AddVoiceCommand(1, 1);
+    cmd.apply({ score, index: buildEventIndex(score) });
+    expect(score.measures[0]!.attrs["right"]).toBe("rptend"); // untouched
+    cmd.revert({ score, index: buildEventIndex(score) });
+    expect(serialize(score.scoreEl)).toBe(before);
+  });
+
+  it("removing from a measure keeps the voice before it", () => {
+    const { score } = three();
+    new AddVoiceCommand(1, 0).apply({ score, index: buildEventIndex(score) });
+    new RemoveVoiceCommand(1, 2, 2).apply({ score, index: buildEventIndex(score) });
+    expect(layersAt(score, 0)).toEqual([1, 2]);
+    expect(layersAt(score, 1)).toEqual([1, 2]);
+    expect(layersAt(score, 2)).toEqual([1]);
+  });
+
+  it("vertical caret order is staff 1 voice 1 → voice 2 → staff 2", () => {
+    const { score } = three();
+    new AddVoiceCommand(1, 0).apply({ score, index: buildEventIndex(score) });
+    const index = buildEventIndex(score);
+    const start = { measureIndex: 0, staffN: 1, layerN: 1, eventIndex: 0 };
+    const down1 = caretVertical(index, start, 1)!;
+    expect([down1.staffN, down1.layerN]).toEqual([1, 2]);
+    const down2 = caretVertical(index, down1, 1)!;
+    expect([down2.staffN, down2.layerN]).toEqual([2, 1]);
+    const up = caretVertical(index, down2, -1)!;
+    expect([up.staffN, up.layerN]).toEqual([1, 2]);
+  });
+});
+
+describe("voice commands", () => {
+  const twoMeasures = () => scoreFrom(mei(`
+    <measure n="1" xml:id="v-m1">
+      <staff n="1"><layer n="1"><note pname="c" oct="4" dur="1" xml:id="va1"/></layer></staff>
+      <staff n="2"><layer n="1"><note pname="c" oct="3" dur="1" xml:id="vb1"/></layer></staff>
+    </measure>
+    <measure n="2" xml:id="v-m2">
+      <staff n="1"><layer n="1"><note pname="d" oct="4" dur="1" xml:id="va2"/></layer></staff>
+      <staff n="2"><layer n="1"><note pname="d" oct="3" dur="1" xml:id="vb2"/></layer></staff>
+    </measure>`));
+
+  const layersOf = (score: ReturnType<typeof twoMeasures>["score"], m: number, staffN: string) => {
+    const staff = findAll(score.measures[m]!, "staff").find((s) => s.attrs["n"] === staffN)!;
+    return findAll(staff, "layer").map((l) => l.attrs["n"]);
+  };
+
+  it("add voice: layer max+1 with an mRest in every measure of THAT staff only", () => {
+    const { score } = twoMeasures();
+    const cmd = new AddVoiceCommand(1);
+    cmd.apply({ score, index: buildEventIndex(score) });
+    expect(cmd.layerN).toBe(2);
+    expect(layersOf(score, 0, "1")).toEqual(["1", "2"]);
+    expect(layersOf(score, 1, "1")).toEqual(["1", "2"]);
+    expect(layersOf(score, 0, "2")).toEqual(["1"]); // other staff untouched
+    // duration invariant holds (mRest fills any meter)
+    const contexts = resolveContexts(score);
+    score.measures.forEach((m, i) => {
+      for (const [staffN, c] of contexts[i]!) expect(validateMeasureDurations(m, c.meter, staffN)).toHaveLength(0);
+    });
+    // the new voice is navigable: events indexed per layer
+    const index = buildEventIndex(score);
+    expect(index.eventsAt(0, 1, 2)).toHaveLength(1);
+  });
+
+  it("remove voice: takes the layer out everywhere with its anchored controls; refuses the last", () => {
+    const { score } = twoMeasures();
+    new AddVoiceCommand(1).apply({ score, index: buildEventIndex(score) });
+    // anchor a control event inside voice 2
+    const index = buildEventIndex(score);
+    const v2rest = index.eventsAt(0, 1, 2)[0]!;
+    score.measures[0]!.children.push({ tag: "dynam", attrs: { "xml:id": "vd1", staff: "1", startid: `#${v2rest}` }, children: ["p"] });
+    new RemoveVoiceCommand(1, 2).apply({ score, index: buildEventIndex(score) });
+    expect(layersOf(score, 0, "1")).toEqual(["1"]);
+    expect(layersOf(score, 1, "1")).toEqual(["1"]);
+    expect(findAll(score.measures[0]!, "dynam")).toHaveLength(0);
+    expect(() => new RemoveVoiceCommand(1, 1).apply({ score, index: buildEventIndex(score) })).toThrow(/last voice/);
+  });
+
+  it("both revert byte-identically", () => {
+    const { score } = twoMeasures();
+    const before = serialize(score.scoreEl);
+    const add = new AddVoiceCommand(1);
+    add.apply({ score, index: buildEventIndex(score) });
+    add.revert({ score, index: buildEventIndex(score) });
+    expect(serialize(score.scoreEl)).toBe(before);
+    new AddVoiceCommand(1).apply({ score, index: buildEventIndex(score) });
+    const withVoice = serialize(score.scoreEl);
+    const rm = new RemoveVoiceCommand(1, 2);
+    rm.apply({ score, index: buildEventIndex(score) });
+    rm.revert({ score, index: buildEventIndex(score) });
+    expect(serialize(score.scoreEl)).toBe(withVoice);
+  });
+});
+
+describe("voices vs structural ops and navigation (user bug round)", () => {
+  const withVoice2 = () => {
+    const parts = scoreFrom(mei(`${measure(1)} ${measure(2)} ${measure(3)} ${measure(4)}`));
+    // voice 2 on staff 1 in m3..m4 only
+    new AddVoiceCommand(1, 2).apply({ score: parts.score, index: buildEventIndex(parts.score) });
+    return parts;
+  };
+
+  it("inserting next to a two-voice measure mirrors ALL its voices", () => {
+    const { score } = withVoice2();
+    new InsertMeasuresCommand(3, 1).apply({ score, index: buildEventIndex(score) }); // template = old m4 (2 voices)
+    const index = buildEventIndex(score);
+    expect(index.layersPerStaff.get("3/1")).toEqual([1, 2]); // the new measure
+    expect(index.layersPerStaff.get("3/2")).toEqual([1]); // staff 2 stays single-voice
+    // duration invariant intact everywhere
+    const contexts = resolveContexts(score);
+    score.measures.forEach((m, i) => {
+      for (const [staffN, c] of contexts[i]!) expect(validateMeasureDurations(m, c.meter, staffN)).toHaveLength(0);
+    });
+  });
+
+  it("left/right stop at the voice's edges instead of teleporting", () => {
+    const { score } = withVoice2();
+    const index = buildEventIndex(score);
+    // voice 2 spans m3 (index 2) .. m4 (index 3)
+    const atStart = { measureIndex: 2, staffN: 1, layerN: 2, eventIndex: 0 };
+    expect(caretLeft(index, score, atStart)).toBeNull(); // m2 has no voice 2
+    const lastEvents = index.eventsAt(3, 1, 2);
+    const atEnd = { measureIndex: 3, staffN: 1, layerN: 2, eventIndex: lastEvents.length - 1 };
+    expect(caretRight(index, score, atEnd)).toBeNull(); // score ends
+    // and inside the range it still crosses barlines normally
+    const midEnd = { measureIndex: 2, staffN: 1, layerN: 2, eventIndex: index.eventsAt(2, 1, 2).length - 1 };
+    expect(caretRight(index, score, midEnd)).toEqual({ measureIndex: 3, staffN: 1, layerN: 2, eventIndex: 0 });
+    // voice 1 nav unaffected
+    expect(caretRight(index, score, { measureIndex: 0, staffN: 1, layerN: 1, eventIndex: 0 })).toEqual({ measureIndex: 1, staffN: 1, layerN: 1, eventIndex: 0 });
+  });
+
+  it("a voice gap also stops rightward nav at its end", () => {
+    const { score } = withVoice2();
+    // remove voice 2 from m4 on -> voice 2 lives only in m3
+    new RemoveVoiceCommand(1, 2, 3).apply({ score, index: buildEventIndex(score) });
+    const index = buildEventIndex(score);
+    const atEnd = { measureIndex: 2, staffN: 1, layerN: 2, eventIndex: index.eventsAt(2, 1, 2).length - 1 };
+    expect(caretRight(index, score, atEnd)).toBeNull(); // m4 lacks voice 2: stay
   });
 });
