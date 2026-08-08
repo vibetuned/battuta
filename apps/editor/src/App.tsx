@@ -856,6 +856,17 @@ export default function App() {
           markTry(() => session.toggleMark(target, "coda"), "coda");
           return;
         }
+        // simile slash: the ù/' key (physical Quote) replaces one beat
+        if ((e.key === "'" || e.key === "ù") && target) {
+          markTry(() => session.simile(target), "simile");
+          return;
+        }
+        // measure repeats: shift on the same key ("%" AZERTY, '"' QWERTY)
+        // cycles content → % → %% → empty at the caret's voice
+        if ((e.key === "%" || e.key === '"') && caret) {
+          markTry(() => session.measureRepeat(caret), "measure repeat");
+          return;
+        }
         // one key circles the four ornaments: arpeggio (chords) → tremolo
         // → trill → mordent → off
         if (e.key === "w" && target) {

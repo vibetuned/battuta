@@ -8,7 +8,7 @@ import {
   buildScore, resolveContexts, buildEventIndex, ensureIds, seedIds, fromDom, serialize, serializeDocument, childElements, findAll, meterCapacity, frac,
   CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand,
   copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, AddVoiceCommand, RemoveVoiceCommand, ToggleRepeatCommand, ToggleVoltaCommand,
-  ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, AutoBeamCommand, UnbeamThen, measuresOf, ChangeContextCommand, planContextChange,
+  ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, AutoBeamCommand, UnbeamThen, measuresOf, ChangeContextCommand, planContextChange,
   type CoreScore, type MeasureContext, type EventIndex, type Command, type DirtyRegion, type DomLikeElement, type DomLikeNode,
   type BlockSelection, type ClipboardFragment, type PastePlan, type EntrySpec, type MarkKind, type CoreElement, type CaretPosition, type ContextChangeSpec,
 } from "@battuta/core";
@@ -273,6 +273,17 @@ export class DocumentSession {
   }
   togglePedal(startId: string, endId: string): DirtyRegion[] {
     return this.execute(new TogglePedalCommand(startId, endId));
+  }
+  /** Simile slash: one beat (the meter's unit) becomes a <beatRpt/>. */
+  simile(targetId: string): DirtyRegion[] {
+    const ref = this.index.byId.get(targetId);
+    const meter = (ref && this.contexts[ref.measureIndex]?.get(ref.staffN)?.meter) ?? {};
+    const unit = meter.unit ?? "4";
+    const capacity = meterCapacity(meter) || frac(4, 4);
+    return this.execute(new BeatRepeatCommand(targetId, frac(1, Number(unit)), unit, capacity));
+  }
+  measureRepeat(caret: CaretPosition): DirtyRegion[] {
+    return this.execute(new MeasureRepeatCycleCommand(caret.measureIndex, caret.staffN, caret.layerN));
   }
   toggleVolta(from: number, to: number, n: number): DirtyRegion[] {
     return this.execute(new ToggleVoltaCommand(from, to, n));

@@ -10,7 +10,7 @@
 import { CoreElement, childElements } from "./xml.js";
 import { CoreScore } from "./score.js";
 
-export const EVENT_TAGS = new Set(["note", "chord", "rest", "mRest", "space", "mSpace"]);
+export const EVENT_TAGS = new Set(["note", "chord", "rest", "mRest", "space", "mSpace", "mRpt", "mRpt2", "beatRpt"]);
 
 /** Caret position in model coordinates (never pixels). */
 export interface CaretPosition {

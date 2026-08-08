@@ -145,7 +145,7 @@ Phase 4 in progress (2026-08-02): note entry + round-trip hardening.
   zero new ids. Compatibility note: Verovio rejects comments before the
   root element (PIs are fine), so prologue comments are preserved by moving
   them just inside `<mei>`.
-- 157 core tests; the property fuzzer covers the whole command pool (a
+- 161 core tests; the property fuzzer covers the whole command pool (a
   stale modulo had silenced part of it) and promptly caught a real bug:
   measures inserted or duplicated at a mid-piece context change landed
   AFTER the interleaved def, adopting the next section's meter — a
@@ -253,8 +253,18 @@ Phase 5 in progress (2026-08-05): polish.
   (MEI `repeatMark func="coda"`); and `w` **circles the four ornaments**
   — arpeggio (chords) → tremolo (`bTrem` wrap) → trill → mordent → off.
   All follow the dot's target rule (just-entered note in input mode, else
-  the caret), toggle on repeat, one undo step each. The `o` key cycles
-  **coda → segno → off** (both `repeatMark`s).
+  the caret), toggle on repeat, one undo step each. The `o` key cycles the
+  full **repeat-mark family: coda → segno → fine → dal segno → da capo →
+  off** (all `repeatMark`s).
+- **Simile and measure repeats** (the physical `ù`/`'` key): unshifted
+  replaces **one beat** at the target with the simile slash (`<beatRpt/>`,
+  consuming sub-beat events exactly like overwrite entry, refusing at
+  boundaries; the slash toggles back to a beat rest); shifted (`%` on
+  AZERTY, `"` on QWERTY) cycles the caret measure's voice through
+  **content → `%` (mRpt) → `%%` (mRpt2, claiming the next measure) →
+  empty** — the original content returns via undo. The duration model
+  knows all three: measure repeats fill their measure, the beat repeat
+  counts as an unresolved beat.
 - **Block-selection feedback round**: with two selected notes of
   *different* pitches, `m` cycles the first into a **grace note** —
   acciaccatura (slashed) → appoggiatura → none — folding its written time
@@ -318,7 +328,7 @@ Phase 5 in progress (2026-08-05): polish.
 - **Tabs**: a `+` button opens a fresh blank score (one treble staff, 4/4,
   four empty measures, named untitled-1, -2, …) ready for note entry, and
   **open file…** loads any `.mei`/`.xml` from disk into a new tab named
-  after the file. `node spikes/verify-phase5.mjs` (115 checks).
+  after the file. `node spikes/verify-phase5.mjs` (124 checks).
 
 ## Layout
 

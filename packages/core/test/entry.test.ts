@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildEventIndex, serialize, frac, fEq, decomposeDuration, validateMeasureDurations, findAll,
   ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand,
-  MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand,
+  MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand,
   type CommandContext,
 } from "../src/index.js";
 import { scoreFrom, mei } from "./helpers.js";
@@ -569,8 +569,7 @@ describe("single markings (fermata, coda, ornament cycle)", () => {
     expect(rm).toHaveLength(1);
     expect(rm[0]!.attrs["func"]).toBe("coda");
     new ToggleMarkCommand("k1", "fermata").apply(ctxFor(score));
-    new ToggleMarkCommand("k1", "coda").apply(ctxFor(score)); // coda -> segno
-    new ToggleMarkCommand("k1", "coda").apply(ctxFor(score)); // segno -> off
+    for (let i = 0; i < 5; i++) new ToggleMarkCommand("k1", "coda").apply(ctxFor(score)); // walk segno…daCapo -> off
     expect(serialize(score.scoreEl)).toBe(before);
   });
 
@@ -663,19 +662,91 @@ describe("grace cycle, pedal, coda/segno cycle", () => {
     expect(serialize(score.scoreEl)).toBe(before);
   });
 
-  it("the coda key cycles coda → segno → off", () => {
+});
+
+describe("simile and measure repeats", () => {
+  const body = `
+    <measure n="1" xml:id="m1">
+      <staff n="1"><layer n="1"><note pname="c" oct="4" dur="4" xml:id="s1"/><note pname="d" oct="4" dur="8" xml:id="s2"/><note pname="e" oct="4" dur="8" xml:id="s3"/><note pname="f" oct="4" dur="2" xml:id="s4"/></layer></staff>
+      <staff n="2"><layer n="1"><mRest/></layer></staff>
+    </measure>
+    <measure n="2" xml:id="m2">
+      <staff n="1"><layer n="1"><note pname="g" oct="4" dur="1" xml:id="s5"/></layer></staff>
+      <staff n="2"><layer n="1"><mRest/></layer></staff>
+    </measure>
+    <measure n="3" xml:id="m3">
+      <staff n="1"><layer n="1"><mRest xml:id="s6"/></layer></staff>
+      <staff n="2"><layer n="1"><mRest/></layer></staff>
+    </measure>`;
+  const beat = frac(1, 4);
+
+  it("simile replaces exactly one beat (consuming sub-beat events) and toggles back to a rest", () => {
+    const { score } = scoreFrom(mei(body));
+    // s2+s3 (two eighths) = one beat: both consumed by the slash
+    new BeatRepeatCommand("s2", beat, "4", frac(4, 4)).apply(ctxFor(score));
+    const index = buildEventIndex(score);
+    const ids = index.eventsAt(0, 1, 1);
+    expect(index.byId.get(ids[1]!)?.tag).toBe("beatRpt");
+    expect(ids).toHaveLength(3); // quarter, beatRpt, half
+    expect(validateMeasureDurations(score.measures[0]!, { count: "4", unit: "4" }, 1)).toHaveLength(0);
+    // toggle off -> a one-beat rest
+    new BeatRepeatCommand(ids[1]!, beat, "4", frac(4, 4)).apply(ctxFor(score));
+    const after = buildEventIndex(score).eventsAt(0, 1, 1);
+    expect(buildEventIndex(score).byId.get(after[1]!)?.tag).toBe("rest");
+  });
+
+  it("simile refuses to cross the barline; revert is byte-identical", () => {
+    const { score } = scoreFrom(mei(body));
+    expect(() => new BeatRepeatCommand("s4", frac(1, 1), "1", frac(4, 4)).apply(ctxFor(score))).toThrow(/boundary/);
+    const before = serialize(score.scoreEl);
+    const cmd = new BeatRepeatCommand("s1", beat, "4", frac(4, 4));
+    cmd.apply(ctxFor(score));
+    cmd.revert(ctxFor(score));
+    expect(serialize(score.scoreEl)).toBe(before);
+  });
+
+  it("measure repeat cycles content → % → %% (+mSpace next) → empty", () => {
+    const { score } = scoreFrom(mei(body));
+    const pos = { measureIndex: 1, staffN: 1, layerN: 1 };
+    const layerTags = (m: number) => {
+      const idx = buildEventIndex(score);
+      return idx.eventsAt(m, 1, 1).map((id) => idx.byId.get(id)!.tag);
+    };
+    new MeasureRepeatCycleCommand(pos.measureIndex, pos.staffN, pos.layerN).apply(ctxFor(score));
+    expect(layerTags(1)).toEqual(["mRpt"]);
+    new MeasureRepeatCycleCommand(pos.measureIndex, pos.staffN, pos.layerN).apply(ctxFor(score));
+    expect(layerTags(1)).toEqual(["mRpt2"]);
+    expect(layerTags(2)).toEqual(["mSpace"]);
+    new MeasureRepeatCycleCommand(pos.measureIndex, pos.staffN, pos.layerN).apply(ctxFor(score));
+    expect(layerTags(1)).toEqual(["mRest"]);
+    expect(layerTags(2)).toEqual(["mRest"]);
+    // every state satisfied the duration invariant along the way
+    expect(validateMeasureDurations(score.measures[1]!, { count: "4", unit: "4" }, 1)).toHaveLength(0);
+  });
+
+  it("%% at the last measure refuses; reverts restore exactly", () => {
+    const { score } = scoreFrom(mei(body));
+    new MeasureRepeatCycleCommand(2, 1, 1).apply(ctxFor(score)); // mRpt on m3
+    const snap = serialize(score.scoreEl);
+    expect(() => new MeasureRepeatCycleCommand(2, 1, 1).apply(ctxFor(score))).toThrow(/following measure/);
+    expect(serialize(score.scoreEl)).toBe(snap);
+    const cmd = new MeasureRepeatCycleCommand(1, 1, 1);
+    const before2 = serialize(score.scoreEl);
+    cmd.apply(ctxFor(score));
+    cmd.revert(ctxFor(score));
+    expect(serialize(score.scoreEl)).toBe(before2);
+  });
+
+  it("the o cycle now walks coda → segno → fine → dalSegno → daCapo → off", () => {
     const { score } = scoreFrom(mei(body));
     const before = serialize(score.scoreEl);
-    const marks = () => findAll(score.measures[0]!, "repeatMark").map((r) => r.attrs["func"]);
-    new ToggleMarkCommand("g1", "coda").apply(ctxFor(score));
-    expect(marks()).toEqual(["coda"]);
-    const mid = new ToggleMarkCommand("g1", "coda");
-    mid.apply(ctxFor(score));
-    expect(marks()).toEqual(["segno"]);
-    mid.revert(ctxFor(score));
-    expect(marks()).toEqual(["coda"]); // replace-case revert
-    mid.apply(ctxFor(score));
-    new ToggleMarkCommand("g1", "coda").apply(ctxFor(score));
+    const funcs = () => findAll(score.measures[0]!, "repeatMark").map((r) => r.attrs["func"]);
+    const expected = ["coda", "segno", "fine", "dalSegno", "daCapo"];
+    for (const want of expected) {
+      new ToggleMarkCommand("s1", "coda").apply(ctxFor(score));
+      expect(funcs()).toEqual([want]);
+    }
+    new ToggleMarkCommand("s1", "coda").apply(ctxFor(score));
     expect(serialize(score.scoreEl)).toBe(before);
   });
 });

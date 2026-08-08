@@ -91,6 +91,8 @@ Preferences, keymap customization, session restore, crash-safe autosave (command
 > arpeggio/tremolo/trill/mordent), grace-note cycle (m on a two-pitch
 > pair), pedal (P on selection), volta brackets (shift+1..9 on a block =
 > toggle that number; mixes like [1,2][3]; group barlines renormalize).
+> Repeat family: o cycles coda/segno/fine/D.S./D.C.; simile slash (ù/'),
+> measure repeats %/%% (shift+ù/").
 > Landed late in Phase 4 alongside: context editing (clef/key/meter
 > dropdowns), cross-measure slurs (selection + S), tie chains (selection
 > + t), per-note chord accidental picker, edge-tie render stubs.

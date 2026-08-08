@@ -99,7 +99,7 @@ export class ReplaceEntryCommand implements Command {
     if (!hit) throw new Error("entry target not in measure");
 
     const entryDur = specDuration(this.spec);
-    const targetDur = hit.el.tag === "mRest" || hit.el.tag === "mSpace" ? this.capacity : eventDuration(hit.el);
+    const targetDur = hit.el.tag === "mRest" || hit.el.tag === "mSpace" || hit.el.tag === "mRpt" || hit.el.tag === "mRpt2" ? this.capacity : eventDuration(hit.el);
     if (targetDur === null) throw new Error("target duration unknown; cannot enter here");
 
     const removed: CoreElement[] = [hit.el];
@@ -782,7 +782,7 @@ export class CycleHairpinCommand implements Command {
 
 export type MarkKind = "fermata" | "coda";
 
-const REPEAT_MARK_CYCLE: Record<string, string | null> = { coda: "segno", segno: null };
+const REPEAT_MARK_CYCLE: Record<string, string | null> = { coda: "segno", segno: "fine", fine: "dalSegno", dalSegno: "daCapo", daCapo: null };
 
 /**
  * Toggle a single mark on an event: fermata (<fermata>) or coda
@@ -1061,6 +1061,130 @@ export class TogglePedalCommand implements Command {
       if (i >= 0) ad.measure.children.splice(i, 1);
     }
     for (const r of [...this.removed].reverse()) r.measure.children.splice(r.at, 0, r.el);
+    return this.region;
+  }
+}
+
+/**
+ * Simile: replace one BEAT at the target with <beatRpt/> (the slash),
+ * consuming events exactly like overwrite entry; on a beatRpt target the
+ * toggle turns it back into a one-beat rest. The duration model treats
+ * beatRpt as an unresolved beat (validation skips such layers).
+ */
+export class BeatRepeatCommand implements Command {
+  readonly label = "toggle simile";
+  private memento: SpliceMemento | null = null;
+  private region: DirtyRegion[] = [];
+
+  constructor(
+    private readonly targetId: string,
+    private readonly beat: Fraction,
+    private readonly unitDur: string,
+    private readonly capacity: Fraction,
+  ) {}
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    const ref = ctx.index.byId.get(this.targetId);
+    if (!ref) throw new Error("simile target not found");
+    const measure = ctx.score.measures[ref.measureIndex];
+    const hit = measure && locateWithParent(measure, this.targetId);
+    if (!hit) throw new Error("simile target not in measure");
+    this.region = [{ measureIndex: ref.measureIndex, staffN: ref.staffN }];
+    if (hit.el.tag === "beatRpt") {
+      const rest: CoreElement = { tag: "rest", attrs: { "xml:id": newId(), dur: this.unitDur }, children: [] };
+      hit.parent.children.splice(hit.at, 1, rest);
+      this.memento = { parent: hit.parent, at: hit.at, removed: [hit.el], inserted: [rest] };
+      return this.region;
+    }
+    const targetDur = hit.el.tag === "mRest" || hit.el.tag === "mSpace" || hit.el.tag === "mRpt" || hit.el.tag === "mRpt2" ? this.capacity : eventDuration(hit.el);
+    if (targetDur === null) throw new Error("cannot read the target's duration");
+    const removed: CoreElement[] = [hit.el];
+    let covered = targetDur;
+    let cursor = hit.at + 1;
+    while (fCmp(covered, this.beat) < 0) {
+      const next = hit.parent.children[cursor];
+      if (next === undefined || typeof next === "string" || !EVENT_TAGS.has(next.tag)) {
+        throw new Error("simile crosses a beam/tuplet/measure boundary");
+      }
+      const d = eventDuration(next);
+      if (d === null) throw new Error("cannot consume an event of unknown duration");
+      removed.push(next);
+      covered = fAdd(covered, d);
+      cursor++;
+    }
+    const remainder = fAdd(covered, { num: -this.beat.num, den: this.beat.den });
+    const beatRpt: CoreElement = { tag: "beatRpt", attrs: { "xml:id": newId() }, children: [] };
+    const inserted = [beatRpt, ...makeRests(remainder)];
+    hit.parent.children.splice(hit.at, removed.length, ...inserted);
+    this.memento = { parent: hit.parent, at: hit.at, removed, inserted };
+    return this.region;
+  }
+
+  revert(_ctx: CommandContext): DirtyRegion[] {
+    if (!this.memento) return [];
+    const m = this.memento;
+    m.parent.children.splice(m.at, m.inserted.length, ...m.removed);
+    return this.region;
+  }
+}
+
+/**
+ * Measure-repeat cycle at (measure, staff, voice): content → % (mRpt) →
+ * %% (mRpt2, claiming the NEXT measure with an mSpace) → empty (mRest).
+ * The original content comes back with undo, not by cycling.
+ */
+export class MeasureRepeatCycleCommand implements Command {
+  readonly label = "cycle measure repeat";
+  private mementos: { layer: CoreElement; before: (CoreElement | string)[] }[] = [];
+  private region: DirtyRegion[] = [];
+
+  constructor(
+    private readonly measureIndex: number,
+    private readonly staffN: number,
+    private readonly layerN: number,
+  ) {}
+
+  private layerAt(ctx: CommandContext, m: number): CoreElement | null {
+    const measure = ctx.score.measures[m];
+    if (!measure) return null;
+    const staff = childElements(measure).find((c) => c.tag === "staff" && Number(c.attrs["n"] ?? "1") === this.staffN);
+    if (!staff) return null;
+    return childElements(staff).find((c) => c.tag === "layer" && Number(c.attrs["n"] ?? "1") === this.layerN) ?? null;
+  }
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    this.mementos = [];
+    const layer = this.layerAt(ctx, this.measureIndex);
+    if (!layer) throw new Error("no voice here for a measure repeat");
+    const swap = (l: CoreElement, tag: string) => {
+      this.mementos.push({ layer: l, before: l.children });
+      l.children = [{ tag, attrs: { "xml:id": newId() }, children: [] }];
+    };
+    const kids = childElements(layer);
+    const single = kids.length === 1 ? kids[0]!.tag : "";
+    this.region = [{ measureIndex: this.measureIndex, staffN: this.staffN }];
+    if (single === "mRpt") {
+      const next = this.layerAt(ctx, this.measureIndex + 1);
+      if (!next) throw new Error("%% needs a following measure with this voice");
+      swap(layer, "mRpt2");
+      swap(next, "mSpace");
+      this.region.push({ measureIndex: this.measureIndex + 1, staffN: this.staffN });
+    } else if (single === "mRpt2") {
+      swap(layer, "mRest");
+      const next = this.layerAt(ctx, this.measureIndex + 1);
+      const nextKids = next ? childElements(next) : [];
+      if (next && nextKids.length === 1 && nextKids[0]!.tag === "mSpace") {
+        swap(next, "mRest");
+        this.region.push({ measureIndex: this.measureIndex + 1, staffN: this.staffN });
+      }
+    } else {
+      swap(layer, "mRpt");
+    }
+    return this.region;
+  }
+
+  revert(_ctx: CommandContext): DirtyRegion[] {
+    for (const m of [...this.mementos].reverse()) m.layer.children = m.before;
     return this.region;
   }
 }

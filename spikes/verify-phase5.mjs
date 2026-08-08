@@ -513,6 +513,11 @@ check("o toggles a coda mark", (await m1state()).tags.includes("repeatMark:coda"
 await page.keyboard.press("o"); // coda -> segno
 await page.waitForFunction(() => JSON.stringify(window.__SESSION__.score.measures[0]).includes('"segno"'), null, { timeout: 5000 });
 check("o again cycles it to a segno", (await m1state()).tags.includes("repeatMark:segno"));
+for (const fn of ["fine", "dalSegno", "daCapo"]) {
+  await page.keyboard.press("o");
+  await page.waitForFunction((f) => JSON.stringify(window.__SESSION__.score.measures[0]).includes(`"${f}"`), fn, { timeout: 5000 });
+}
+check("…and walks fine → dal segno → da capo", (await m1state()).tags.includes("repeatMark:daCapo"));
 // w circles tremolo → trill → mordent → off on a note
 await page.keyboard.press("w");
 await page.waitForFunction(() => JSON.stringify(window.__SESSION__.score.measures[0]).includes('"bTrem"'), null, { timeout: 5000 });
@@ -626,6 +631,45 @@ await page.waitForFunction((d) => window.__SESSION__.stack.undoDepth === d, bloc
 check("block-feedback round unwinds cleanly", await page.evaluate(() => {
   const s = JSON.stringify(window.__SESSION__.score.measures[0]);
   return !s.includes("grace") && !s.includes("pedal") && !JSON.stringify(window.__SESSION__.score.measures[1]).includes("ending");
+}));
+
+// --- 7g. simile (') and measure repeats (") ---
+const rptDepth0 = await page.evaluate(() => window.__SESSION__.stack.undoDepth);
+await page.locator('g[id="cc-m1n1"] use').first().click({ force: true });
+await page.waitForFunction(() => document.querySelector("main").dataset.caret === "cc-m1n1", null, { timeout: 5000 });
+await page.keyboard.press("'"); // simile: one beat becomes the slash
+await page.waitForFunction(() => JSON.stringify(window.__SESSION__.score.measures[0]).includes('"beatRpt"'), null, { timeout: 5000 });
+check("' replaces one beat with the simile slash", true);
+await page.waitForFunction(() => document.querySelector('.tile[data-index="0"] g[class~="beatRpt"]'), null, { timeout: 15000 });
+check("…and Verovio draws it", true);
+const brId = await page.evaluate(() => window.__SESSION__.index.eventsAt(0, 1, 1).find((id) => window.__SESSION__.index.byId.get(id).tag === "beatRpt"));
+await page.waitForFunction((id) => document.querySelector(`g[id="${id}"]`), brId, { timeout: 15000 });
+await page.locator(`g[id="${brId}"]`).first().click({ force: true });
+await page.waitForFunction((id) => document.querySelector("main").dataset.caret === id, brId, { timeout: 5000 });
+await page.keyboard.press("'");
+await page.waitForFunction(() => !JSON.stringify(window.__SESSION__.score.measures[0]).includes('"beatRpt"'), null, { timeout: 5000 });
+check("' on the slash turns it back into a rest", true);
+// measure repeats at m2
+await page.locator('g[id="cc-m2n1"] use').first().click({ force: true });
+await page.waitForFunction(() => document.querySelector("main").dataset.caret === "cc-m2n1", null, { timeout: 5000 });
+await page.keyboard.press('"');
+await page.waitForFunction(() => JSON.stringify(window.__SESSION__.score.measures[1]).includes('"mRpt"'), null, { timeout: 5000 });
+check('" makes the measure a % repeat', true);
+await page.waitForFunction(() => document.querySelector('.tile[data-index="1"] g[class~="mRpt"]'), null, { timeout: 15000 });
+check("…rendered", true);
+await page.keyboard.press('"');
+await page.waitForFunction(() => JSON.stringify(window.__SESSION__.score.measures[1]).includes('"mRpt2"'), null, { timeout: 5000 });
+check('a second " grows it to %% claiming the next measure', await page.evaluate(() => JSON.stringify(window.__SESSION__.score.measures[2]).includes('"mSpace"')));
+await page.keyboard.press('"');
+await page.waitForFunction(() => !JSON.stringify(window.__SESSION__.score.measures[1]).includes('"mRpt"'), null, { timeout: 5000 });
+check('a third " empties the pair', await page.evaluate(() =>
+  JSON.stringify(window.__SESSION__.score.measures[1]).includes('"mRest"') && JSON.stringify(window.__SESSION__.score.measures[2]).includes('"mRest"')));
+const rptDepthEnd = await page.evaluate(() => window.__SESSION__.stack.undoDepth);
+for (let i = 0; i < rptDepthEnd - rptDepth0; i++) await page.keyboard.press("Control+z");
+await page.waitForFunction((d) => window.__SESSION__.stack.undoDepth === d, rptDepth0, { timeout: 15000 });
+check("simile/repeat round unwinds cleanly", await page.evaluate(() => {
+  const s = JSON.stringify(window.__SESSION__.score.measures[0]) + JSON.stringify(window.__SESSION__.score.measures[1]);
+  return !s.includes("beatRpt") && !s.includes("mRpt");
 }));
 
 // --- 8. open file… from disk ---

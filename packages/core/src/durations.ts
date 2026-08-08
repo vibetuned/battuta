@@ -61,12 +61,14 @@ export interface LayerDuration {
 
 function walkDuration(el: CoreElement, scale: Fraction, acc: LayerDuration): void {
   for (const child of childElements(el)) {
-    if (child.tag === "mRest" || child.tag === "mSpace") {
+    if (child.tag === "mRest" || child.tag === "mSpace" || child.tag === "mRpt" || child.tag === "mRpt2" || child.tag === "halfmRpt") {
       acc.fillsMeasure = true;
     } else if (EVENT_TAGS.has(child.tag)) {
       const d = eventDuration(child);
       if (d === null) acc.unresolved++;
       else acc.total = fAdd(acc.total, fMul(d, scale));
+    } else if (child.tag === "beatRpt") {
+      acc.unresolved++; // one beat by definition; exact checking is skipped
     } else if (child.tag === "tuplet") {
       const num = Number(child.attrs["num"] ?? "3");
       const numbase = Number(child.attrs["numbase"] ?? "2");
