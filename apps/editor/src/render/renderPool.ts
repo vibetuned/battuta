@@ -14,6 +14,24 @@ export interface TileResult {
   error?: string;
 }
 
+/** One timemap entry: what turns on/off at a real-time millisecond stamp. */
+export interface TimemapEvent {
+  tstamp: number;
+  on?: string[];
+  off?: string[];
+  measureOn?: string;
+}
+
+/** Playback data for a document: timeline + sounding pitch per note id.
+ * With repeats expanded, `idMap` sends each cloned pass id (`<id>-rendN`)
+ * back to the notated id the SVG actually contains. */
+export interface PlaybackData {
+  events: TimemapEvent[];
+  notes: Record<string, { pitch: number; duration: number }>;
+  idMap: Record<string, string>;
+  error?: string;
+}
+
 interface Job {
   xml: string;
   key: string;
@@ -27,6 +45,7 @@ class PoolWorker {
   busy = false;
   private handlers = new Map<number, (msg: { svg: string; renderMs: number; error?: string }) => void>();
   private pageHandlers = new Map<number, { onPage: (index: number, svg: string) => void; done: (pageCount: number) => void }>();
+  private timemapHandlers = new Map<number, (data: PlaybackData) => void>();
 
   constructor() {
     this.worker = new Worker(new URL("./verovioWorker.ts", import.meta.url), { type: "module" });
@@ -45,6 +64,10 @@ class PoolWorker {
           const h = this.pageHandlers.get(msg.id);
           this.pageHandlers.delete(msg.id);
           h?.done(msg.pageCount);
+        } else if (msg.type === "timemapDone") {
+          const h = this.timemapHandlers.get(msg.id);
+          this.timemapHandlers.delete(msg.id);
+          h?.({ events: msg.events, notes: msg.notes, idMap: msg.idMap ?? {}, ...(msg.error !== undefined && { error: msg.error }) });
         }
       };
       this.worker.postMessage({ type: "init" });
@@ -59,6 +82,11 @@ class PoolWorker {
   renderPages(id: number, xml: string, onPage: (index: number, svg: string) => void, done: (pageCount: number) => void) {
     this.pageHandlers.set(id, { onPage, done });
     this.worker.postMessage({ type: "renderPages", id, xml });
+  }
+
+  timemap(id: number, xml: string, expand: string | null, done: (data: PlaybackData) => void) {
+    this.timemapHandlers.set(id, done);
+    this.worker.postMessage({ type: "timemap", id, xml, ...(expand ? { expand } : {}) });
   }
 }
 
@@ -116,6 +144,15 @@ export class RenderPool {
     await w.ready;
     return new Promise((resolve) => {
       w.renderPages(this.nextId++, xml, onPage, resolve);
+    });
+  }
+
+  /** Timemap + per-note MIDI values for playback (page view player). */
+  async documentTimemap(xml: string, expand: string | null = null): Promise<PlaybackData> {
+    const w = this.workers[0]!;
+    await w.ready;
+    return new Promise((resolve) => {
+      w.timemap(this.nextId++, xml, expand, resolve);
     });
   }
 

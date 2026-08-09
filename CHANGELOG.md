@@ -8,6 +8,57 @@ correction — stay in [PLANNING.md](PLANNING.md).
 
 ## Unreleased
 
+- **Page-view score player** (▶ / ⏸ / ⏹ next to the view toggle):
+  Verovio's timemap drives BOTH the audio and a moving note highlight
+  from one timeline, so they cannot drift. Sound is Tone.js's Sampler
+  over a self-hosted Salamander piano subset (~2 MB of mp3, every third
+  semitone, embedded in the bundle — no CDN); sounding pitch per note id
+  comes from `getMIDIValuesForElement` (Verovio resolves key signatures,
+  measure accidentals, and ties), note lengths from the timemap's own
+  on→off spans, so held/tied notes sound once for their full span. The
+  view auto-scrolls when the playing measure leaves the viewport; any
+  edit, tab switch, or view switch stops playback (the timemap is stale
+  the moment the document changes). The shell smoke gained a probe that
+  decodes a sample through WebKitGTK's gstreamer stack — verified on
+  Linux.
+- **Playback follows the form** (part 2): plain repeat barlines are
+  auto-expanded by Verovio's timemap; voltas and one dal-segno/da-capo
+  jump (with optional fine) are synthesized into an MEI `<expansion>`
+  from battuta's own repeat knowledge (`buildExpansion` in core — pure,
+  volta number-sets like [1,2][3] supported, loopback to `rptstart` when
+  present else to the top, the recap takes only final endings; exotic
+  forms fall back to unexpanded). Repeated passes play as `-rendN` id
+  clones, and the highlight maps every clone back to its notated id via
+  `renderToExpansionMap` — that mapping was the missing piece the first
+  tester round spotted: audio repeated but the notes stopped lighting.
+  Probed behaviors that shaped this: with an expansion active Verovio
+  does NOT auto-expand plain repeats (the plist must encode everything),
+  and `expansionMap[id][0]` is always the notated id.
+- **To Coda** joins the `o` cycle (coda → **To Coda** → segno → fine →
+  D.S. → D.C. → off). MEI has no separate func for it — both marks are
+  `repeatMark func="coda"` — so the TEXT CONTENT is the encoding: bare
+  renders Verovio's 𝄌 glyph (the destination), `>To Coda<` renders the
+  text (the jump-out marker). Playback honors the pair: a D.S./D.C.
+  recap that reaches the To Coda marker jumps to the 𝄌 sign ("al Coda");
+  either mark alone stays decorative. Found & fixed underneath: the
+  harmony lane's Tab→Enter could commit the PRE-completion buffer — the
+  window key listener re-attaches after React effects, so a fast second
+  key hit a stale closure; the handler now reads the buffer through a
+  ref. (This was the wandering phase5 "flake" at the harm commit.)
+- **The D.C./D.S. mark now cuts the first pass** (tester find): a
+  mid-score da capo used to play through to the end before restarting —
+  the base pass now stops AT the jump mark, the material after it (the
+  coda) plays only via the To Coda jump, and a recap that walks back
+  into the mark without having jumped ends the piece there (no loop).
+  Jumps at the very end of the score behave exactly as before.
+- **Tempo + progress** (part 3): a tempo select (0.5×–2×, persisted in
+  settings) next to the player — live, the schedule rebuilds at the
+  current musical position — plus a clickable progress bar with a
+  mm:ss / mm:ss readout showing listening time at the chosen tempo;
+  clicking seeks (`transport.seconds`, highlights clear and relight).
+  `scorePlayer.stop()` is now a pure no-op until something actually
+  played, keeping Tone entirely off the editing path.
+
 First feedback round on the installed 0.0.1 (tested on Linux):
 
 - **Title input**: a *title* button in the header opens an inline editor

@@ -45,7 +45,9 @@ const PAGE_OPTIONS = {
 };
 
 let toolkit: VerovioToolkit | null = null;
-let mode: "tile" | "page" = "tile";
+// "timemap" marks option state dirty (per-document expand), forcing the
+// next ensureMode call to re-apply its option set.
+let mode: "tile" | "page" | "timemap" = "tile";
 let tileExtra = "{}"; // JSON of the current per-document tile option overrides
 
 function ensureMode(m: "tile" | "page", extraJson = "{}") {
@@ -87,5 +89,45 @@ self.onmessage = async (e: MessageEvent) => {
       self.postMessage({ type: "page", id: msg.id, index: p, svg: toolkit!.renderToSVG(p) });
     }
     self.postMessage({ type: "pagesDone", id: msg.id, pageCount });
+  } else if (msg.type === "timemap") {
+    // Playback data for the page view: the timemap (one authoritative
+    // timeline for audio AND highlight) plus per-note MIDI values — Verovio
+    // resolves sounding pitch (key signature, measure accidentals, ties),
+    // which the raw MEI attributes alone do not give. With an <expansion>
+    // (repeats/voltas/jumps), repeated passes play as `<id>-rendN` clones:
+    // idMap sends every clone back to its notated id for the highlight.
+    try {
+      toolkit!.setOptions({ ...PAGE_OPTIONS, expand: msg.expand ?? "" });
+      mode = "timemap"; // option state is per-document now: force re-apply
+      toolkit!.loadData(msg.xml);
+      const events = toolkit!.renderToTimemap({ includeMeasures: true, includeRests: true }) as {
+        tstamp: number;
+        on?: string[];
+        off?: string[];
+        measureOn?: string;
+      }[];
+      const notes: Record<string, { pitch: number; duration: number }> = {};
+      for (const ev of events) {
+        for (const id of ev.on ?? []) {
+          if (notes[id]) continue;
+          const v = toolkit!.getMIDIValuesForElement(id);
+          if (v && v.pitch > 0) notes[id] = { pitch: v.pitch, duration: v.duration };
+        }
+      }
+      // expansionMap: id -> [notatedId, clones...]; keep non-identity only.
+      const idMap: Record<string, string> = {};
+      try {
+        const em = toolkit!.renderToExpansionMap() as Record<string, string[]>;
+        for (const [id, related] of Object.entries(em)) {
+          const notated = related[0];
+          if (notated && notated !== id) idMap[id] = notated;
+        }
+      } catch {
+        /* no expansion loaded: identity map */
+      }
+      self.postMessage({ type: "timemapDone", id: msg.id, events, notes, idMap });
+    } catch (err) {
+      self.postMessage({ type: "timemapDone", id: msg.id, events: [], notes: {}, idMap: {}, error: String(err) });
+    }
   }
 };

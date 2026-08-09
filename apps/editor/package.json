@@ -13,6 +13,7 @@
     "@battuta/core": "*",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
+    "tone": "^15.1.22",
     "verovio": "^6.2.0"
   },
   "devDependencies": {

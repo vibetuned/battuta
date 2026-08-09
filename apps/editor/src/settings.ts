@@ -8,6 +8,8 @@ import type { Layout } from "./keymap";
 export interface Settings {
   layout?: Layout;
   zoom?: number;
+  /** Playback tempo multiplier (1 = as encoded). */
+  tempo?: number;
 }
 
 const STORE = "battuta.settings.v1";

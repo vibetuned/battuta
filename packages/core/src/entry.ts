@@ -789,7 +789,25 @@ export class CycleHairpinCommand implements Command {
 
 export type MarkKind = "fermata" | "coda";
 
-const REPEAT_MARK_CYCLE: Record<string, string | null> = { coda: "segno", segno: "fine", fine: "dalSegno", dalSegno: "daCapo", daCapo: null };
+/**
+ * The o-key cycle, in order. "To Coda" shares func="coda" with the coda
+ * SIGN — MEI has no separate func — the TEXT CONTENT is the difference:
+ * bare = the 𝄌 destination glyph, text = the jump-out marker (Verovio
+ * renders whichever is present).
+ */
+const REPEAT_MARKS: { func: string; text?: string }[] = [
+  { func: "coda" },
+  { func: "coda", text: "To Coda" },
+  { func: "segno" },
+  { func: "fine" },
+  { func: "dalSegno" },
+  { func: "daCapo" },
+];
+
+const markText = (el: CoreElement): string => el.children.filter((c): c is string => typeof c === "string").join("");
+
+/** Which cycle state an existing repeatMark is in (-1 = unknown). */
+const repeatMarkState = (el: CoreElement): number => REPEAT_MARKS.findIndex((m) => m.func === el.attrs["func"] && (m.text ?? "") === markText(el).trim());
 
 /**
  * Toggle a single mark on an event: fermata (<fermata>) or coda
@@ -819,10 +837,13 @@ export class ToggleMarkCommand implements Command {
       (c) => c.tag === tag && (c.attrs["startid"] ?? "").replace(/^#/, "") === this.targetId,
     ) ?? null;
     this.region = [{ measureIndex: ref.measureIndex, staffN: ref.staffN }];
-    if (existing && this.kind === "coda" && REPEAT_MARK_CYCLE[existing.attrs["func"] ?? ""] !== undefined && REPEAT_MARK_CYCLE[existing.attrs["func"] ?? ""] !== null) {
-      // the repeat-mark key cycles: coda -> segno -> off
+    const state = existing && this.kind === "coda" ? repeatMarkState(existing) : -1;
+    if (existing && this.kind === "coda" && state >= 0 && state < REPEAT_MARKS.length - 1) {
+      // the repeat-mark key cycles: coda -> To Coda -> segno -> fine ->
+      // dal segno -> da capo -> off
+      const nextMark = REPEAT_MARKS[state + 1]!;
       const at = measure.children.indexOf(existing);
-      const next: CoreElement = { ...existing, attrs: { ...existing.attrs, func: REPEAT_MARK_CYCLE[existing.attrs["func"]!]! }, children: [...existing.children] };
+      const next: CoreElement = { ...existing, attrs: { ...existing.attrs, func: nextMark.func }, children: nextMark.text ? [nextMark.text] : [] };
       measure.children[at] = next;
       this.memento = { measure, at, before: existing, after: next };
     } else if (existing) {

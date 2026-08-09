@@ -8,7 +8,7 @@ import {
   buildScore, resolveContexts, buildEventIndex, ensureIds, fromDom, serialize, serializeDocument, childElements, findAll, meterCapacity, frac,
   CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand, RegenerateIdsCommand,
   copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, AddVoiceCommand, RemoveVoiceCommand, ToggleRepeatCommand, ToggleVoltaCommand,
-  SetHarmCommand, harmTextAt, SetTitleCommand, fingTextsAt, ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, TupletCommand, AutoBeamCommand, UnbeamThen, measuresOf, ChangeContextCommand, planContextChange,
+  SetHarmCommand, harmTextAt, SetTitleCommand, fingTextsAt, buildExpansion, ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, TupletCommand, AutoBeamCommand, UnbeamThen, measuresOf, ChangeContextCommand, planContextChange,
   type CoreScore, type MeasureContext, type EventIndex, type Command, type DirtyRegion, type DomLikeElement, type DomLikeNode,
   type BlockSelection, type ClipboardFragment, type PastePlan, type EntrySpec, type MarkKind, type HarmKind, type CoreElement, type CaretPosition, type ContextChangeSpec,
 } from "@battuta/core";
@@ -377,5 +377,27 @@ export class DocumentSession {
       `</mdiv></body></music>`,
       `</mei>`,
     ].join("\n");
+  }
+
+  /**
+   * Playback serialization: when the score carries repeat structure
+   * (voltas, plain repeats, one D.S./D.C. jump), the measures are wrapped
+   * in segment sections under a synthesized <expansion> so Verovio's
+   * timemap follows the true form (`expand` option). Pure — the document
+   * tree is only read.
+   */
+  serializeForPlayback(): { xml: string; expand: string | null } {
+    const plan = buildExpansion(this.score);
+    if (!plan) return { xml: this.serializeForPageView(), expand: null };
+    const scoreEl: CoreElement = { tag: "score", attrs: {}, children: [this.score.scoreDef, plan.section] };
+    const xml = [
+      `<?xml version="1.0" encoding="UTF-8"?>`,
+      `<mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.0">`,
+      `<music><body><mdiv>`,
+      serialize(scoreEl),
+      `</mdiv></body></music>`,
+      `</mei>`,
+    ].join("\n");
+    return { xml, expand: plan.expandId };
   }
 }

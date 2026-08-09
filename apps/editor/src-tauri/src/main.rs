@@ -188,6 +188,19 @@ fn main() {
                    if (inv) inv('js_log', { msg: 'probe: __TAURI__=' + (window.__TAURI__ ? 'present' : 'MISSING') + ' tiles=' + document.querySelectorAll('.tile').length }); \
                  }, 3000);",
             );
+            // probe3: mp3 decode — the page-view player's samples depend on
+            // WebKitGTK's gstreamer plugins, which vary per system.
+            let _ = webview.eval(
+                "setTimeout(() => { \
+                   const inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke; \
+                   if (!inv || !window.__SAMPLE_URL__) return; \
+                   fetch(window.__SAMPLE_URL__) \
+                     .then((r) => r.arrayBuffer()) \
+                     .then((b) => new AudioContext().decodeAudioData(b)) \
+                     .then((a) => inv('js_log', { msg: 'probe3: mp3 decode ok (' + a.length + ' frames)' })) \
+                     .catch((e) => inv('js_log', { msg: 'probe3: mp3 decode FAILED: ' + e })); \
+                 }, 5000);",
+            );
             let _ = webview.eval(
                 "setTimeout(() => { \
                    const inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke; \

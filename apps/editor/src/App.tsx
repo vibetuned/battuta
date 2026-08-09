@@ -4,6 +4,7 @@ import { RenderPool, type TileResult } from "./render/renderPool";
 import { loadKeymap, saveKeymapOverride, clearKeymapOverrides, keyMatches, type Keymap, type Layout } from "./keymap";
 import { ShortcutEditor } from "./ShortcutEditor";
 import { loadSettings, saveSettings, detectLayout } from "./settings";
+import { scorePlayer, type PlayerState } from "./player";
 import { DocumentSession } from "./session";
 
 const FIXTURES = [
@@ -155,6 +156,11 @@ const durIndicator = (dur: string, dots: number): string => {
 
 export const ZOOM_LEVELS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5] as const;
 export const DEFAULT_ZOOM = 1;
+
+/** Playback tempo multipliers offered by the page-view player. */
+const TEMPO_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
+/** mm:ss for the player readout. */
+const fmtTime = (s: number): string => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
 /**
  * Virtualized, edit-aware tile grid. Visibility (IntersectionObserver) and
@@ -453,6 +459,13 @@ export default function App() {
   const [docs, setDocs] = useState<OpenDoc[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [view, setView] = useState<"tiles" | "pages">("tiles");
+  const [playerState, setPlayerState] = useState<PlayerState>("idle");
+  const [playerPos, setPlayerPos] = useState(0);
+  const [playerTotal, setPlayerTotal] = useState(0);
+  const [playerTempo, setPlayerTempo] = useState(() => {
+    const t = loadSettings().tempo;
+    return t !== undefined && TEMPO_STEPS.includes(t as (typeof TEMPO_STEPS)[number]) ? t : 1;
+  });
   const [version, setVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -481,7 +494,16 @@ export default function App() {
   const [titleOpen, setTitleOpen] = useState<string | null>(null);
   /** Harmony lane: typed chord symbols / roman numerals at the caret. */
   const [harmLane, setHarmLane] = useState<HarmKind | null>(null);
-  const [harmBuffer, setHarmBuffer] = useState("");
+  // The buffer state renders the floating editor; the REF is what the key
+  // handler reads and writes. The window listener re-attaches only after
+  // effects re-run, so a closure read races fast key sequences (Tab then
+  // Enter committed the PRE-completion buffer); the ref cannot go stale.
+  const [harmBuffer, _setHarmBuffer] = useState("");
+  const harmBufRef = useRef("");
+  const setHarmBuffer = useCallback((v: string | ((prev: string) => string)) => {
+    harmBufRef.current = typeof v === "function" ? v(harmBufRef.current) : v;
+    _setHarmBuffer(harmBufRef.current);
+  }, []);
 
   /** Chord accidental picker: which note of the chord gets the accidental. */
   const [accidPick, setAccidPick] = useState<{ accid: "s" | "f" | "n" | "x"; chordId: string; notes: { id: string; pname: string; oct: string; accid?: string }[]; x: number; y: number } | null>(null);
@@ -536,6 +558,7 @@ export default function App() {
     setNotice(null);
     setEntryMode(false);
     lastEntered.current = null;
+    scorePlayer.stop();
   }, []);
 
   /** Open a document from raw MEI text (fixtures and disk files alike). */
@@ -656,6 +679,7 @@ export default function App() {
   const afterCommand = useCallback(
     (s: DocumentSession) => {
       pendingEdit.current = true;
+      scorePlayer.stop(); // an edit invalidates the scheduled timemap
       setVersion(s.version);
       setSelection((sel) => sel.filter((id) => s.index.byId.has(id)));
       setCaret((c) => {
@@ -666,6 +690,74 @@ export default function App() {
     },
     [],
   );
+
+  // --- page-view player: audio + highlight ride the same timemap ---
+  useEffect(() => {
+    scorePlayer.onStateChange = setPlayerState;
+    scorePlayer.onHighlight = (on, off, measureOn) => {
+      const root = document.querySelector(".pages");
+      if (!root) return;
+      if (on.length === 0 && off.length === 0 && !measureOn) {
+        for (const el of root.querySelectorAll("g.playing")) el.classList.remove("playing");
+        return;
+      }
+      for (const id of off) root.querySelector(`g[id="${CSS.escape(id)}"]`)?.classList.remove("playing");
+      for (const id of on) root.querySelector(`g[id="${CSS.escape(id)}"]`)?.classList.add("playing");
+      if (measureOn) {
+        const m = root.querySelector(`g[id="${CSS.escape(measureOn)}"]`);
+        if (m) {
+          const r = m.getBoundingClientRect();
+          // Follow the music, but only when it actually leaves the viewport.
+          if (r.top < 60 || r.bottom > window.innerHeight - 60) m.scrollIntoView({ block: "center", behavior: "smooth" });
+        }
+      }
+    };
+    scorePlayer.setTempo(playerTempo); // restore the persisted tempo
+    return () => scorePlayer.stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (view !== "pages") scorePlayer.stop();
+  }, [view]);
+  // Progress polling: 4 Hz while the player is active.
+  useEffect(() => {
+    if (playerState === "idle" || playerState === "loading") {
+      setPlayerPos(0);
+      setPlayerTotal(0);
+      return;
+    }
+    const tick = () => {
+      setPlayerPos(scorePlayer.position());
+      setPlayerTotal(scorePlayer.total());
+    };
+    tick();
+    const t = setInterval(tick, 250);
+    return () => clearInterval(t);
+  }, [playerState]);
+  const onPlayPause = useCallback(() => {
+    if (playerState === "playing") {
+      scorePlayer.pause();
+      return;
+    }
+    if (playerState === "paused") {
+      scorePlayer.resume();
+      return;
+    }
+    if (playerState === "loading" || !session || !pool) return;
+    void scorePlayer.unlock(); // inside the gesture, before any await
+    const { xml, expand } = session.serializeForPlayback();
+    pool
+      .documentTimemap(xml, expand)
+      .then((data) => {
+        if (data.error) {
+          setNotice(`playback failed: ${data.error}`);
+          return;
+        }
+        if (import.meta.env.DEV || "__TAURI__" in window) (window as unknown as Record<string, unknown>).__PLAYBACK__ = data;
+        return scorePlayer.play(data);
+      })
+      .catch((e) => setNotice(`playback failed: ${e instanceof Error ? e.message : e}`));
+  }, [playerState, session, pool]);
 
   /** Choose the octave that puts pname nearest the previous note (or oct 4). */
   const nearestOctave = useCallback(
@@ -1008,15 +1100,16 @@ export default function App() {
           if (e.key === "Escape") setHarmLane(null);
           return;
         }
+        const buf = harmBufRef.current; // ref, not closure: see declaration
         const commit = (): boolean => {
           const existing = session.harmAt(caretId, harmLane);
-          if (harmBuffer === existing) return true; // nothing to do
-          if (harmBuffer !== "" && !isHarmText(harmLane, harmBuffer)) {
-            setNotice(`incomplete ${harmLane === "rna" ? "numeral" : "chord symbol"}: "${harmBuffer}"`);
+          if (buf === existing) return true; // nothing to do
+          if (buf !== "" && !isHarmText(harmLane, buf)) {
+            setNotice(`incomplete ${harmLane === "rna" ? "numeral" : "chord symbol"}: "${buf}"`);
             return false;
           }
           try {
-            session.setHarm(caretId, harmBuffer, harmLane);
+            session.setHarm(caretId, buf, harmLane);
             afterCommand(session);
             setNotice(null);
             return true;
@@ -1043,7 +1136,7 @@ export default function App() {
           return;
         }
         if (e.key === "Tab") {
-          const s = harmSuggestions(harmLane, harmBuffer)[0];
+          const s = harmSuggestions(harmLane, buf)[0];
           if (s) setHarmBuffer(s);
           return;
         }
@@ -2015,6 +2108,53 @@ export default function App() {
         />
         <button onClick={() => fileInputRef.current?.click()}>open file…</button>
         <button onClick={() => setView(view === "tiles" ? "pages" : "tiles")}>{view === "tiles" ? "page view" : "edit view"}</button>
+        {view === "pages" && (
+          <>
+            <button data-player-toggle title={playerState === "playing" ? "pause" : "play (repeats, voltas and one D.S./D.C. jump follow the form)"} onClick={onPlayPause} disabled={playerState === "loading"}>
+              {playerState === "playing" ? "⏸" : playerState === "loading" ? "…" : "▶"}
+            </button>
+            <button data-player-stop title="stop" onClick={() => scorePlayer.stop()} disabled={playerState === "idle"}>
+              ⏹
+            </button>
+            <select
+              data-player-tempo
+              title="playback tempo"
+              value={playerTempo}
+              onChange={(e) => {
+                const f = Number(e.target.value);
+                e.target.blur();
+                setPlayerTempo(f);
+                saveSettings({ tempo: f });
+                scorePlayer.setTempo(f);
+              }}
+              style={{ fontSize: 12 }}
+            >
+              {TEMPO_STEPS.map((f) => (
+                <option key={f} value={f}>
+                  {f}×
+                </option>
+              ))}
+            </select>
+            {playerState !== "idle" && playerState !== "loading" && (
+              <>
+                <span
+                  data-player-progress
+                  title="seek"
+                  onClick={(e) => {
+                    const r = e.currentTarget.getBoundingClientRect();
+                    scorePlayer.seek((e.clientX - r.left) / r.width);
+                  }}
+                  style={{ width: 140, height: 8, background: "#dde3ea", borderRadius: 4, display: "inline-block", cursor: "pointer", position: "relative", alignSelf: "center", overflow: "hidden" }}
+                >
+                  <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${playerTotal ? Math.min(100, (playerPos / playerTotal) * 100) : 0}%`, background: "#4a7dbd", pointerEvents: "none" }} />
+                </span>
+                <span data-player-time style={{ fontSize: 12, color: "#567", fontVariantNumeric: "tabular-nums" }}>
+                  {fmtTime(playerPos)} / {fmtTime(playerTotal)}
+                </span>
+              </>
+            )}
+          </>
+        )}
 
         <button onClick={() => structural("insert")}>+m</button>
         <button onClick={() => structural("delete")}>−m</button>
@@ -2150,6 +2290,7 @@ export default function App() {
           color: #bbb; font-size: 11px; display: flex; align-items: center; justify-content: center; }
         .pages .page { max-width: 900px; margin: 0 auto 16px; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
         .pages .page svg { width: 100%; height: auto; display: block; }
+        .pages g.playing * { fill: #c40; stroke: #c40; }
         g[id]:hover { cursor: pointer; }
         /* Voice colors (zero specificity via :where — caret/selection win):
            voice 1 turns blue only where a second voice exists. */

@@ -45,5 +45,7 @@ export { newId, ensureIds } from "./ids.js";
 export { EVENT_TAGS, EventIndex, buildEventIndex, caretLeft, caretRight, caretVertical, eventRange } from "./events.js";
 export type { CaretPosition, EventRef } from "./events.js";
 
+export { buildExpansion } from "./expansion.js";
+export type { ExpansionPlan } from "./expansion.js";
 export { CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand, RegenerateIdsCommand, SetTitleCommand } from "./commands.js";
 export type { Command, CommandContext, DirtyRegion } from "./commands.js";

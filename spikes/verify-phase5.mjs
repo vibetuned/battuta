@@ -27,6 +27,19 @@ const browser = await chromium.launch({ executablePath: "/usr/bin/google-chrome"
 const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
 page.on("pageerror", (e) => console.error("[pageerror]", e.message));
 await page.goto(server.resolvedUrls.local[0] + "?pool=2");
+/** Click an event by id and wait for the caret to land — retrying, because
+ * rows reflow under the cursor while renders settle (the stale-coordinate
+ * lesson). */
+const clickEvent = async (id) => {
+  for (let i = 0; i < 5; i++) {
+    await page.locator(`g[id="${id}"] use`).first().click({ force: true }).catch(() => undefined);
+    try {
+      await page.waitForFunction((x) => document.querySelector("main").dataset.caret === x, id, { timeout: 2000 });
+      return;
+    } catch { /* reflowed mid-click: try again */ }
+  }
+  throw new Error(`clickEvent(${id}) never landed`);
+};
 try {
 await page.waitForFunction(() => document.querySelectorAll(".tile .ms").length >= 3, null, { timeout: 60000 });
 
@@ -544,7 +557,10 @@ check("…and Verovio draws it", true);
 await page.keyboard.press("o");
 await page.waitForFunction(() => JSON.stringify(window.__SESSION__.score.measures[0]).includes('"repeatMark"'), null, { timeout: 5000 });
 check("o toggles a coda mark", (await m1state()).tags.includes("repeatMark:coda"));
-await page.keyboard.press("o"); // coda -> segno
+await page.keyboard.press("o"); // coda -> To Coda (same func; the TEXT marks the jump-out)
+await page.waitForFunction(() => JSON.stringify(window.__SESSION__.score.measures[0]).includes("To Coda"), null, { timeout: 5000 });
+check("o again makes it the To Coda marker", true);
+await page.keyboard.press("o"); // To Coda -> segno
 await page.waitForFunction(() => JSON.stringify(window.__SESSION__.score.measures[0]).includes('"segno"'), null, { timeout: 5000 });
 check("o again cycles it to a segno", (await m1state()).tags.includes("repeatMark:segno"));
 for (const fn of ["fine", "dalSegno", "daCapo"]) {
@@ -684,8 +700,7 @@ await page.keyboard.press("'");
 await page.waitForFunction(() => !JSON.stringify(window.__SESSION__.score.measures[0]).includes('"beatRpt"'), null, { timeout: 5000 });
 check("' on the slash turns it back into a rest", true);
 // measure repeats at m2
-await page.locator('g[id="cc-m2n1"] use').first().click({ force: true });
-await page.waitForFunction(() => document.querySelector("main").dataset.caret === "cc-m2n1", null, { timeout: 5000 });
+await clickEvent("cc-m2n1");
 await page.keyboard.press('"');
 await page.waitForFunction(() => JSON.stringify(window.__SESSION__.score.measures[1]).includes('"mRpt"'), null, { timeout: 5000 });
 check('" makes the measure a % repeat', true);
@@ -788,7 +803,13 @@ await page.keyboard.press("Enter");
 await page.waitForFunction(() => {
   const m = window.__SESSION__.score.measures[1];
   return m.children.some((c) => typeof c !== "string" && c.tag === "harm" && c.attrs.type === "rna" && c.children.join("") === "V65");
-}, null, { timeout: 5000 });
+}, null, { timeout: 5000 }).catch(async (e) => {
+  console.error("DIAG notice:", await page.evaluate(() => document.querySelector("[data-notice]")?.textContent));
+  console.error("DIAG buffer:", await page.evaluate(() => document.querySelector("[data-harm-input]")?.textContent ?? "(closed)"));
+  console.error("DIAG caret:", await page.evaluate(() => document.querySelector("main").dataset.caret));
+  console.error("DIAG harms m2:", await page.evaluate(() => JSON.stringify(window.__SESSION__.score.measures[1].children.filter((c) => typeof c !== "string" && c.tag === "harm"))));
+  throw e;
+});
 check("the numeral lands below with type=rna, independent of the chord lane", await page.evaluate(() => {
   const m = window.__SESSION__.score.measures[1];
   const harms = m.children.filter((c) => typeof c !== "string" && c.tag === "harm");
@@ -994,6 +1015,79 @@ check("harmony round unwinds cleanly", await page.evaluate(() =>
 
   // the zoom level rides the same settings store
   check("the zoom level persists in settings", await page.evaluate(() => JSON.parse(localStorage.getItem("battuta.settings.v1")).zoom === Number(document.querySelector("[data-zoom-toggle]").dataset.zoom)));
+}
+
+
+// --- 7n. page-view player: timemap-driven audio + highlight ---
+{
+  await page.locator("button", { hasText: "page view" }).click();
+  await page.waitForFunction(() => document.querySelector(".pages .page svg"), null, { timeout: 60000 });
+  await page.locator("[data-player-toggle]").click();
+  await page.waitForFunction(() => document.querySelector("[data-player-toggle]").textContent.trim() === "⏸", null, { timeout: 60000 });
+  check("play loads the sampler + timemap and starts", true);
+  await page.waitForFunction(() => document.querySelector(".pages g.playing"), null, { timeout: 20000 });
+  check("playback highlights the sounding notes in page view", true);
+
+  // progress bar + tempo (step 3)
+  const parseClock = (s) => { const [mm, ss] = s.split(":").map(Number); return mm * 60 + ss; };
+  await page.waitForFunction(() => {
+    const t = document.querySelector("[data-player-time]");
+    return t && !t.textContent.trim().startsWith("0:00 /");
+  }, null, { timeout: 10000 });
+  check("the progress readout advances while playing", true);
+  const total1 = await page.evaluate(() => document.querySelector("[data-player-time]").textContent.split("/")[1].trim());
+  await page.selectOption("[data-player-tempo]", "2");
+  await page.waitForFunction((t1) => document.querySelector("[data-player-time]").textContent.split("/")[1].trim() !== t1, total1, { timeout: 5000 });
+  const total2 = await page.evaluate(() => document.querySelector("[data-player-time]").textContent.split("/")[1].trim());
+  check(`2× tempo halves the listening time (${total1} → ${total2})`, parseClock(total2) > 0 && parseClock(total2) <= parseClock(total1) / 2 + 1);
+  await page.locator("[data-player-progress]").click({ position: { x: 112, y: 4 } });
+  await page.waitForFunction(() => {
+    const [p, t] = document.querySelector("[data-player-time]").textContent.split("/").map((x) => x.trim());
+    const sec = (s) => { const [mm, ss] = s.split(":").map(Number); return mm * 60 + ss; };
+    return sec(t) > 0 && sec(p) / sec(t) > 0.55;
+  }, null, { timeout: 5000 });
+  check("clicking the progress bar seeks", true);
+  await page.selectOption("[data-player-tempo]", "1"); // restore for the volta pass below
+
+  await page.locator("[data-player-toggle]").click(); // pause
+  await page.waitForFunction(() => document.querySelector("[data-player-toggle]").textContent.trim() === "▶", null, { timeout: 5000 });
+  check("pause flips the button back to play", true);
+  await page.locator("[data-player-stop]").click();
+  await page.waitForFunction(() => !document.querySelector(".pages g.playing"), null, { timeout: 5000 });
+  check("stop clears every highlight", true);
+
+  // repeats follow the form: a volta pair expands into passes, and every
+  // cloned pass id maps back to a notated id the SVG actually contains
+  await page.locator("button", { hasText: "edit view" }).click();
+  await page.waitForFunction(() => document.querySelector(".tile"), null, { timeout: 60000 });
+  await page.evaluate(() => {
+    window.__SESSION__.toggleVolta(1, 1, 1);
+    window.__SESSION__.toggleVolta(2, 2, 2);
+  });
+  await page.locator("button", { hasText: "page view" }).click();
+  await page.waitForFunction(() => document.querySelector(".pages .page svg"), null, { timeout: 60000 });
+  await page.evaluate(() => { window.__PLAYBACK__ = null; });
+  await page.locator("[data-player-toggle]").click();
+  await page.waitForFunction(() => window.__PLAYBACK__ && window.__PLAYBACK__.events.length > 0, null, { timeout: 60000 });
+  const exp = await page.evaluate(() => {
+    const d = window.__PLAYBACK__;
+    const on = d.events.flatMap((e) => e.on ?? []);
+    const clones = on.filter((id) => d.idMap[id]);
+    const mappedInSvg = clones.every((id) => document.querySelector(`.pages g[id="${CSS.escape(d.idMap[id])}"]`));
+    const meas = d.events.map((e) => e.measureOn).filter(Boolean).map((id) => d.idMap[id] ?? id);
+    const m0 = window.__SESSION__.score.measures[0].attrs["xml:id"];
+    return { clones: clones.length, mappedInSvg, prePasses: meas.filter((id) => id === m0).length, seq: meas.length };
+  });
+  check(`the volta form plays expanded (${exp.clones} cloned events, ${exp.seq} measures)`, exp.clones > 0);
+  check("the pre-volta measure plays twice (pass per ending)", exp.prePasses === 2);
+  check("every cloned id maps back to a notated id in the SVG", exp.mappedInSvg);
+  await page.locator("[data-player-stop]").click();
+  await page.locator("button", { hasText: "edit view" }).click();
+  await page.waitForFunction(() => document.querySelector(".tile"), null, { timeout: 60000 });
+  await page.keyboard.press("Control+z");
+  await page.keyboard.press("Control+z");
+  await page.waitForFunction(() => window.__SESSION__.score.measureParent.get(window.__SESSION__.score.measures[1])?.tag !== "ending", null, { timeout: 10000 });
+  check("volta cleanup unwinds", true);
 }
 
 // --- 8. open file… from disk ---

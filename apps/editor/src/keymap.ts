@@ -50,7 +50,7 @@ export const defaultKeymap = (layout: Layout): Record<string, KeyBinding> => {
     // staccatissimo = the staccato key shifted: shift+, is "?" on AZERTY, "<" on QWERTY.
     staccatissimo: { keys: az ? ["?"] : ["<"], label: "staccatissimo", group: "marks" },
     fermata: { keys: ["h"], label: "fermata", group: "marks" },
-    coda: { keys: ["o"], label: "coda → segno → fine → D.S. → D.C.", group: "marks" },
+    coda: { keys: ["o"], label: "coda → To Coda → segno → fine → D.S. → D.C.", group: "marks" },
     ornament: { keys: ["w"], label: "ornament cycle (arpeggio/tremolo/trill/mordent)", group: "marks" },
     dynamics: { keys: ["p"], label: "dynamics cycle · hairpin (selection)", group: "marks" },
     pedal: { keys: ["P"], label: "pedal (selection)", group: "marks" },

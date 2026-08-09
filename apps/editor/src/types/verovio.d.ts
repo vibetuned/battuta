@@ -17,6 +17,8 @@ declare module "verovio/esm" {
     getVersion(): string;
     renderToTimemap(options?: Record<string, unknown>): unknown[];
     getElementsAtTime(ms: number): unknown;
+    getMIDIValuesForElement(xmlId: string): { time: number; pitch: number; duration: number };
+    renderToExpansionMap(): Record<string, string[]>;
     select(selection: Record<string, unknown>): boolean;
   }
 }

@@ -569,7 +569,7 @@ describe("single markings (fermata, coda, ornament cycle)", () => {
     expect(rm).toHaveLength(1);
     expect(rm[0]!.attrs["func"]).toBe("coda");
     new ToggleMarkCommand("k1", "fermata").apply(ctxFor(score));
-    for (let i = 0; i < 5; i++) new ToggleMarkCommand("k1", "coda").apply(ctxFor(score)); // walk segno…daCapo -> off
+    for (let i = 0; i < 6; i++) new ToggleMarkCommand("k1", "coda").apply(ctxFor(score)); // walk To Coda…daCapo -> off
     expect(serialize(score.scoreEl)).toBe(before);
   });
 
@@ -737,14 +737,16 @@ describe("simile and measure repeats", () => {
     expect(serialize(score.scoreEl)).toBe(before2);
   });
 
-  it("the o cycle now walks coda → segno → fine → dalSegno → daCapo → off", () => {
+  it("the o cycle walks coda → To Coda → segno → fine → dalSegno → daCapo → off", () => {
     const { score } = scoreFrom(mei(body));
     const before = serialize(score.scoreEl);
-    const funcs = () => findAll(score.measures[0]!, "repeatMark").map((r) => r.attrs["func"]);
-    const expected = ["coda", "segno", "fine", "dalSegno", "daCapo"];
+    const states = () =>
+      findAll(score.measures[0]!, "repeatMark").map((r) => `${r.attrs["func"]}:${r.children.filter((c) => typeof c === "string").join("")}`);
+    // To Coda shares func="coda" with the sign — the text is the difference
+    const expected = ["coda:", "coda:To Coda", "segno:", "fine:", "dalSegno:", "daCapo:"];
     for (const want of expected) {
       new ToggleMarkCommand("s1", "coda").apply(ctxFor(score));
-      expect(funcs()).toEqual([want]);
+      expect(states()).toEqual([want]);
     }
     new ToggleMarkCommand("s1", "coda").apply(ctxFor(score));
     expect(serialize(score.scoreEl)).toBe(before);
