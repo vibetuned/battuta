@@ -6,6 +6,43 @@ out to do (plan + exit criteria, moved here from
 README's old Status section). Remaining phases — reference layers, OMR
 correction — stay in [PLANNING.md](PLANNING.md).
 
+## Unreleased
+
+First feedback round on the installed 0.0.1 (tested on Linux):
+
+- **Title input**: a *title* button in the header opens an inline editor
+  for the MEI `<title>` (meiHead/fileDesc/titleStmt — created when a
+  file lacks the chain, one undo step). The button itself relabels to
+  the current title, and page view now really prints it — two fixes
+  underneath: `serializeForPageView` never carried `meiHead`, and the
+  page renderer set Verovio's `header: "none"` (now `"auto"`).
+- **Toasts**: errors, save confirmations, and refusal notices now show
+  as bottom-right toasts (auto-dismiss, click to close) — errors used to
+  hide in the perf status line, invisible in the shell.
+- **Dirty marker**: tabs show `*` when the document has unsaved changes
+  (undo-stack position vs. the last save; undoing back to the saved
+  state reads clean again).
+- **Row navigation**: `Insert` toggles note input (both directions),
+  `Home`/`End` jump to the start/end of the current engraved row,
+  `PageUp`/`PageDown` move to the previous/next row keeping the caret's
+  staff and voice where possible.
+- **Finger changes**: `alt+6..0` writes a change-of-finger on the note's
+  existing fingering — `alt+2` then `alt+6` gives `2-1`; the same key
+  removes the substitution, a different one replaces it.
+- **Separate QWERTY/AZERTY keymaps**: a layout toggle in the shortcut
+  editor (🌣) — merged defaults double-booked keys (QWERTY's simile `'`
+  is AZERTY's unshifted digit-4, colliding with durations). Each layout
+  has its own defaults and its own saved overrides.
+- **Persisted options**: keyboard layout and zoom level survive restarts
+  (`localStorage`, `battuta.settings.v1`); new documents open at the
+  last-used zoom.
+- **Drag-selection overlay**: block-selection drags no longer paint the
+  native text-selection highlight in WebKitGTK (`-webkit-user-select`
+  applied through the SVG content).
+- `node spikes/verify-phase5.mjs` grew to 184 checks covering all of it.
+- **License**: AGPL-3.0-only — LICENSE file added, declared in every
+  manifest (package.json ×3, Cargo.toml, tauri.conf.json bundle).
+
 ## 0.0.1 — 2026-08-08 (first release)
 
 First packaged release: Linux `deb` + `AppImage`, app icon, and `.mei`

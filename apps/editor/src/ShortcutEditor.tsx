@@ -5,17 +5,21 @@
  * physical/system bindings. Doubles as the keyboard help.
  */
 import { useEffect, useState } from "react";
-import { bindingText, type KeyBinding, type Keymap } from "./keymap";
+import { bindingText, type KeyBinding, type Keymap, type Layout } from "./keymap";
 
 const GROUPS = ["entry", "accidentals", "marks", "rhythm", "repeats", "system"];
 
 export function ShortcutEditor({
   keymap,
+  layout,
+  onLayout,
   onRebind,
   onReset,
   onClose,
 }: {
   keymap: Keymap;
+  layout: Layout;
+  onLayout: (l: Layout) => void;
   onRebind: (id: string, binding: Pick<KeyBinding, "keys" | "shift" | "alt">) => void;
   onReset: () => void;
   onClose: () => void;
@@ -72,6 +76,18 @@ export function ShortcutEditor({
           <strong style={{ fontSize: 15 }}>🌣 shortcuts</strong>
           <span style={{ color: "#89a" }}>click a binding, press the new key · esc closes</span>
           <span style={{ flex: 1 }} />
+          <span data-layout-toggle style={{ display: "inline-flex", border: "1px solid #3a4656", borderRadius: 4, overflow: "hidden" }} title="keyboard layout: separate defaults and overrides per layout">
+            {(["qwerty", "azerty"] as const).map((l) => (
+              <button
+                key={l}
+                data-layout={l}
+                onClick={() => onLayout(l)}
+                style={{ fontSize: 12, padding: "2px 8px", border: "none", cursor: "pointer", background: layout === l ? "#2d7d46" : "#28394e", color: "#fff" }}
+              >
+                {l}
+              </button>
+            ))}
+          </span>
           <button data-shortcuts-reset onClick={onReset} style={{ fontSize: 12 }}>
             reset all
           </button>

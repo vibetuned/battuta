@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, isHarmText, harmSuggestions, HARM_CHARS, type HarmKind, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
 import { RenderPool, type TileResult } from "./render/renderPool";
-import { loadKeymap, saveKeymapOverride, clearKeymapOverrides, keyMatches, type Keymap } from "./keymap";
+import { loadKeymap, saveKeymapOverride, clearKeymapOverrides, keyMatches, type Keymap, type Layout } from "./keymap";
 import { ShortcutEditor } from "./ShortcutEditor";
+import { loadSettings, saveSettings, detectLayout } from "./settings";
 import { DocumentSession } from "./session";
 
 const FIXTURES = [
@@ -455,10 +456,29 @@ export default function App() {
   const [version, setVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Both render as bottom-right toasts and dismiss themselves (or on click).
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 6000);
+    return () => clearTimeout(t);
+  }, [notice]);
+  useEffect(() => {
+    if (!error) return;
+    const t = setTimeout(() => setError(null), 10000);
+    return () => clearTimeout(t);
+  }, [error]);
   /** ⏱ toggle: render timings, measure counts, pool stats (DEV default). */
   const [showPerf, setShowPerf] = useState<boolean>(import.meta.env.DEV);
-  const [keymap, setKeymap] = useState<Keymap>(loadKeymap);
+  const [layout, setLayoutState] = useState<Layout>(() => loadSettings().layout ?? detectLayout());
+  const [keymap, setKeymap] = useState<Keymap>(() => loadKeymap(layout));
+  const setLayout = (l: Layout) => {
+    setLayoutState(l);
+    saveSettings({ layout: l });
+    setKeymap(loadKeymap(l));
+  };
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  /** Title editor buffer — null while closed (the header shows the button). */
+  const [titleOpen, setTitleOpen] = useState<string | null>(null);
   /** Harmony lane: typed chord symbols / roman numerals at the caret. */
   const [harmLane, setHarmLane] = useState<HarmKind | null>(null);
   const [harmBuffer, setHarmBuffer] = useState("");
@@ -477,8 +497,19 @@ export default function App() {
   const pendingEdit = useRef(false);
   const [caretRect, setCaretRect] = useState<{ left: number; top: number; height: number } | null>(null);
   const [layoutTick, setLayoutTick] = useState(0);
-  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+  // Zoom persists across sessions: the saved level seeds startup and is
+  // the default every newly opened document starts at.
+  const [zoom, setZoom] = useState(() => {
+    const z = loadSettings().zoom;
+    return z !== undefined && (ZOOM_LEVELS as readonly number[]).includes(z) ? z : DEFAULT_ZOOM;
+  });
+  useEffect(() => {
+    saveSettings({ zoom });
+  }, [zoom]);
   const zoomByDoc = useRef(new Map<number, number>());
+  // Undo-stack top at the last save, per doc: dirty = the top moved. Undoing
+  // back to the saved command reads clean again, like a text editor.
+  const savedMarks = useRef(new Map<number, unknown>());
   const mainRef = useRef<HTMLElement>(null);
   // --- note input mode ---
   const [entryMode, setEntryMode] = useState(false);
@@ -515,6 +546,7 @@ export default function App() {
         const s = new DocumentSession(xml);
         if (import.meta.env.DEV || "__TAURI__" in window) (window as unknown as Record<string, unknown>).__SESSION__ = s;
         const doc: OpenDoc = { id: nextDocId++, name, session: s, ...(path ? { path } : {}) };
+        savedMarks.current.set(doc.id, s.editMark);
         setDocs((ds) => [...ds, doc]);
         setActiveId(doc.id);
         resetDocUiState();
@@ -544,6 +576,7 @@ export default function App() {
       const s = new DocumentSession(blankScore());
       if (import.meta.env.DEV || "__TAURI__" in window) (window as unknown as Record<string, unknown>).__SESSION__ = s;
       const id = nextDocId++;
+      savedMarks.current.set(id, s.editMark);
       setDocs((ds) => {
         const n = ds.filter((d) => d.name.startsWith("untitled-")).length + 1;
         return [...ds, { id, name: `untitled-${n}`, session: s }];
@@ -587,7 +620,7 @@ export default function App() {
     if (id === activeId) return;
     if (activeId !== null) zoomByDoc.current.set(activeId, zoom);
     setActiveId(id);
-    setZoom(zoomByDoc.current.get(id) ?? DEFAULT_ZOOM);
+    setZoom(zoomByDoc.current.get(id) ?? zoom);
     resetDocUiState();
     const s = docs.find((d) => d.id === id)?.session;
     if (s) {
@@ -603,7 +636,7 @@ export default function App() {
     if (id === activeId) {
       const next = remaining[remaining.length - 1] ?? null;
       setActiveId(next?.id ?? null);
-      setZoom(next ? zoomByDoc.current.get(next.id) ?? DEFAULT_ZOOM : DEFAULT_ZOOM);
+      if (next) setZoom(zoomByDoc.current.get(next.id) ?? zoom);
       resetDocUiState();
       if (next) {
         if (import.meta.env.DEV || "__TAURI__" in window) (window as unknown as Record<string, unknown>).__SESSION__ = next.session;
@@ -791,6 +824,10 @@ export default function App() {
       if (!session || !active) return;
       const xml = session.saveDocument();
       const invoke = tauriInvoke();
+      const markSaved = () => {
+        savedMarks.current.set(active.id, active.session.editMark);
+        setDocs((ds) => [...ds]); // re-render: the tab's dirty star clears
+      };
       if (!invoke) {
         const blob = new Blob([xml], { type: "application/xml" });
         const a = document.createElement("a");
@@ -798,12 +835,16 @@ export default function App() {
         a.download = `${active.name}.mei`;
         a.click();
         URL.revokeObjectURL(a.href);
+        markSaved();
         setNotice(`downloaded ${active.name}.mei`);
         return;
       }
       if (!saveAs && active.path) {
         invoke("save_score", { path: active.path, contents: xml })
-          .then(() => setNotice(`saved ${active.path}`))
+          .then(() => {
+            markSaved();
+            setNotice(`saved ${active.path}`);
+          })
           .catch((e) => setNotice(`save failed: ${e}`));
         return;
       }
@@ -811,7 +852,8 @@ export default function App() {
         .then((r) => {
           const path = r as string | null;
           if (!path) return; // cancelled
-          const name = path.split("/").pop()?.replace(/\.mei$/, "") ?? active.name;
+          const name = docNameFromPath(path);
+          markSaved();
           setDocs((ds) => ds.map((d) => (d.id === active.id ? { ...d, path, name } : d)));
           setNotice(`saved ${path}`);
         })
@@ -922,6 +964,14 @@ export default function App() {
       if (!caret) return;
 
       // --- note input mode: letters enter, digits set duration ---
+      // The Insert key toggles input mode in both directions (i only
+      // enters; inside the mode "i" stays available to future bindings).
+      if (e.key === "Insert" && !mod) {
+        e.preventDefault();
+        setEntryMode(!entryMode);
+        setNotice(entryMode ? null : "note input: a–g pitch · shift+A–G chord · 1–7 duration · esc exit · all keys under 🌣");
+        return;
+      }
       if (!entryMode && hit("inputMode") && !mod) {
         e.preventDefault();
         setEntryMode(true);
@@ -1262,6 +1312,33 @@ export default function App() {
           }
           return;
         }
+        // alt+6..0 = CHANGE of finger on the same note ("3-1"): the second
+        // half of the digit row maps to the new finger (6→1 … 0→5). Needs a
+        // plain fingering to change from; the same key again removes the
+        // substitution, a different one replaces it.
+        const subKey = /^(?:Digit|Numpad)([6-9]|0)$/.exec(e.code)?.[1];
+        if (subKey) {
+          const target = entryMode && lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId;
+          if (!target) return;
+          e.preventDefault();
+          const finger = subKey === "0" ? "5" : String(Number(subKey) - 5);
+          const texts = session.fingAt(target);
+          const single = texts.length === 1 ? /^([1-5])(?:-([1-5]))?$/.exec(texts[0]!) : null;
+          if (!single) {
+            setNotice(`finger change refused: ${texts.length ? `"${texts.join(",")}" is not a single plain fingering` : "set a starting finger first (alt+1..5)"}`);
+            return;
+          }
+          const [, from, to] = single;
+          try {
+            if (to === finger) session.toggleFing(target, from!, false); // same key: substitution off
+            else if (from === finger && !to) setNotice("finger change refused: same finger as the start");
+            else session.toggleFing(target, `${from}-${finger}`, false);
+            afterCommand(session);
+          } catch (err) {
+            setNotice(`finger change refused: ${err instanceof Error ? err.message : err}`);
+          }
+          return;
+        }
       }
       if (entryMode && !mod) {
         const DUR: Record<string, string> = { "7": "1", "6": "2", "5": "4", "4": "8", "3": "16", "2": "32", "1": "64" };
@@ -1394,6 +1471,93 @@ export default function App() {
         return;
       }
 
+      // --- row-level navigation (DOM rows = engraved systems) ---
+      /** Slots (staff, voice) of a measure, in traversal order. */
+      const slotsOf = (mi: number): { staffN: number; layerN: number }[] => {
+        const slots: { staffN: number; layerN: number }[] = [];
+        for (const staffN of session.index.stavesPerMeasure.get(mi) ?? []) {
+          for (const layerN of session.index.layersPerStaff.get(`${mi}/${staffN}`) ?? []) slots.push({ staffN, layerN });
+        }
+        return slots;
+      };
+      /** The caret's slot in the target measure, else the edge slot. */
+      const nearSlot = (mi: number, edge: 1 | -1): { staffN: number; layerN: number } | undefined => {
+        const slots = slotsOf(mi);
+        return slots.find((s) => s.staffN === caret.staffN && s.layerN === caret.layerN) ?? (edge === 1 ? slots[0] : slots[slots.length - 1]);
+      };
+      const rowOfMeasure = (mi: number): Element | null => mainRef.current?.querySelector(`.tile[data-index="${mi}"]`)?.closest(".score-row") ?? null;
+      const rowMeasures = (row: Element): number[] => [...row.querySelectorAll<HTMLElement>(".tile[data-index]")].map((t) => Number(t.dataset["index"]));
+      /**
+       * Cross to the adjacent engraved row: the measure under the caret's x,
+       * nearest event. Slot: "edge" = top slot going down / bottom coming up
+       * (the ↓/↑ text-editor continuation); "same" = keep the caret's
+       * staff+voice when the target measure has it (PageUp/PageDown).
+       */
+      const lineJump = (dir: 1 | -1, pick: "edge" | "same"): CaretPosition | null => {
+        const main = mainRef.current;
+        const caretG = caretId ? main?.querySelector(`g[id="${CSS.escape(caretId)}"]`) : null;
+        const anchorEl = caretG ?? main?.querySelector(`.tile[data-index="${caret.measureIndex}"]`);
+        const row = rowOfMeasure(caret.measureIndex);
+        const rows = main ? [...main.querySelectorAll(".score-row")] : [];
+        const r = row ? rows.indexOf(row) : -1;
+        const targetRow = r >= 0 ? rows[r + dir] : undefined;
+        if (!targetRow || !anchorEl) return null;
+        const x = anchorEl.getBoundingClientRect().left;
+        let best: { m: number; d: number } | null = null;
+        for (const t of targetRow.querySelectorAll<HTMLElement>(".tile[data-index]")) {
+          const tr = t.getBoundingClientRect();
+          const d = x >= tr.left && x <= tr.right ? 0 : Math.min(Math.abs(x - tr.left), Math.abs(x - tr.right));
+          if (!best || d < best.d) best = { m: Number(t.dataset["index"]), d };
+        }
+        if (!best) return null;
+        const slots = slotsOf(best.m);
+        const slot = pick === "same" ? nearSlot(best.m, dir) : dir === 1 ? slots[0] : slots[slots.length - 1];
+        if (!slot) return null;
+        const events = session.index.eventsAt(best.m, slot.staffN, slot.layerN);
+        if (!events.length) return null;
+        // nearest event to the caret's x within the target measure
+        let ei = 0;
+        let bd = Infinity;
+        events.forEach((id, i) => {
+          const g = main?.querySelector(`g[id="${CSS.escape(id)}"]`);
+          if (!g) return;
+          const d = Math.abs(g.getBoundingClientRect().left - x);
+          if (d < bd) {
+            bd = d;
+            ei = i;
+          }
+        });
+        return { measureIndex: best.m, staffN: slot.staffN, layerN: slot.layerN, eventIndex: ei };
+      };
+      const moveCaret = (next: CaretPosition) => {
+        anchor.current = null;
+        setSelection([]);
+        lastEntered.current = null; // caret moved
+        setCaret(next);
+      };
+      if ((e.key === "Home" || e.key === "End") && !mod) {
+        // Start / end of the current row, like a text editor line.
+        e.preventDefault();
+        const row = rowOfMeasure(caret.measureIndex);
+        const list = row ? rowMeasures(row) : [];
+        const mi = e.key === "Home" ? list[0] : list[list.length - 1];
+        if (mi === undefined) return;
+        const slot = nearSlot(mi, e.key === "Home" ? 1 : -1);
+        if (!slot) return;
+        const events = session.index.eventsAt(mi, slot.staffN, slot.layerN);
+        if (!events.length) return;
+        moveCaret({ measureIndex: mi, staffN: slot.staffN, layerN: slot.layerN, eventIndex: e.key === "Home" ? 0 : events.length - 1 });
+        return;
+      }
+      if ((e.key === "PageUp" || e.key === "PageDown") && !mod) {
+        // Previous / next row, keeping the caret's staff and voice when the
+        // landing measure has them.
+        e.preventDefault();
+        const next = lineJump(e.key === "PageUp" ? -1 : 1, "same");
+        if (next) moveCaret(next);
+        return;
+      }
+
       if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
         e.preventDefault();
         const next = e.key === "ArrowRight" ? caretRight(session.index, session.score, caret) : caretLeft(session.index, session.score, caret);
@@ -1417,58 +1581,11 @@ export default function App() {
           afterCommand(session);
         } else {
           const dir = e.key === "ArrowUp" ? -1 : 1;
-          let next = caretVertical(session.index, caret, dir);
-          if (!next) {
-            // Out of (staff, voice) slots in this measure: continue to the
-            // adjacent LINE like a text editor — the measure of the next row
-            // under the caret's x, nearest event, top slot going down /
-            // bottom slot coming up.
-            const main = mainRef.current;
-            const caretG = caretId ? main?.querySelector(`g[id="${CSS.escape(caretId)}"]`) : null;
-            const tile = caretG?.closest(".tile") as HTMLElement | null;
-            const row = tile?.closest(".score-row");
-            const rows = main ? [...main.querySelectorAll(".score-row")] : [];
-            const r = row ? rows.indexOf(row) : -1;
-            const targetRow = r >= 0 ? rows[r + dir] : undefined;
-            if (targetRow && caretG) {
-              const x = caretG.getBoundingClientRect().left;
-              let best: { m: number; d: number } | null = null;
-              for (const t of targetRow.querySelectorAll<HTMLElement>(".tile[data-index]")) {
-                const tr = t.getBoundingClientRect();
-                const d = x >= tr.left && x <= tr.right ? 0 : Math.min(Math.abs(x - tr.left), Math.abs(x - tr.right));
-                if (!best || d < best.d) best = { m: Number(t.dataset["index"]), d };
-              }
-              if (best) {
-                const slots: { staffN: number; layerN: number }[] = [];
-                for (const staffN of session.index.stavesPerMeasure.get(best.m) ?? []) {
-                  for (const layerN of session.index.layersPerStaff.get(`${best.m}/${staffN}`) ?? []) slots.push({ staffN, layerN });
-                }
-                const slot = dir === 1 ? slots[0] : slots[slots.length - 1];
-                if (slot) {
-                  const events = session.index.eventsAt(best.m, slot.staffN, slot.layerN);
-                  // nearest event to the caret's x within the target measure
-                  let ei = 0;
-                  let bd = Infinity;
-                  events.forEach((id, i) => {
-                    const g = main?.querySelector(`g[id="${CSS.escape(id)}"]`);
-                    if (!g) return;
-                    const d = Math.abs(g.getBoundingClientRect().left - x);
-                    if (d < bd) {
-                      bd = d;
-                      ei = i;
-                    }
-                  });
-                  if (events.length) next = { measureIndex: best.m, staffN: slot.staffN, layerN: slot.layerN, eventIndex: ei };
-                }
-              }
-            }
-          }
-          if (next) {
-            anchor.current = null;
-            setSelection([]);
-            lastEntered.current = null; // caret moved
-            setCaret(next);
-          }
+          // Out of (staff, voice) slots in this measure: continue to the
+          // adjacent LINE like a text editor — top slot going down, bottom
+          // slot coming up, nearest event under the caret's x (lineJump).
+          const next = caretVertical(session.index, caret, dir) ?? lineJump(dir, "edge");
+          if (next) moveCaret(next);
         }
       } else if (hit("sharp") || hit("flat") || hit("natural")) {
         const ids = editTargets();
@@ -1855,6 +1972,7 @@ export default function App() {
           {docs.map((d) => (
             <button key={d.id} className={d.id === activeId ? "tab active" : "tab"} onClick={() => switchDoc(d.id)}>
               {d.name}
+              {d.session.editMark !== (savedMarks.current.get(d.id) ?? null) ? " *" : ""}
               <span
                 className="tab-close"
                 title="close"
@@ -1902,6 +2020,36 @@ export default function App() {
         <button onClick={() => structural("delete")}>−m</button>
         <button onClick={() => structural("duplicate")}>⧉m</button>
         <button onClick={saveDoc}>save</button>
+        {titleOpen === null ? (
+          <button
+            data-title-button
+            title="edit the score title (meiHead — page view prints it)"
+            onClick={() => session && setTitleOpen(session.title())}
+          >
+            {(() => {
+              const t = session?.title() ?? "";
+              return t ? (t.length > 24 ? `${t.slice(0, 22)}…` : t) : "title";
+            })()}
+          </button>
+        ) : (
+          <input
+            data-title-input
+            autoFocus
+            value={titleOpen}
+            placeholder="score title"
+            style={{ fontSize: 13, width: 180 }}
+            onChange={(e) => setTitleOpen(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && session) {
+                session.setTitle(titleOpen.trim());
+                afterCommand(session);
+                setTitleOpen(null);
+                setNotice(titleOpen.trim() ? `title: ${titleOpen.trim()}` : "title removed");
+              } else if (e.key === "Escape") setTitleOpen(null);
+            }}
+            onBlur={() => setTitleOpen(null)}
+          />
+        )}
         <button title="show/hide performance numbers" data-perf-toggle onClick={() => setShowPerf((p) => !p)} style={{ opacity: showPerf ? 1 : 0.45 }}>
           ⏱
         </button>
@@ -1929,21 +2077,50 @@ export default function App() {
           {showPerf ? status : ""}
         </span>
       </header>
-      <div style={{ color: notice?.startsWith("paste refused") ? "#c22" : "#276", fontSize: 12, marginBottom: 4, minHeight: 15 }} data-notice>
-        {notice ?? ""}
+      {/* Toasts, bottom-right above the status bar. The notice element stays
+          in the DOM (hidden when empty) — the e2e suites read [data-notice]. */}
+      <div style={{ position: "fixed", right: 12, bottom: 34, zIndex: 55, display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", maxWidth: "46vw" }}>
+        {error && (
+          <div data-error onClick={() => setError(null)} style={{ background: "#5b1f24", color: "#fdd", border: "1px solid #a33", borderRadius: 6, padding: "6px 12px", fontSize: 12, boxShadow: "0 4px 16px rgba(0,0,0,.35)", cursor: "pointer" }} title="click to dismiss">
+            {error}
+          </div>
+        )}
+        <div
+          data-notice
+          onClick={() => setNotice(null)}
+          title="click to dismiss"
+          style={{
+            display: notice ? "block" : "none",
+            background: "#1f2733",
+            color: notice?.includes("refused") || notice?.includes("failed") ? "#f99" : "#9d9",
+            border: "1px solid #3a4656",
+            borderRadius: 6,
+            padding: "6px 12px",
+            fontSize: 12,
+            boxShadow: "0 4px 16px rgba(0,0,0,.35)",
+            cursor: "pointer",
+          }}
+        >
+          {notice ?? ""}
+        </div>
       </div>
       {shortcutsOpen && (
         <ShortcutEditor
           keymap={keymap}
+          layout={layout}
+          onLayout={(l) => {
+            setLayout(l);
+            setNotice(`keyboard layout: ${l} (own defaults and overrides)`);
+          }}
           onRebind={(id, b) => {
-            saveKeymapOverride(id, b);
-            setKeymap(loadKeymap());
+            saveKeymapOverride(layout, id, b);
+            setKeymap(loadKeymap(layout));
             setNotice(`"${keymap[id]?.label ?? id}" rebound to ${b.keys.join(" ")}`);
           }}
           onReset={() => {
-            clearKeymapOverrides();
-            setKeymap(loadKeymap());
-            setNotice("shortcuts reset to defaults");
+            clearKeymapOverrides(layout);
+            setKeymap(loadKeymap(layout));
+            setNotice(`shortcuts reset to ${layout} defaults`);
           }}
           onClose={() => setShortcutsOpen(false)}
         />
@@ -1956,6 +2133,10 @@ export default function App() {
         </div>
       )}
       <style>{`
+        /* Block-selection drags must never paint the native text-selection
+           overlay — WebKitGTK needs the prefixed form AND it applied to the
+           SVG content itself, not just the container. */
+        main, main * { -webkit-user-select: none; user-select: none; }
         .score-row { display: flex; align-items: flex-start; margin: 10px 0; }
         .tile, .rowhdr { position: relative; flex: none; }
         .tile svg, .rowhdr svg { width: 100%; height: 100%; display: block; }

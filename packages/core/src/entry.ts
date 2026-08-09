@@ -646,6 +646,13 @@ export class ToggleArticCommand implements Command {
  *  - additive=true: add one more finger; an already-present number is
  *    removed instead (per-number toggle within the set).
  */
+/** The fing texts anchored at an event (for the finger-change editor). */
+export function fingTextsAt(measure: CoreElement, targetId: string): string[] {
+  return childElements(measure)
+    .filter((c) => c.tag === "fing" && (c.attrs["startid"] ?? "").replace(/^#/, "") === targetId)
+    .map((el) => el.children.filter((c): c is string => typeof c === "string").join(""));
+}
+
 export class ToggleFingCommand implements Command {
   readonly label: string;
   private removed: { at: number; el: CoreElement }[] = [];

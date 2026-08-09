@@ -34,7 +34,9 @@ const TILE_OPTIONS = {
 };
 const PAGE_OPTIONS = {
   breaks: "auto",
-  header: "none",
+  // "auto" prints the meiHead title/composer as the page header (the
+  // serialization must carry meiHead — serializeForPageView does).
+  header: "auto",
   footer: "none",
   svgViewBox: true,
   scale: 40,

@@ -1,6 +1,7 @@
 [package]
 name = "battuta-editor"
 version = "0.0.1"
+license = "AGPL-3.0-only"
 description = "battuta — MEI score editor"
 edition = "2021"
 

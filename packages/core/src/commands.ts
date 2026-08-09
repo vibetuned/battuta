@@ -305,6 +305,65 @@ export class CommandStack {
   get undoDepth(): number {
     return this.undoStack.length;
   }
+  /** The command on top of the undo stack — an identity marker for
+   * "has the document changed since X" (dirty tracking). */
+  get top(): Command | null {
+    return this.undoStack[this.undoStack.length - 1] ?? null;
+  }
+}
+
+/**
+ * Set the document title — <meiHead>/<fileDesc>/<titleStmt>/<title> text,
+ * creating the chain when a file lacks it. Operates on the DOCUMENT root
+ * (metadata lives outside the score, which is all CommandContext carries),
+ * so the session passes its root in. Dirty region is empty: tiles never
+ * draw the title; page view picks it up from the version bump.
+ */
+export class SetTitleCommand implements Command {
+  readonly label: string;
+  private memento: { title: CoreElement; before: (CoreElement | string)[]; created: { parent: CoreElement; el: CoreElement } | null } | null = null;
+
+  constructor(
+    private readonly root: CoreElement,
+    private readonly text: string,
+  ) {
+    this.label = `title "${text}"`;
+  }
+
+  apply(_ctx: CommandContext): DirtyRegion[] {
+    let created: { parent: CoreElement; el: CoreElement } | null = null;
+    const ensure = (parent: CoreElement, tag: string, at: number): CoreElement => {
+      const existing = childElements(parent).find((c) => c.tag === tag);
+      if (existing) return existing;
+      const el: CoreElement = { tag, attrs: {}, children: [] };
+      parent.children.splice(Math.min(at, parent.children.length), 0, el);
+      if (!created) created = { parent, el };
+      return el;
+    };
+    // meiHead must precede <music>; nested pieces go first in their parent.
+    const musicAt = this.root.children.findIndex((c) => typeof c !== "string" && c.tag === "music");
+    const head = ensure(this.root, "meiHead", musicAt < 0 ? this.root.children.length : musicAt);
+    const fileDesc = ensure(head, "fileDesc", 0);
+    const titleStmt = ensure(fileDesc, "titleStmt", 0);
+    const title = ensure(titleStmt, "title", 0);
+    this.memento = { title, before: [...title.children], created };
+    title.children = this.text === "" ? [] : [this.text];
+    return [];
+  }
+
+  revert(_ctx: CommandContext): DirtyRegion[] {
+    if (!this.memento) return [];
+    if (this.memento.created) {
+      // The topmost element this command created carries everything below
+      // it — removing it restores the tree byte-identically.
+      const { parent, el } = this.memento.created;
+      const at = parent.children.indexOf(el);
+      if (at >= 0) parent.children.splice(at, 1);
+    } else {
+      this.memento.title.children = this.memento.before;
+    }
+    return [];
+  }
 }
 
 /**

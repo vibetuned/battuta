@@ -17,7 +17,7 @@ export type { CoreScore, ScoreItem, DefItem, MeasureItem } from "./score.js";
 export { frac, fAdd, fMul, fEq, fCmp, F0, eventDuration, layerDuration, meterCapacity, validateMeasureDurations, decomposeDuration } from "./durations.js";
 export type { Fraction, LayerDuration, DurationProblem } from "./durations.js";
 
-export { ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, TupletCommand } from "./entry.js";
+export { ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, TupletCommand, fingTextsAt } from "./entry.js";
 export type { EntrySpec, MarkKind } from "./entry.js";
 
 export { normalizeBlock, copyBlock, fragmentToText, materializeStaff, findStaffInMeasure } from "./clipboard.js";
@@ -45,5 +45,5 @@ export { newId, ensureIds } from "./ids.js";
 export { EVENT_TAGS, EventIndex, buildEventIndex, caretLeft, caretRight, caretVertical, eventRange } from "./events.js";
 export type { CaretPosition, EventRef } from "./events.js";
 
-export { CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand, RegenerateIdsCommand } from "./commands.js";
+export { CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand, RegenerateIdsCommand, SetTitleCommand } from "./commands.js";
 export type { Command, CommandContext, DirtyRegion } from "./commands.js";

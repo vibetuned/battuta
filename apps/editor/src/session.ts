@@ -8,7 +8,7 @@ import {
   buildScore, resolveContexts, buildEventIndex, ensureIds, fromDom, serialize, serializeDocument, childElements, findAll, meterCapacity, frac,
   CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand, RegenerateIdsCommand,
   copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, AddVoiceCommand, RemoveVoiceCommand, ToggleRepeatCommand, ToggleVoltaCommand,
-  SetHarmCommand, harmTextAt, ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, TupletCommand, AutoBeamCommand, UnbeamThen, measuresOf, ChangeContextCommand, planContextChange,
+  SetHarmCommand, harmTextAt, SetTitleCommand, fingTextsAt, ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, TupletCommand, AutoBeamCommand, UnbeamThen, measuresOf, ChangeContextCommand, planContextChange,
   type CoreScore, type MeasureContext, type EventIndex, type Command, type DirtyRegion, type DomLikeElement, type DomLikeNode,
   type BlockSelection, type ClipboardFragment, type PastePlan, type EntrySpec, type MarkKind, type HarmKind, type CoreElement, type CaretPosition, type ContextChangeSpec,
 } from "@battuta/core";
@@ -310,6 +310,28 @@ export class DocumentSession {
   toggleFing(targetId: string, finger: string, additive: boolean): DirtyRegion[] {
     return this.execute(new ToggleFingCommand(targetId, finger, additive));
   }
+  /** The fing texts at an event ("3", "3-1", …) — for the finger-change keys. */
+  fingAt(targetId: string): string[] {
+    const ref = this.index.byId.get(targetId);
+    const measure = ref ? this.score.measures[ref.measureIndex] : undefined;
+    return measure ? fingTextsAt(measure, targetId) : [];
+  }
+  /** meiHead > fileDesc > titleStmt > title text ("" when absent). */
+  title(): string {
+    let el: CoreElement | undefined = this.root;
+    for (const tag of ["meiHead", "fileDesc", "titleStmt", "title"]) {
+      el = el ? childElements(el).find((c) => c.tag === tag) : undefined;
+    }
+    return el ? el.children.filter((c): c is string => typeof c === "string").join("") : "";
+  }
+  setTitle(text: string): DirtyRegion[] {
+    return this.execute(new SetTitleCommand(this.root, text));
+  }
+  /** Identity of the top undo command — compare against a saved mark to
+   * know whether the document changed since the last save. */
+  get editMark(): unknown {
+    return this.stack.top;
+  }
   mergeWithNext(targetId: string): DirtyRegion[] {
     return this.execute(new UnbeamThen(new MergeEventsCommand(targetId, this.capacityAt(targetId)), measuresOf(this.score, this.index, [targetId])));
   }
@@ -343,10 +365,13 @@ export class DocumentSession {
   serializeForPageView(): string {
     // Serialize the REAL score element — flattening score.items into a bare
     // section dropped structural containers like <ending> (volta brackets
-    // never reached the page view).
+    // never reached the page view). meiHead rides along: Verovio's page
+    // header (title, composer) is generated from it.
+    const head = childElements(this.root).find((c) => c.tag === "meiHead");
     return [
       `<?xml version="1.0" encoding="UTF-8"?>`,
       `<mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.0">`,
+      ...(head ? [serialize(head)] : []),
       `<music><body><mdiv>`,
       serialize(this.score.scoreEl),
       `</mdiv></body></music>`,

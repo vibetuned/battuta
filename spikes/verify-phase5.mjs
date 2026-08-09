@@ -859,7 +859,7 @@ check("harmony round unwinds cleanly", await page.evaluate(() =>
 
 // --- 7l. shortcut editor (🌣): list, rebind, reroute, reset ---
 {
-  await page.evaluate(() => localStorage.removeItem("battuta.keymap.v1"));
+  await page.evaluate(() => localStorage.removeItem("battuta.keymap.v1.qwerty"));
   await page.locator("[data-shortcuts-toggle]").click();
   await page.waitForFunction(() => document.querySelector("[data-shortcuts]"), null, { timeout: 5000 });
   check("🌣 opens the shortcut editor", true);
@@ -898,10 +898,112 @@ check("harmony round unwinds cleanly", await page.evaluate(() =>
   await page.waitForFunction(() => !document.querySelector("[data-shortcuts]"), null, { timeout: 5000 });
 }
 
+
+// --- 7m. small-fix round: toasts, title, row nav, finger change, dirty star, layouts, settings ---
+{
+  // notices are toasts now: fixed bottom-right container, still [data-notice]
+  check("notices render as a bottom-right toast", await page.evaluate(() => {
+    const cs = getComputedStyle(document.querySelector("[data-notice]").parentElement);
+    return cs.position === "fixed" && cs.bottom !== "auto";
+  }));
+
+  // title: button -> input -> Enter writes the meiHead title, one undo step
+  await page.locator("[data-title-button]").click();
+  await page.waitForFunction(() => document.querySelector("[data-title-input]"), null, { timeout: 5000 });
+  await page.locator("[data-title-input]").fill("Kinderszenen Probe");
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => !document.querySelector("[data-title-input]"), null, { timeout: 5000 });
+  check("the title input writes meiHead/fileDesc/titleStmt/title", await page.evaluate(() => window.__SESSION__.title() === "Kinderszenen Probe" && window.__SESSION__.saveDocument().includes("<title>Kinderszenen Probe</title>")));
+  check("the title edit is one undoable command", await page.evaluate(() => {
+    window.__SESSION__.undo();
+    const afterUndo = window.__SESSION__.title();
+    window.__SESSION__.redo();
+    return afterUndo !== "Kinderszenen Probe" && window.__SESSION__.title() === "Kinderszenen Probe";
+  }));
+  // the title edit is unsaved work: the tab must carry the dirty star
+  check("an edited tab carries the dirty *", await page.evaluate(() => document.querySelector(".tab.active").textContent.includes("*")));
+  // the button relabels to the current title…
+  check("the title button shows the title as its label", await page.evaluate(() => document.querySelector("[data-title-button]").textContent.trim() === "Kinderszenen Probe"));
+  // …and page view actually prints it (meiHead rides serializeForPageView, header:auto)
+  await page.locator("button", { hasText: "page view" }).click();
+  await page.waitForFunction(() => [...document.querySelectorAll(".pages .page svg text")].some((t) => t.textContent.includes("Kinderszenen Probe")), null, { timeout: 60000 });
+  check("page view prints the title in the page header", true);
+  await page.locator("button", { hasText: "edit view" }).click();
+  await page.waitForFunction(() => document.querySelector(".tile"), null, { timeout: 60000 });
+
+  // Insert toggles note input like i
+  await page.locator('g[id="cc-m1n1"] use').first().click({ force: true });
+  await page.waitForFunction(() => document.querySelector("main").dataset.caret === "cc-m1n1", null, { timeout: 5000 });
+  await page.keyboard.press("Insert");
+  await page.waitForFunction(() => document.querySelector("[data-input-indicator]").textContent !== "INPUT (i)", null, { timeout: 5000 });
+  check("Insert enters note input", true);
+  await page.keyboard.press("Insert");
+  await page.waitForFunction(() => document.querySelector("[data-input-indicator]").textContent === "INPUT (i)", null, { timeout: 5000 });
+  check("Insert again leaves note input", true);
+
+  // Home/End = row start/end; PageDown/PageUp = next/previous row.
+  // The fixture fits one row at 100%, so zoom to max first — the page keys
+  // need a second row to land on.
+  await page.locator("[data-zoom-toggle]").click();
+  await page.waitForFunction(() => document.querySelector("[data-zoom-in]"), null, { timeout: 5000 });
+  for (let i = 0; i < 6; i++) await page.locator("[data-zoom-in]").click();
+  await page.waitForFunction(() => document.querySelectorAll(".score-row").length >= 2, null, { timeout: 60000 });
+  const caretMeasure = () => page.evaluate(() => window.__SESSION__.index.byId.get(document.querySelector("main").dataset.caret).measureIndex);
+  const row0len = await page.evaluate(() => document.querySelector(".score-row").querySelectorAll(".tile[data-index]").length);
+  await page.keyboard.press("End");
+  await page.waitForFunction((n) => window.__SESSION__.index.byId.get(document.querySelector("main").dataset.caret).measureIndex === n - 1, row0len, { timeout: 5000 });
+  check(`End jumps to the last measure of the row (m${await caretMeasure() + 1})`, true);
+  await page.keyboard.press("Home");
+  await page.waitForFunction(() => window.__SESSION__.index.byId.get(document.querySelector("main").dataset.caret).measureIndex === 0, null, { timeout: 5000 });
+  check("Home jumps back to the first measure of the row", true);
+  await page.keyboard.press("PageDown");
+  await page.waitForFunction((n) => window.__SESSION__.index.byId.get(document.querySelector("main").dataset.caret).measureIndex >= n, row0len, { timeout: 5000 });
+  check(`PageDown lands on the next row (m${await caretMeasure() + 1})`, true);
+  await page.keyboard.press("PageUp");
+  await page.waitForFunction((n) => window.__SESSION__.index.byId.get(document.querySelector("main").dataset.caret).measureIndex < n, row0len, { timeout: 5000 });
+  check("PageUp returns to the previous row", true);
+  await page.locator("[data-zoom-reset]").click();
+  await page.locator("[data-zoom-toggle]").click(); // close the panel
+
+  // finger change: alt+2 sets "2", alt+6 makes it "2-1", alt+6 again undoes it
+  await page.locator('g[id="cc-m1n1"] use').first().click({ force: true });
+  await page.waitForFunction(() => document.querySelector("main").dataset.caret === "cc-m1n1", null, { timeout: 5000 });
+  const fingsNow = () => page.evaluate(() => JSON.stringify(window.__SESSION__.fingAt("cc-m1n1")));
+  await page.keyboard.press("Alt+Digit2");
+  await page.waitForFunction(() => JSON.stringify(window.__SESSION__.fingAt("cc-m1n1")) === '["2"]', null, { timeout: 5000 });
+  await page.keyboard.press("Alt+Digit6");
+  await page.waitForFunction(() => JSON.stringify(window.__SESSION__.fingAt("cc-m1n1")) === '["2-1"]', null, { timeout: 5000 });
+  check('alt+6 turns fingering "2" into the change "2-1"', true);
+  await page.keyboard.press("Alt+Digit6");
+  await page.waitForFunction(() => JSON.stringify(window.__SESSION__.fingAt("cc-m1n1")) === '["2"]', null, { timeout: 5000 });
+  check(`the same key removes the substitution (${await fingsNow()})`, true);
+  await page.keyboard.press("Alt+Digit2"); // cleanup: fingering off
+
+  // keyboard layouts: qwerty and azerty carry separate defaults
+  await page.locator("[data-shortcuts-toggle]").click();
+  await page.waitForFunction(() => document.querySelector("[data-shortcuts]"), null, { timeout: 5000 });
+  check("the default layout binds qwerty simile '", await page.evaluate(() => document.querySelector('[data-shortcut-bind="simile"]')?.textContent.trim() === "'"));
+  await page.locator('[data-layout="azerty"]').click();
+  await page.waitForFunction(() => document.querySelector('[data-shortcut-bind="simile"]')?.textContent.trim() === "ù", null, { timeout: 5000 });
+  check("azerty swaps the punctuation defaults (simile ù)", true);
+  check("the layout persists in settings", await page.evaluate(() => JSON.parse(localStorage.getItem("battuta.settings.v1")).layout === "azerty"));
+  await page.locator('[data-layout="qwerty"]').click();
+  await page.waitForFunction(() => document.querySelector('[data-shortcut-bind="simile"]')?.textContent.trim() === "'", null, { timeout: 5000 });
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => !document.querySelector("[data-shortcuts]"), null, { timeout: 5000 });
+
+  // the zoom level rides the same settings store
+  check("the zoom level persists in settings", await page.evaluate(() => JSON.parse(localStorage.getItem("battuta.settings.v1")).zoom === Number(document.querySelector("[data-zoom-toggle]").dataset.zoom)));
+}
+
 // --- 8. open file… from disk ---
 await page.setInputFiles('input[type="file"]', "/home/flux/projects/battuta/fixtures/Bach-JS_Ein_feste_Burg.mei");
 await page.waitForFunction(() => [...document.querySelectorAll(".tabs .tab")].some((t) => t.textContent.includes("Bach-JS_Ein_feste_Burg")), null, { timeout: 10000 });
 check("open file… creates a tab named after the file", true);
+check("a freshly opened tab has no dirty star", await page.evaluate(() => {
+  const tab = [...document.querySelectorAll(".tabs .tab")].find((t) => t.textContent.includes("Bach-JS_Ein_feste_Burg"));
+  return tab && !tab.textContent.includes("*");
+}));
 await page.waitForFunction(() => document.querySelectorAll(".tile .ms").length >= 14, null, { timeout: 60000 });
 check("the disk file renders completely", true);
 check(`its staff count reads correctly (${await stavesLabel()})`, (await stavesLabel()) === "staves (2)");

@@ -118,3 +118,9 @@ anyway", or a code-signing certificate).
 The native Verovio benchmark needs a
 [verovio](https://github.com/rism-digital/verovio) checkout built with
 `cmake -B build -S cmake -DBUILD_AS_LIBRARY=ON -DCMAKE_BUILD_TYPE=Release`.
+
+## License
+
+[GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only).
+Verovio, which does all notation rendering, is LGPL-3.0 — compatible
+with this licensing.

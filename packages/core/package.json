@@ -1,6 +1,7 @@
 {
   "name": "@battuta/core",
   "version": "0.0.0",
+  "license": "AGPL-3.0-only",
   "description": "MEI document core: parse, query, mutate via commands. No DOM, no I/O.",
   "type": "module",
   "main": "./dist/index.js",

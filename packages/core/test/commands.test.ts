@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
   buildEventIndex, serialize, CommandStack,
-  TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, findAll, DeleteToRestsCommand,
+  TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, findAll, DeleteToRestsCommand, SetTitleCommand,
   type CommandContext,
 } from "../src/index.js";
-import { scoreFrom, mei } from "./helpers.js";
+import { scoreFrom, mei, parse } from "./helpers.js";
 
 const BODY = `
   <measure n="1" xml:id="m1">
@@ -173,5 +173,42 @@ describe("ChordNoteAccidentalCommand", () => {
     const ctx = () => ({ score, index: buildEventIndex(score) });
     expect(() => new ChordNoteAccidentalCommand("pl1", "cn1", "s").apply(ctx())).toThrow(/chord not found/);
     expect(() => new ChordNoteAccidentalCommand("ch1", "b1", "s").apply(ctx())).toThrow(/not found in the chord/);
+  });
+});
+
+describe("SetTitleCommand", () => {
+  it("replaces an existing title and unwinds byte-identically", () => {
+    const root = parse(`<mei><meiHead><fileDesc><titleStmt><title>Old</title></titleStmt></fileDesc></meiHead><music/></mei>`);
+    const before = serialize(root);
+    const ctx = { score: undefined as never, index: undefined as never };
+    const cmd = new SetTitleCommand(root, "New Name");
+    cmd.apply(ctx);
+    expect(serialize(root)).toContain("<title>New Name</title>");
+    cmd.revert(ctx);
+    expect(serialize(root)).toBe(before);
+  });
+
+  it("creates the whole meiHead chain before <music> and removes it on revert", () => {
+    const root = parse(`<mei><music/></mei>`);
+    const before = serialize(root);
+    const ctx = { score: undefined as never, index: undefined as never };
+    const cmd = new SetTitleCommand(root, "Fresh");
+    cmd.apply(ctx);
+    const out = serialize(root);
+    expect(out).toContain("<meiHead><fileDesc><titleStmt><title>Fresh</title></titleStmt></fileDesc></meiHead>");
+    expect(out.indexOf("meiHead")).toBeLessThan(out.indexOf("music"));
+    cmd.revert(ctx);
+    expect(serialize(root)).toBe(before);
+  });
+
+  it("clearing to empty text keeps the element and restores the old text on revert", () => {
+    const root = parse(`<mei><meiHead><fileDesc><titleStmt><title>Kept</title></titleStmt></fileDesc></meiHead><music/></mei>`);
+    const before = serialize(root);
+    const cmd = new SetTitleCommand(root, "");
+    const ctx = { score: undefined as never, index: undefined as never };
+    cmd.apply(ctx);
+    expect(serialize(root)).toContain("<title/>");
+    cmd.revert(ctx);
+    expect(serialize(root)).toBe(before);
   });
 });

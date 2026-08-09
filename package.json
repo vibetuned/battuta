@@ -2,7 +2,8 @@
   "name": "battuta",
   "private": true,
   "version": "0.0.0",
-  "description": "Local-first MEI score editor — semantic document editing, Verovio rendering",
+  "license": "AGPL-3.0-only",
+  "description": "Local-first MEI score editor \u2014 semantic document editing, Verovio rendering",
   "type": "module",
   "workspaces": [
     "packages/*",
