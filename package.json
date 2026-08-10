@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "license": "AGPL-3.0-only",
-  "description": "Local-first MEI score editor \u2014 semantic document editing, Verovio rendering",
+  "description": "Local-first MEI score editor — semantic document editing, Verovio rendering",
   "type": "module",
   "workspaces": [
     "packages/*",
@@ -19,5 +19,11 @@
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",
     "typescript": "^5.6.0"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true,
+    "esbuild@0.21.5": true,
+    "fsevents@2.3.2": true,
+    "fsevents@2.3.3": true
   }
 }
