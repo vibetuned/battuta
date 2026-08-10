@@ -45,6 +45,19 @@ correction — stay in [PLANNING.md](PLANNING.md).
   window key listener re-attaches after React effects, so a fast second
   key hit a stale closure; the handler now reads the buffer through a
   ref. (This was the wandering phase5 "flake" at the harm commit.)
+- **macOS round** (tester findings on an M-series Mac): the `.app`
+  launches, file association works; two fixes shipped — (1) **MIDI
+  hot-plug**: CoreMIDI posts device-list changes to the run loop of the
+  thread that created the MIDI client, and the poll thread only slept,
+  so plug/unplug was never seen; on macOS it now pumps a CFRunLoop for
+  the poll interval (`core-foundation`, cfg-gated; ALSA/WinMM behavior
+  untouched). (2) **Grey dock icon**: `icon.icns` is now hand-assembled
+  in iconutil's exact layout (no TOC, `icp4`/`icp5` + `ic07`–`ic14` PNG
+  entries) — the PIL-written one was structurally valid but macOS
+  rejected it; `icons/battuta.iconset/` ships as the native-`iconutil`
+  fallback. The dmg's warning-then-installer behavior is Gatekeeper on
+  an unsigned image — expected until a Developer ID is added (the CI
+  workflow picks up Apple signing secrets when configured).
 - **The D.C./D.S. mark now cuts the first pass** (tester find): a
   mid-score da capo used to play through to the end before restarting —
   the base pass now stops AT the jump mark, the material after it (the

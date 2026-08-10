@@ -124,6 +124,24 @@ fn spawn_midi(app: tauri::AppHandle) {
             // has subscribed, so a change-only emit is never seen (the
             // frontend dedupes, so steady state is cheap).
             let _ = app.emit("midi-devices", last_names.clone());
+            // The poll interval. On macOS a plain sleep would freeze the
+            // device list forever: CoreMIDI posts hot-plug notifications to
+            // THIS thread's run loop, and enumeration only updates after
+            // they are processed — so pump the run loop for the interval
+            // (falling back to sleep in the slices where it has no sources
+            // and returns immediately).
+            #[cfg(target_os = "macos")]
+            {
+                use core_foundation::runloop::{kCFRunLoopDefaultMode, CFRunLoop, CFRunLoopRunResult};
+                let deadline = std::time::Instant::now() + std::time::Duration::from_millis(2000);
+                while std::time::Instant::now() < deadline {
+                    let r = unsafe { CFRunLoop::run_in_mode(kCFRunLoopDefaultMode, std::time::Duration::from_millis(250), false) };
+                    if matches!(r, CFRunLoopRunResult::Finished) {
+                        std::thread::sleep(std::time::Duration::from_millis(250));
+                    }
+                }
+            }
+            #[cfg(not(target_os = "macos"))]
             std::thread::sleep(std::time::Duration::from_millis(2000));
         }
     });

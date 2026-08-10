@@ -107,13 +107,24 @@ Two options:
 
 Platform notes: `--bundles` on the command line overrides the
 Linux-only `deb,appimage` list in tauri.conf.json. MIDI needs no extra
-work — `midir` uses CoreMIDI/WinMM natively. The `.mei` association
-comes from `fileAssociations` (Info.plist on macOS, installer registry
-on Windows); on macOS the opened file arrives as an `Opened` run-loop
-event rather than argv, which the shell also handles. Unsigned builds
-trip Gatekeeper (right-click → Open the first time, or pay for a
-Developer ID + notarization) and Windows SmartScreen ("More info → Run
-anyway", or a code-signing certificate).
+work — `midir` uses CoreMIDI/WinMM natively (on macOS the poll thread
+pumps a CFRunLoop: CoreMIDI only reports hot-plug through it). The
+`.mei` association comes from `fileAssociations` (Info.plist on macOS,
+installer registry on Windows); on macOS the opened file arrives as an
+`Opened` run-loop event rather than argv, which the shell also handles.
+Unsigned builds trip Gatekeeper — the dmg shows a warning before the
+drag-to-Applications window opens (right-click → Open the first time,
+or pay for a Developer ID + notarization; `tauri-action` picks up the
+`APPLE_CERTIFICATE`/`APPLE_ID` secrets when you add them) — and Windows
+SmartScreen ("More info → Run anyway", or a code-signing certificate).
+
+macOS icon: `icons/icon.icns` is hand-assembled on Linux in iconutil's
+exact layout. If the dock icon ever renders as the generic grey tile,
+rebuild it natively on a Mac —
+`iconutil -c icns icons/battuta.iconset -o apps/editor/src-tauri/icons/icon.icns`
+— and note macOS caches app icons aggressively: after replacing an app,
+`rm -rf /Library/Caches/com.apple.iconservices.store; killall Dock`
+(or a re-login) is often needed before the new icon shows.
 
 The native Verovio benchmark needs a
 [verovio](https://github.com/rism-digital/verovio) checkout built with
