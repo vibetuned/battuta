@@ -118,13 +118,26 @@ or pay for a Developer ID + notarization; `tauri-action` picks up the
 `APPLE_CERTIFICATE`/`APPLE_ID` secrets when you add them) — and Windows
 SmartScreen ("More info → Run anyway", or a code-signing certificate).
 
-macOS icon: `icons/icon.icns` is hand-assembled on Linux in iconutil's
-exact layout. If the dock icon ever renders as the generic grey tile,
-rebuild it natively on a Mac —
-`iconutil -c icns icons/battuta.iconset -o apps/editor/src-tauri/icons/icon.icns`
-— and note macOS caches app icons aggressively: after replacing an app,
-`rm -rf /Library/Caches/com.apple.iconservices.store; killall Dock`
-(or a re-login) is often needed before the new icon shows.
+macOS icon: the artwork must be **fully opaque edge-to-edge** — macOS 26
+(Tahoe) treats transparent corners as a legacy pre-shaped icon, discards
+the background, and re-composites the glyph on a system tile that is
+dark grey under the Dark icon style (the "grey dock icon" bug; full
+story in [mac.md](mac.md)). `apps/editor/src-tauri/icons/icon.icns` is
+built natively from the full-bleed set:
+
+```sh
+iconutil -c icns icons/battuta-macos.iconset -o apps/editor/src-tauri/icons/icon.icns
+```
+
+Never regenerate it from `icons/battuta.iconset/` (the transparent
+original, kept for other platforms) — the grey tile comes straight
+back. When retesting icons, purge the REAL cache first and delete any
+stale app copies (iconservices also resolves by bundle id):
+
+```sh
+rm -rf "$(getconf DARWIN_USER_CACHE_DIR)/com.apple.iconservices"*
+killall iconservicesagent Dock Finder
+```
 
 The native Verovio benchmark needs a
 [verovio](https://github.com/rism-digital/verovio) checkout built with

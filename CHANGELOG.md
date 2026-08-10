@@ -51,13 +51,16 @@ correction — stay in [PLANNING.md](PLANNING.md).
   thread that created the MIDI client, and the poll thread only slept,
   so plug/unplug was never seen; on macOS it now pumps a CFRunLoop for
   the poll interval (`core-foundation`, cfg-gated; ALSA/WinMM behavior
-  untouched). (2) **Grey dock icon**: `icon.icns` is now hand-assembled
-  in iconutil's exact layout (no TOC, `icp4`/`icp5` + `ic07`–`ic14` PNG
-  entries) — the PIL-written one was structurally valid but macOS
-  rejected it; `icons/battuta.iconset/` ships as the native-`iconutil`
-  fallback. The dmg's warning-then-installer behavior is Gatekeeper on
-  an unsigned image — expected until a Developer ID is added (the CI
-  workflow picks up Apple signing secrets when configured).
+  untouched). (2) **Grey dock icon** — root cause found on-device (see
+  [mac.md](mac.md)): the icns format was never at fault; macOS 26
+  re-themes any icon with TRANSPARENT CORNERS as a legacy pre-shaped
+  icon, discarding our white card and repainting the black glyph on a
+  system tile that is dark grey under the Dark icon style. Fix: the
+  macOS artwork is now fully opaque edge-to-edge (`icons/
+  battuta-macos.iconset/`, glyph inset ~12%), icns built natively with
+  `iconutil`. The dmg's warning-then-installer behavior is Gatekeeper
+  on an unsigned image — expected until a Developer ID is added (the
+  CI workflow picks up Apple signing secrets when configured).
 - **The D.C./D.S. mark now cuts the first pass** (tester find): a
   mid-score da capo used to play through to the end before restarting —
   the base pass now stops AT the jump mark, the material after it (the
