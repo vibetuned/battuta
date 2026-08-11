@@ -45,6 +45,32 @@ correction — stay in [PLANNING.md](PLANNING.md).
   window key listener re-attaches after React effects, so a fast second
   key hit a stale closure; the handler now reads the buffer through a
   ref. (This was the wandering phase5 "flake" at the harm commit.)
+- **The view follows the caret**: when keyboard navigation or note
+  entry pushes the caret off-screen, the edit view scrolls it back
+  (centered, smooth) — only on real caret moves, never on re-layout or
+  zoom ticks, with margins clearing the sticky header and status bar. A
+  caret landing in a still-virtualized tile scrolls to its placeholder,
+  which triggers the render and completes the follow.
+- **One selection model** (tester ask: shift-runs and mouse blocks
+  behaved differently): every action now derives the granularity it
+  needs from whichever input exists. A shift-run drives measure-shaped
+  actions through its bounding measures (voltas, repeat barlines,
+  reflection, copy/paste, structural counts); a single-staff mouse
+  block drives event-shaped actions through its run (slur, tie chain,
+  hairpin, pedal, tuplet, grace pair — edge rests trimmed so span
+  endpoints land on notes); transpose/accidentals from a block cover
+  every event in it. New behaviors: `r` with a shift-run toggles
+  repeats; ctrl+c with a run copies its full measure span.
+- **Cross-staff slurs unlocked**: shift-clicking across staves now
+  selects an ENDPOINT PAIR (the run model can't span staves), and `S`
+  slurs it — `ToggleSlurCommand` accepts cross-staff endpoints and
+  writes `staff="1 2"` (probed: Verovio draws them, same-measure and
+  across measures). Hairpins accept the pair too; grace-pair and tie
+  chain still require one voice and refuse cleanly.
+- **Two more stale-closure races fixed** (the harmony-lesson pattern):
+  key handlers now read the selection and block through refs, so a
+  fast click→key sequence (shift-click an endpoint, immediately press
+  S) can't act on the previous selection.
 - **Playback respects ties, slurs, and articulations** (tester find:
   tied notes re-attacked). Probed first: Verovio's timemap re-attacks
   tie continuations and its MIDI values neither merge ties nor shorten

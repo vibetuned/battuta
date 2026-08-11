@@ -552,13 +552,17 @@ export class ToggleSlurCommand implements Command {
     let b = ctx.index.byId.get(this.endId);
     if (!a || !b) throw new Error("slur endpoints not found");
     if (a.id === b.id) throw new Error("a slur needs two different events");
-    if (a.staffN !== b.staffN || a.layerN !== b.layerN) throw new Error("slur endpoints must share a staff and layer");
+    // Cross-staff slurs are legal (piano hand-crossing lines); MEI takes
+    // both staves in @staff and Verovio resolves the endpoints itself.
     if (a.tag === "rest" || a.tag === "mRest" || b.tag === "rest" || b.tag === "mRest") throw new Error("slurs connect notes or chords");
     if (a.measureIndex > b.measureIndex || (a.measureIndex === b.measureIndex && a.eventIndex > b.eventIndex)) [a, b] = [b, a];
     const measure = ctx.score.measures[a.measureIndex];
     if (!measure) throw new Error("start measure not found");
     this.region = [];
-    for (let m = a.measureIndex; m <= b.measureIndex; m++) this.region.push({ measureIndex: m, staffN: a.staffN });
+    for (let m = a.measureIndex; m <= b.measureIndex; m++) {
+      this.region.push({ measureIndex: m, staffN: a.staffN });
+      if (b.staffN !== a.staffN) this.region.push({ measureIndex: m, staffN: b.staffN });
+    }
     const at = measure.children.findIndex(
       (c) => typeof c !== "string" && c.tag === "slur" && deref(c.attrs["startid"]) === a!.id && deref(c.attrs["endid"]) === b!.id,
     );
@@ -566,9 +570,10 @@ export class ToggleSlurCommand implements Command {
       this.memento = { measure, at, el: measure.children[at] as CoreElement, added: false };
       measure.children.splice(at, 1);
     } else {
+      const staff = a.staffN === b.staffN ? String(a.staffN) : `${Math.min(a.staffN, b.staffN)} ${Math.max(a.staffN, b.staffN)}`;
       const el: CoreElement = {
         tag: "slur",
-        attrs: { "xml:id": newId(), startid: `#${a.id}`, endid: `#${b.id}`, staff: String(a.staffN) },
+        attrs: { "xml:id": newId(), startid: `#${a.id}`, endid: `#${b.id}`, staff },
         children: [],
       };
       measure.children.push(el);

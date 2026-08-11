@@ -514,8 +514,22 @@ export default function App() {
   /** Chord accidental picker: which note of the chord gets the accidental. */
   const [accidPick, setAccidPick] = useState<{ accid: "s" | "f" | "n" | "x"; chordId: string; notes: { id: string; pname: string; oct: string; accid?: string }[]; x: number; y: number } | null>(null);
   const [caret, setCaret] = useState<CaretPosition | null>(null);
-  const [selection, setSelection] = useState<string[]>([]);
-  const [block, setBlock] = useState<BlockSelection | null>(null);
+  // Selection state renders highlights; the REFS are what key handlers
+  // read — the window listener re-attaches only after effects re-run, so
+  // a closure read races a fast click→key sequence (the harmony-buffer
+  // lesson: shift-click a slur endpoint and press S immediately).
+  const [selection, _setSelection] = useState<string[]>([]);
+  const selectionRef = useRef<string[]>([]);
+  const setSelection = useCallback((v: string[] | ((prev: string[]) => string[])) => {
+    selectionRef.current = typeof v === "function" ? v(selectionRef.current) : v;
+    _setSelection(selectionRef.current);
+  }, []);
+  const [block, _setBlock] = useState<BlockSelection | null>(null);
+  const blockRef = useRef<BlockSelection | null>(null);
+  const setBlock = useCallback((v: BlockSelection | null | ((prev: BlockSelection | null) => BlockSelection | null)) => {
+    blockRef.current = typeof v === "function" ? v(blockRef.current) : v;
+    _setBlock(blockRef.current);
+  }, []);
   const [clipInfo, setClipInfo] = useState<string | null>(null);
   const anchor = useRef<CaretPosition | null>(null);
   const dragAnchor = useRef<{ measureIndex: number; staffN: number } | null>(null);
@@ -541,6 +555,8 @@ export default function App() {
   /** shift+R cycle state: the base pitches captured at the first press.
    * version-keyed — any other edit (or undo) re-bases the cycle. */
   const reflectCycle = useRef<{ sig: string; base: PitchEvent[][]; step: number; version: number } | null>(null);
+  /** The caret id the view last followed — scroll only on real moves. */
+  const lastScrolledCaret = useRef<string | undefined>(undefined);
   const mainRef = useRef<HTMLElement>(null);
   // --- note input mode ---
   const [entryMode, setEntryMode] = useState(false);
@@ -682,11 +698,65 @@ export default function App() {
 
   const caretId = session && caret ? session.index.eventIdAt(caret) : undefined;
 
-  /** ids an edit applies to: the selection, else the caret event. */
+  // --- one selection model: shift-runs and mouse blocks are two INPUTS;
+  // every action derives the granularity it needs from whichever exists ---
+
+  /** Bounding block of an event-id selection (measure span × staff span). */
+  const blockFromSelection = useCallback((): BlockSelection | null => {
+    const sel = selectionRef.current;
+    if (!session || sel.length === 0) return null;
+    let mFrom = Infinity, mTo = -1, sFrom = Infinity, sTo = -1;
+    for (const id of sel) {
+      const r = session.index.byId.get(id);
+      if (!r) continue;
+      mFrom = Math.min(mFrom, r.measureIndex);
+      mTo = Math.max(mTo, r.measureIndex);
+      sFrom = Math.min(sFrom, r.staffN);
+      sTo = Math.max(sTo, r.staffN);
+    }
+    return mTo < 0 ? null : { measureFrom: mFrom, measureTo: mTo, staffFrom: sFrom, staffTo: sTo };
+  }, [session, selection]);
+
+  /** Event run of a single-staff block: the caret's voice when it sits
+   * inside the block, else voice 1. Multi-staff blocks have no run. */
+  const runFromBlock = useCallback((): string[] => {
+    const b = blockRef.current;
+    if (!session || !b || b.staffFrom !== b.staffTo) return [];
+    const s = b.staffFrom;
+    const inBlock = caret && caret.staffN === s && caret.measureIndex >= b.measureFrom && caret.measureIndex <= b.measureTo;
+    const l = inBlock ? caret.layerN : 1;
+    const ids: string[] = [];
+    for (let m = b.measureFrom; m <= b.measureTo; m++) ids.push(...session.index.eventsAt(m, s, l));
+    // A dragged box is coarse: trim rests at the edges so span endpoints
+    // (slur/hairpin/pedal) land on real notes; inner rests stay.
+    const pitched = (id: string) => {
+      const tag = session.index.byId.get(id)?.tag;
+      return tag === "note" || tag === "chord";
+    };
+    let from = 0;
+    let to = ids.length - 1;
+    while (from <= to && !pitched(ids[from]!)) from++;
+    while (to >= from && !pitched(ids[to]!)) to--;
+    return ids.slice(from, to + 1);
+  }, [session, block, caret]);
+
+  /** ids an edit applies to: the selection, else every event under the
+   * mouse block (all staves and voices), else the caret event. */
   const editTargets = useCallback((): string[] => {
-    if (selection.length) return selection;
+    if (selectionRef.current.length) return selectionRef.current;
+    const b = blockRef.current;
+    if (session && b) {
+      const ids: string[] = [];
+      for (let m = b.measureFrom; m <= b.measureTo; m++) {
+        for (const s of session.index.stavesPerMeasure.get(m) ?? []) {
+          if (s < b.staffFrom || s > b.staffTo) continue;
+          for (const l of session.index.layersPerStaff.get(`${m}/${s}`) ?? []) ids.push(...session.index.eventsAt(m, s, l));
+        }
+      }
+      if (ids.length) return ids;
+    }
     return caretId ? [caretId] : [];
-  }, [selection, caretId]);
+  }, [selection, caretId, session, block]);
 
   const afterCommand = useCallback(
     (s: DocumentSession) => {
@@ -847,13 +917,14 @@ export default function App() {
   const structural = useCallback(
     (op: "insert" | "delete" | "duplicate") => {
       if (!session) return;
-      const at = block ? block.measureFrom : caret?.measureIndex;
-      const count = block ? block.measureTo - block.measureFrom + 1 : 1;
+      const b = block ?? blockFromSelection();
+      const at = b ? b.measureFrom : caret?.measureIndex;
+      const count = b ? b.measureTo - b.measureFrom + 1 : 1;
       if (at === undefined) {
         setNotice("place the caret or select a block first");
         return;
       }
-      const staffWish = block ? block.staffFrom : caret?.staffN ?? 1;
+      const staffWish = b ? b.staffFrom : caret?.staffN ?? 1;
       if (op === "insert") session.insertMeasures(at + count, count);
       else if (op === "delete") session.deleteMeasures(at, count);
       else session.duplicateMeasures(at, count);
@@ -880,7 +951,7 @@ export default function App() {
       caretRef.current = next; // MIDI path reads this synchronously
       setCaret(next);
     },
-    [session, block, caret, afterCommand],
+    [session, block, caret, afterCommand, blockFromSelection],
   );
 
   // A harmony lane edits the harm at the caret: (re)load its text whenever
@@ -990,6 +1061,11 @@ export default function App() {
       if (shortcutsOpen) return; // the shortcut editor owns the keyboard
       const mod = e.ctrlKey || e.metaKey;
       const hit = (id: string) => keyMatches(keymap[id], e);
+      // Either input serves every action: the run for event-shaped ones
+      // (from a single-staff block when there is no shift-run), the block
+      // for measure-shaped ones (bounding the shift-run when not dragged).
+      const run = selectionRef.current.length ? selectionRef.current : runFromBlock();
+      const bsel = blockRef.current ?? blockFromSelection();
 
       if (mod && e.key.toLowerCase() === "z") {
         e.preventDefault();
@@ -1034,7 +1110,7 @@ export default function App() {
       }
       if (mod && e.key.toLowerCase() === "c") {
         // Copy the block selection (falls back to the caret's measure×staff).
-        const b = block ?? (caret ? normalizeBlock({ measureIndex: caret.measureIndex, staffN: caret.staffN }, { measureIndex: caret.measureIndex, staffN: caret.staffN }) : null);
+        const b = bsel ?? (caret ? normalizeBlock({ measureIndex: caret.measureIndex, staffN: caret.staffN }, { measureIndex: caret.measureIndex, staffN: caret.staffN }) : null);
         if (!b) return;
         e.preventDefault();
         const frag = session.copyBlock(b);
@@ -1048,7 +1124,7 @@ export default function App() {
       }
       if (mod && e.key.toLowerCase() === "v") {
         // Replace-measures paste at the block corner or the caret.
-        const target = block ? { measureIndex: block.measureFrom, staffN: block.staffFrom } : caret ? { measureIndex: caret.measureIndex, staffN: caret.staffN } : null;
+        const target = bsel ? { measureIndex: bsel.measureFrom, staffN: bsel.staffFrom } : caret ? { measureIndex: caret.measureIndex, staffN: caret.staffN } : null;
         if (!target || !sharedClipboard) return;
         e.preventDefault();
         const plan = session.planPaste(sharedClipboard, target.measureIndex, target.staffN);
@@ -1169,9 +1245,9 @@ export default function App() {
         e.preventDefault();
         // With a selection: slur between its ends (unchanged). On a single
         // target: DOUBLE SHARP — shift+s, mirroring plain s (tester ask).
-        if (selection.length >= 2) {
+        if (run.length >= 2) {
           try {
-            session.toggleSlur(selection[0]!, selection[selection.length - 1]!);
+            session.toggleSlur(run[0]!, run[run.length - 1]!);
             afterCommand(session);
             setNotice("slur toggled");
           } catch (err) {
@@ -1241,12 +1317,12 @@ export default function App() {
           return;
         }
       }
-      if (hit("tie") && !mod && selection.length >= 2) {
+      if (hit("tie") && !mod && run.length >= 2) {
         e.preventDefault();
         // Multi-measure tie: the selected run becomes one tie chain
         // (i/m/t), one undo step; same selection again unties it.
         try {
-          session.tieChain(selection);
+          session.tieChain(run);
           afterCommand(session);
           setNotice("tie chain toggled");
         } catch (err) {
@@ -1275,14 +1351,14 @@ export default function App() {
         }
         return;
       }
-      if (hit("merge") && !mod && selection.length === 2) {
+      if (hit("merge") && !mod && run.length === 2) {
         // Two selected notes: same pitch still merges; DIFFERENT pitches
         // cycle the first into a grace note — acciaccatura → appoggiatura
         // → none — folding its time into the second (tester ask).
-        const [aId, bId] = [selection[0]!, selection[1]!];
+        const [aId, bId] = [run[0]!, run[1]!];
         const a = session.index.byId.get(aId);
         const b = session.index.byId.get(bId);
-        if (a?.tag === "note" && b?.tag === "note") {
+        if (a?.tag === "note" && b?.tag === "note" && a.staffN === b.staffN && a.layerN === b.layerN) {
           e.preventDefault();
           try {
             const samePitch = (() => {
@@ -1309,7 +1385,7 @@ export default function App() {
           return;
         }
       }
-      if (hit("tuplet") && !mod && selection.length >= 1) {
+      if (hit("tuplet") && !mod && run.length >= 1) {
         // shift+t: 3 selected notes -> triplet, 6 -> sextuplet; a selection
         // inside a tuplet unwraps it (freed time <-> rests after).
         e.preventDefault();
@@ -1322,12 +1398,12 @@ export default function App() {
         }
         return;
       }
-      if (hit("pedal") && !mod && selection.length >= 2) {
+      if (hit("pedal") && !mod && run.length >= 2) {
         // Pedal line over the selection: down at the first note, up at the
         // last; the same selection removes it.
         e.preventDefault();
         try {
-          session.togglePedal(selection[0]!, selection[selection.length - 1]!);
+          session.togglePedal(run[0]!, run[run.length - 1]!);
           afterCommand(session);
           setNotice("pedal toggled");
         } catch (err) {
@@ -1335,7 +1411,7 @@ export default function App() {
         }
         return;
       }
-      if (e.shiftKey && !mod && !e.altKey && !entryMode && block) {
+      if (e.shiftKey && !mod && !e.altKey && !entryMode && bsel) {
         // shift+1..9 toggles that volta number on the block's bracket —
         // mixes like [1, 2][3] build up number by number; removing the
         // last number removes the bracket. Barlines renormalize across
@@ -1344,38 +1420,38 @@ export default function App() {
         if (volta) {
           e.preventDefault();
           try {
-            session.toggleVolta(block.measureFrom, block.measureTo, Number(volta));
+            session.toggleVolta(bsel.measureFrom, bsel.measureTo, Number(volta));
             afterCommand(session);
-            setNotice(`volta ${volta} toggled on m${block.measureFrom + 1}–m${block.measureTo + 1}`);
+            setNotice(`volta ${volta} toggled on m${bsel.measureFrom + 1}–m${bsel.measureTo + 1}`);
           } catch (err) {
             setNotice(`volta refused: ${err instanceof Error ? err.message : err}`);
           }
           return;
         }
       }
-      if (hit("repeatBarlines") && !mod && !entryMode && block) {
+      if (hit("repeatBarlines") && !mod && !entryMode && bsel) {
         // "r" on a block selection toggles repeat barlines around it — the
         // bis. In input mode r still enters rests.
         e.preventDefault();
         try {
-          session.toggleRepeat(block.measureFrom, block.measureTo);
+          session.toggleRepeat(bsel.measureFrom, bsel.measureTo);
           afterCommand(session);
-          setNotice(`repeat toggled around m${block.measureFrom + 1}–m${block.measureTo + 1} (𝄆 𝄇)`);
+          setNotice(`repeat toggled around m${bsel.measureFrom + 1}–m${bsel.measureTo + 1} (𝄆 𝄇)`);
         } catch (err) {
           setNotice(`repeat refused: ${err instanceof Error ? err.message : err}`);
         }
         return;
       }
-      if (hit("reflect") && !mod && block) {
+      if (hit("reflect") && !mod && bsel) {
         // shift+R on a block: the serial forms of the selection — prime →
         // inversion → retrograde → retrograde inversion → prime. Every
         // form derives from the BASE captured at the first press (no
         // compounding); any other edit in between re-bases the cycle.
         e.preventDefault();
-        const sig = `${activeId}:${block.measureFrom}-${block.measureTo}/${block.staffFrom}-${block.staffTo}`;
+        const sig = `${activeId}:${bsel.measureFrom}-${bsel.measureTo}/${bsel.staffFrom}-${bsel.staffTo}`;
         let cyc = reflectCycle.current;
         if (!cyc || cyc.sig !== sig || cyc.version !== session.version) {
-          cyc = { sig, base: session.blockPitchEvents(block), step: 0, version: session.version };
+          cyc = { sig, base: session.blockPitchEvents(bsel), step: 0, version: session.version };
         }
         if (cyc.base.length === 0) {
           setNotice("reflection refused: no notes in the selection");
@@ -1406,13 +1482,13 @@ export default function App() {
         }
         return;
       }
-      if (hit("dynamics") && !mod && selection.length >= 2) {
+      if (hit("dynamics") && !mod && run.length >= 2) {
         // With a block of notes selected, "p" cycles a hairpin over it:
         // none -> crescendo -> decrescendo -> none (single-note "p" still
         // cycles p/f dynamics).
         e.preventDefault();
         try {
-          session.cycleHairpin(selection[0]!, selection[selection.length - 1]!);
+          session.cycleHairpin(run[0]!, run[run.length - 1]!);
           afterCommand(session);
           setNotice("hairpin: none → < → > → none");
         } catch (err) {
@@ -1773,7 +1849,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [session, caret, block, editTargets, afterCommand, entryMode, caretId, enterAtCaret, nearestOctave, structural, selection, accidPick, openAccidPicker, harmLane, harmBuffer, saveActive, openScore, zoomStep, keymap, shortcutsOpen]);
+  }, [session, caret, block, editTargets, afterCommand, entryMode, caretId, enterAtCaret, nearestOctave, structural, selection, accidPick, openAccidPicker, harmLane, harmBuffer, saveActive, openScore, zoomStep, keymap, shortcutsOpen, runFromBlock, blockFromSelection, activeId]);
 
   // --- Web MIDI: note-ons enter at the caret while input mode is active;
   // keys held together build a CHORD (like MuseScore). Devices hot-plug via
@@ -2024,7 +2100,15 @@ export default function App() {
     const ref = session.index.byId.get(g.id)!;
     const pos: CaretPosition = { measureIndex: ref.measureIndex, staffN: ref.staffN, layerN: ref.layerN, eventIndex: ref.eventIndex };
     if (e.shiftKey && anchor.current) {
-      setSelection(eventRange(session.index, session.score, anchor.current, pos));
+      const run = eventRange(session.index, session.score, anchor.current, pos);
+      if (run.length) setSelection(run);
+      else {
+        // Cross-staff/voice shift-click: an ENDPOINT PAIR — enough for the
+        // spans that legitimately cross staves (slur, hairpin).
+        const a = session.index.eventIdAt(anchor.current);
+        const b = session.index.eventIdAt(pos);
+        setSelection(a && b && a !== b ? [a, b] : []);
+      }
     } else {
       anchor.current = pos;
       setSelection([]);
@@ -2044,11 +2128,28 @@ export default function App() {
     const g = main.querySelector(`g[id="${CSS.escape(caretId)}"]`);
     if (!g) {
       setCaretRect(null);
+      // The caret landed in a virtualized (unrendered) tile: scroll to its
+      // placeholder so the observer renders it — the caret follows on the
+      // next layout tick. (lastScrolledCaret stays unset: the g branch
+      // finishes the follow once the element exists.)
+      if (caret && caretId !== lastScrolledCaret.current) {
+        main.querySelector(`.tile[data-index="${caret.measureIndex}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
       return;
     }
     const gr = (g as SVGGElement).getBoundingClientRect();
     const mr = main.getBoundingClientRect();
     setCaretRect({ left: gr.left - mr.left - 4, top: gr.top - mr.top - 6, height: gr.height + 12 });
+    // Follow the caret when IT moved (keyboard nav, entry advancing past
+    // the fold) — never on re-layout/zoom ticks, which would yank the
+    // view. Margins clear the sticky header and the status bar.
+    if (caretId !== lastScrolledCaret.current) {
+      lastScrolledCaret.current = caretId;
+      if (gr.top < 70 || gr.bottom > window.innerHeight - 45) {
+        g.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- caret is caretId's source
   }, [caretId, version, layoutTick, view, zoom]);
 
   const onRendered = useCallback((r: TileResult) => {

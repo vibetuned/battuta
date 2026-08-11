@@ -401,11 +401,21 @@ describe("ToggleSlurCommand", () => {
     expect(serialize(score.scoreEl)).toBe(snap);
   });
 
-  it("refuses rests, mixed staves, and self-slurs", () => {
+  it("refuses rests and self-slurs", () => {
     const { score } = scoreFrom(mei(body));
     expect(() => new ToggleSlurCommand("a2", "r1").apply(ctxFor(score))).toThrow(/notes or chords/);
-    expect(() => new ToggleSlurCommand("a1", "b2").apply(ctxFor(score))).toThrow(/share a staff/);
     expect(() => new ToggleSlurCommand("a1", "a1").apply(ctxFor(score))).toThrow(/two different/);
+  });
+
+  it("cross-staff slurs are legal: @staff lists both, byte-identical unwind", () => {
+    const { score } = scoreFrom(mei(body));
+    const before = serialize(score.scoreEl);
+    const cmd = new ToggleSlurCommand("a1", "b2");
+    cmd.apply(ctxFor(score));
+    const slur = findAll(score.measures[0]!, "slur").find((s) => s.attrs["startid"] === "#a1");
+    expect(slur?.attrs["staff"]).toBe("1 2");
+    cmd.revert(ctxFor(score));
+    expect(serialize(score.scoreEl)).toBe(before);
   });
 });
 

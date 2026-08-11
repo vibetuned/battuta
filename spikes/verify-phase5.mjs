@@ -994,6 +994,17 @@ check("harmony round unwinds cleanly", await page.evaluate(() =>
   await page.keyboard.press("PageUp");
   await page.waitForFunction((n) => window.__SESSION__.index.byId.get(document.querySelector("main").dataset.caret).measureIndex < n, row0len, { timeout: 5000 });
   check("PageUp returns to the previous row", true);
+  // the view follows the caret: scroll it away, move the caret, it returns
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await page.keyboard.press("End");
+  await page.waitForFunction(() => {
+    const id = document.querySelector("main").dataset.caret;
+    const g = document.querySelector(`g[id="${id}"]`);
+    if (!g) return false;
+    const r = g.getBoundingClientRect();
+    return r.top >= 0 && r.bottom <= window.innerHeight;
+  }, null, { timeout: 5000 });
+  check("the view follows the caret back on-screen", true);
   await page.locator("[data-zoom-reset]").click();
   await page.locator("[data-zoom-toggle]").click(); // close the panel
 
@@ -1162,6 +1173,101 @@ check("harmony round unwinds cleanly", await page.evaluate(() =>
   for (let i = 0; i < 4; i++) await page.keyboard.press("Control+z");
   await page.waitForFunction((b) => window.__SESSION__.saveDocument() === b, beforeReflect, { timeout: 10000 });
   check("the cycle unwinds through undo too", true);
+}
+
+
+// --- 7q. one selection model + the cross-staff slur ---
+{
+  const q0 = await page.evaluate(() => window.__SESSION__.stack.undoDepth);
+  // a note on staff 2 (enter one when the fixture has none there)
+  let s2note = await page.evaluate(() => window.__SESSION__.index.eventsAt(0, 2, 1).find((id) => window.__SESSION__.index.byId.get(id)?.tag === "note"));
+  if (!s2note) {
+    const s2first = await page.evaluate(() => window.__SESSION__.index.eventsAt(0, 2, 1)[0]);
+    await clickEvent(s2first);
+    await page.keyboard.press("i");
+    await page.keyboard.press("c");
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => window.__SESSION__.index.eventsAt(0, 2, 1).some((id) => window.__SESSION__.index.byId.get(id)?.tag === "note"), null, { timeout: 10000 });
+    s2note = await page.evaluate(() => window.__SESSION__.index.eventsAt(0, 2, 1).find((id) => window.__SESSION__.index.byId.get(id)?.tag === "note"));
+  }
+
+  // (a) shift-run → measure-shaped action: r toggles repeat barlines
+  const m2note = await page.evaluate(() => window.__SESSION__.index.eventsAt(1, 1, 1).find((id) => window.__SESSION__.index.byId.get(id)?.tag === "note"));
+  let rptOk = false;
+  for (let t = 0; t < 4 && !rptOk; t++) {
+    await clickEvent("cc-m1n1");
+    await page.locator(`g[id="${m2note}"] use`).first().click({ modifiers: ["Shift"], force: true });
+    await page.keyboard.press("r");
+    rptOk = await page
+      .waitForFunction(() => window.__SESSION__.score.measures[0].attrs.left === "rptstart" && window.__SESSION__.score.measures[1].attrs.right === "rptend", null, { timeout: 2000 })
+      .then(() => true)
+      .catch(() => false);
+  }
+  check("a shift-run drives the measure-shaped repeat action", rptOk);
+  await page.keyboard.press("r"); // the selection still stands: toggle back off
+  await page.waitForFunction(() => window.__SESSION__.score.measures[0].attrs.left !== "rptstart", null, { timeout: 5000 });
+  check("…and toggles back off from the same selection", true);
+
+  // (b) mouse block → event-shaped action: p makes a hairpin over the run
+  let hpBlock = "";
+  for (let t = 0; t < 5 && hpBlock !== "0-1/1-1"; t++) {
+    const a = await vCenter(0);
+    const b = await vCenter(1);
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down();
+    await page.mouse.move(b.x, b.y, { steps: 5 });
+    await page.mouse.up();
+    hpBlock = await page
+      .waitForFunction(() => document.querySelector("main").dataset.block === "0-1/1-1", null, { timeout: 1500 })
+      .then(() => "0-1/1-1")
+      .catch(() => page.evaluate(() => document.querySelector("main").dataset.block));
+  }
+  check("block m1–m2 selected for the hairpin", hpBlock === "0-1/1-1");
+  await page.keyboard.press("p");
+  await page.waitForFunction(() => {
+    const m = window.__SESSION__.score.measures[0];
+    return m.children.some((c) => typeof c !== "string" && c.tag === "hairpin");
+  }, null, { timeout: 5000 });
+  check("a mouse block drives the event-shaped hairpin action", true);
+  await page.keyboard.press("Control+z");
+
+  // (c) the infamous cross-staff slur: click staff 1, shift+click staff 2, S
+  let slurOk = false;
+  for (let t = 0; t < 4 && !slurOk; t++) {
+    await clickEvent("cc-m1n1");
+    await page.locator(`g[id="${s2note}"] use`).first().click({ modifiers: ["Shift"], force: true });
+    const paired = await page
+      .waitForFunction((id) => [...document.querySelectorAll("style")].some((s) => s.textContent.includes(id) && s.textContent.includes("#d22")), s2note, { timeout: 1500 })
+      .then(() => true)
+      .catch(() => false);
+    if (!paired) continue; // the shift-click missed (stale coords): retry
+    await page.keyboard.press("S");
+    slurOk = await page
+      .waitForFunction(() => {
+        const m = window.__SESSION__.score.measures[0];
+        return m.children.some((c) => typeof c !== "string" && c.tag === "slur" && c.attrs.staff === "1 2");
+      }, null, { timeout: 2000 })
+      .then(() => true)
+      .catch(() => false);
+  }
+  check("cross-staff slur: endpoints on staff 1 and staff 2, staff=\"1 2\"", slurOk);
+  // non-vacuous render check: the NEW slur's own id must appear in tile 0
+  // (the fixture already carries an unrelated slur there)
+  const xslurId = await page.evaluate(() => {
+    const m = window.__SESSION__.score.measures[0];
+    return m.children.find((c) => typeof c !== "string" && c.tag === "slur" && c.attrs.staff === "1 2")?.attrs["xml:id"];
+  });
+  await page.waitForFunction((id) => id && document.querySelector(`.tile[data-index="0"] g[id="${id}"]`), xslurId, { timeout: 15000 });
+  check("…and Verovio draws it in the tile", true);
+
+  // cleanup: unwind everything this section did
+  for (let i = 0; i < 12; i++) {
+    const depth = await page.evaluate(() => window.__SESSION__.stack.undoDepth);
+    if (depth <= q0) break;
+    await page.keyboard.press("Control+z");
+    await page.waitForFunction((d) => window.__SESSION__.stack.undoDepth < d, depth, { timeout: 5000 });
+  }
+  check("selection-model round unwinds", await page.evaluate((d) => window.__SESSION__.stack.undoDepth === d, q0));
 }
 
 // --- 8. open file… from disk ---
