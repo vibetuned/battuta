@@ -151,6 +151,51 @@ describe("ToggleTieCommand", () => {
     const { score } = scoreFrom(mei(BODY));
     expect(() => new ToggleTieCommand("q1").apply(ctxFor(score))).toThrow(/same pitch/);
   });
+
+  it("tie after tie builds a chain (n_n_n = i, m, t), not a disconnect", () => {
+    const body = `
+      <measure n="1" xml:id="m1"><staff n="1"><layer n="1">
+        <note pname="g" oct="4" dur="4" xml:id="a"/><note pname="g" oct="4" dur="4" xml:id="b"/>
+        <note pname="g" oct="4" dur="4" xml:id="c"/><rest dur="4" xml:id="r"/>
+      </layer></staff></measure>`;
+    const { score } = scoreFrom(mei(body));
+    const before = serialize(score.scoreEl);
+    const find = (id: string) => findAll(score.measures[0]!, "note").find((n) => n.attrs["xml:id"] === id)!;
+    const first = new ToggleTieCommand("a");
+    const second = new ToggleTieCommand("b");
+    first.apply(ctxFor(score));
+    second.apply(ctxFor(score)); // the shared note must become "m"
+    expect(find("a").attrs["tie"]).toBe("i");
+    expect(find("b").attrs["tie"]).toBe("m");
+    expect(find("c").attrs["tie"]).toBe("t");
+    // untoggle the FIRST link: the second stays intact
+    const third = new ToggleTieCommand("a");
+    third.apply(ctxFor(score));
+    expect(find("a").attrs["tie"]).toBeUndefined();
+    expect(find("b").attrs["tie"]).toBe("i");
+    expect(find("c").attrs["tie"]).toBe("t");
+    // byte-identical unwind through the mementos
+    third.revert(ctxFor(score));
+    second.revert(ctxFor(score));
+    first.revert(ctxFor(score));
+    expect(serialize(score.scoreEl)).toBe(before);
+  });
+
+  it("untying the middle link splits a chain into two valid ties", () => {
+    const body = `
+      <measure n="1" xml:id="m1"><staff n="1"><layer n="1">
+        <note pname="g" oct="4" dur="8" xml:id="a" tie="i"/><note pname="g" oct="4" dur="8" xml:id="b" tie="m"/>
+        <note pname="g" oct="4" dur="8" xml:id="c" tie="m"/><note pname="g" oct="4" dur="8" xml:id="d" tie="t"/>
+        <rest dur="2" xml:id="r"/>
+      </layer></staff></measure>`;
+    const { score } = scoreFrom(mei(body));
+    const find = (id: string) => findAll(score.measures[0]!, "note").find((n) => n.attrs["xml:id"] === id)!;
+    new ToggleTieCommand("b").apply(ctxFor(score)); // remove b -> c
+    expect(find("a").attrs["tie"]).toBe("i");
+    expect(find("b").attrs["tie"]).toBe("t");
+    expect(find("c").attrs["tie"]).toBe("i");
+    expect(find("d").attrs["tie"]).toBe("t");
+  });
 });
 
 describe("MergeEventsCommand / SplitEventCommand", () => {

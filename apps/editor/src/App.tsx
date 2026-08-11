@@ -2646,9 +2646,9 @@ export default function App() {
           ))}
         </select>
         <select value={shownMeter} title="meter at caret (score-wide; refuses if content no longer fits)" className="sbsel" style={STATUSBAR_SELECT} disabled={!session} onChange={(e) => { e.target.blur(); applyContext("meter", e.target.value); }}>
-          {shownMeter && !["4/4", "3/4", "2/4", "2/2", "6/8", "9/8", "12/8", "5/4", "7/8", "5/8", "3/8"].includes(shownMeter) && <option value={shownMeter}>{shownMeter}</option>}
+          {shownMeter && !["4/4", "3/4", "2/4", "2/2", "3/2", "6/8", "9/8", "12/8", "5/4", "7/8", "5/8", "3/8"].includes(shownMeter) && <option value={shownMeter}>{shownMeter}</option>}
           {!shownMeter && <option value="">meter</option>}
-          {["4/4", "3/4", "2/4", "2/2", "6/8", "9/8", "12/8", "5/4", "7/8", "5/8", "3/8"].map((m) => (
+          {["4/4", "3/4", "2/4", "2/2", "3/2", "6/8", "9/8", "12/8", "5/4", "7/8", "5/8", "3/8"].map((m) => (
             <option key={m}>{m}</option>
           ))}
         </select>

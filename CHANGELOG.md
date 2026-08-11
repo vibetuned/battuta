@@ -45,6 +45,17 @@ correction — stay in [PLANNING.md](PLANNING.md).
   window key listener re-attaches after React effects, so a fast second
   key hit a stale closure; the handler now reads the buffer through a
   ref. (This was the wandering phase5 "flake" at the harm commit.)
+- **Tie after tie fixed** (n_n_n): tying the second pair used to
+  clobber the shared note's `tie="t"` with `"i"`, orphaning the first
+  tie (Verovio drops unmatched halves — it vanished from the page and
+  the sound). `ToggleTieCommand` is now chain-aware: the shared note
+  becomes `@tie="m"`, and untoggling any link in a chain splits it into
+  valid remainders (removing the middle of i-m-m-t leaves two ties).
+  Render and playback merge follow automatically.
+- **3/2** joins the meter select (common in practice scores). On
+  non-empty measures the exact-fit validator still refuses with
+  "adjust it first" — by design; set the meter before entering, or on
+  whole-measure rests, and it applies freely.
 - **The view follows the caret**: when keyboard navigation or note
   entry pushes the caret off-screen, the edit view scrolls it back
   (centered, smooth) — only on real caret moves, never on re-layout or

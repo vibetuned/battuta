@@ -1270,6 +1270,52 @@ check("harmony round unwinds cleanly", await page.evaluate(() =>
   check("selection-model round unwinds", await page.evaluate((d) => window.__SESSION__.stack.undoDepth === d, q0));
 }
 
+
+// --- 7r. 3/2 meter + tie-after-tie chains ---
+{
+  // a scratch tab: 3/2 on empty measures, then three entered notes for
+  // the tie chain — discarded whole at the end (no undo bookkeeping)
+  await page.locator(".tab-new").click();
+  await page.waitForFunction(() => window.__SESSION__.score.measures.length === 4, null, { timeout: 10000 });
+  const mrest = await page.evaluate(() => window.__SESSION__.index.eventsAt(0, 1, 1)[0]);
+  await clickEvent(mrest);
+  await page.selectOption('select[title*="meter"]', "3/2");
+  await page.waitForFunction(() => document.querySelector('select[title*="meter"]').value === "3/2", null, { timeout: 10000 });
+  check("3/2 joins the meter select and applies on empty measures", true);
+
+  // enter g g g — three CONSECUTIVE same-pitch notes
+  await page.keyboard.press("i");
+  for (const k of ["g", "g", "g"]) await page.keyboard.press(k);
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => window.__SESSION__.index.eventsAt(0, 1, 1).filter((id) => window.__SESSION__.index.byId.get(id)?.tag === "note").length >= 3, null, { timeout: 10000 });
+  const chain = await page.evaluate(() => window.__SESSION__.index.eventsAt(0, 1, 1).filter((id) => window.__SESSION__.index.byId.get(id)?.tag === "note").slice(0, 3));
+
+  // tie after tie: n_n_n must be ONE chain (i, m, t)
+  await clickEvent(chain[1]);
+  await page.keyboard.press("t"); // ties chain[0] -> chain[1]
+  await page.waitForFunction((ids) => {
+    const doc = window.__SESSION__.saveDocument();
+    return new RegExp(`xml:id="${ids[0]}"[^>]*tie="i"|tie="i"[^>]*xml:id="${ids[0]}"`).test(doc);
+  }, chain, { timeout: 5000 });
+  await clickEvent(chain[2]);
+  await page.keyboard.press("t"); // ties chain[1] -> chain[2]: the shared note must become "m"
+  await page.waitForFunction((ids) => {
+    const doc = window.__SESSION__.saveDocument();
+    const tieOf = (id) => (doc.match(new RegExp(`<note[^>]*xml:id="${id}"[^>]*/?>`))?.[0].match(/tie="([imt])"/) ?? [])[1];
+    return tieOf(ids[0]) === "i" && tieOf(ids[1]) === "m" && tieOf(ids[2]) === "t";
+  }, chain, { timeout: 5000 });
+  check("tie after tie builds i / m / t — the first tie stays connected", true);
+  check("the sound merges the whole chain", await page.evaluate((ids) => {
+    const ties = window.__SESSION__.playbackShaping().ties;
+    return ties[ids[0]] === ids[1] && ties[ids[1]] === ids[2];
+  }, chain));
+
+  // discard the scratch tab, back to the fixture
+  await page.locator(".tab.active .tab-close").click();
+  await page.locator(".tabs .tab").first().click();
+  await page.waitForFunction(() => document.querySelectorAll(".tile .ms").length >= 10, null, { timeout: 30000 });
+}
+
 // --- 8. open file… from disk ---
 await page.setInputFiles('input[type="file"]', "/home/flux/projects/battuta/fixtures/Bach-JS_Ein_feste_Burg.mei");
 await page.waitForFunction(() => [...document.querySelectorAll(".tabs .tab")].some((t) => t.textContent.includes("Bach-JS_Ein_feste_Burg")), null, { timeout: 10000 });

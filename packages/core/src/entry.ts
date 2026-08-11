@@ -436,12 +436,21 @@ export class ToggleTieCommand implements Command {
       throw new Error("tie requires the same pitch on both notes");
     }
     this.memento = { el, next, before: [el.attrs["tie"], next.attrs["tie"]] };
-    if (el.attrs["tie"] === "i" && next.attrs["tie"] === "t") {
-      delete el.attrs["tie"];
-      delete next.attrs["tie"];
+    // Chain-aware toggling: a note can terminate one tie AND initiate the
+    // next (n_n_n) — that's @tie="m". The link el→next exists iff el
+    // initiates (i|m) and next terminates (m|t).
+    const a = el.attrs["tie"];
+    const b = next.attrs["tie"];
+    if ((a === "i" || a === "m") && (b === "m" || b === "t")) {
+      // remove THIS link; whatever each note does with its other side stays
+      if (a === "m") el.attrs["tie"] = "t";
+      else delete el.attrs["tie"];
+      if (b === "m") next.attrs["tie"] = "i";
+      else delete next.attrs["tie"];
     } else {
-      el.attrs["tie"] = "i";
-      next.attrs["tie"] = "t";
+      // create the link; a note already tied on its other side becomes "m"
+      el.attrs["tie"] = a === "t" || a === "m" ? "m" : "i";
+      next.attrs["tie"] = b === "i" || b === "m" ? "m" : "t";
     }
     return [
       { measureIndex: ref.measureIndex, staffN: ref.staffN },
