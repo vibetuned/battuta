@@ -45,6 +45,46 @@ correction — stay in [PLANNING.md](PLANNING.md).
   window key listener re-attaches after React effects, so a fast second
   key hit a stale closure; the handler now reads the buffer through a
   ref. (This was the wandering phase5 "flake" at the harm commit.)
+- **Playback respects ties, slurs, and articulations** (tester find:
+  tied notes re-attacked). Probed first: Verovio's timemap re-attacks
+  tie continuations and its MIDI values neither merge ties nor shorten
+  staccato — so the document supplies the truth. New core module
+  `playback.ts`: the tie-pair graph (from `@tie` i/m/t chains and
+  `<tie>` elements) merges each chain into ONE attack held for the
+  summed span (works through repeat-pass clone ids via the expansion
+  map), and per-note gates shape the release — slur/phrase spans and
+  tenuto sound full value, staccato 50%, staccatissimo 30%, an explicit
+  articulation beats the slur, and unshaped notes now get a slight
+  detach (90%) so legato is audible by contrast. 7 unit tests + e2e
+  plumbing checks.
+- **Reflection cycle** (`shift+R` on a block selection): the serial
+  forms of the selected material — prime → **inversion** (diatonic
+  mirror about each voice's first note) → **retrograde** (pitch content
+  reversed over the rhythm skeleton: durations and rests stay put, so
+  measures stay valid by construction) → **retrograde inversion** →
+  back to prime, byte-identically. Pitch content moves as
+  pname/oct/accid triples; each voice in the block reflects
+  independently; each press is one undo step. The cycle derives every
+  form from the base captured at the first press (version-keyed — any
+  other edit re-bases it). Retrograde needs chord sizes to mirror
+  (pitches move between events, structure never changes) and is skipped
+  with a notice otherwise. Core: `SetPitchesCommand` + pure form math
+  in `reflect.ts`, covered by the property fuzzer and 6 unit tests.
+- **Toasts get a × dismiss** on their left — close before the timeout;
+  as a side effect the toast text is now selectable (error messages get
+  copied around), since the whole-body click-to-dismiss is gone.
+- **Add staff places the caret**: *add staff below* now lands the caret
+  on the new staff's first measure, ready for note entry (selection and
+  block cleared; the notice says where it went).
+- **Dialogs remember the last folder**: open and save-as start in the
+  folder of the last opened or saved score (persisted in settings; the
+  shell only applies it when the folder still exists). File-association
+  opens seed it too. Tester follow-up: the **"open file…" button** used
+  to bypass this entirely — it clicked the hidden browser file input
+  even in the shell (WebKit's own chooser, always starting at Home);
+  it now routes through the same native open dialog as ctrl+o, keeping
+  the input as the browser fallback. The shell also logs the starting
+  dir it passes, for future portal debugging.
 - **macOS round** (tester findings on an M-series Mac): the `.app`
   launches, file association works; two fixes shipped — (1) **MIDI
   hot-plug**: CoreMIDI posts device-list changes to the run loop of the

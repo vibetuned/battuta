@@ -56,7 +56,7 @@ function dirtyFor(ctx: CommandContext, ids: string[]): DirtyRegion[] {
   return out;
 }
 
-function targetNotes(ctx: CommandContext, id: string): CoreElement[] {
+export function targetNotes(ctx: CommandContext, id: string): CoreElement[] {
   const ref = ctx.index.byId.get(id);
   if (!ref) return [];
   const measure = ctx.score.measures[ref.measureIndex];

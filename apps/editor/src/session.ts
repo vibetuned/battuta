@@ -8,7 +8,8 @@ import {
   buildScore, resolveContexts, buildEventIndex, ensureIds, fromDom, serialize, serializeDocument, childElements, findAll, meterCapacity, frac,
   CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand, RegenerateIdsCommand,
   copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, AddVoiceCommand, RemoveVoiceCommand, ToggleRepeatCommand, ToggleVoltaCommand,
-  SetHarmCommand, harmTextAt, SetTitleCommand, fingTextsAt, buildExpansion, ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, TupletCommand, AutoBeamCommand, UnbeamThen, measuresOf, ChangeContextCommand, planContextChange,
+  SetHarmCommand, harmTextAt, SetTitleCommand, fingTextsAt, buildExpansion, SetPitchesCommand, collectPitchEvents, playbackShaping, ReplaceEntryCommand,
+  type PitchEvent, type PlaybackShaping, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, TupletCommand, AutoBeamCommand, UnbeamThen, measuresOf, ChangeContextCommand, planContextChange,
   type CoreScore, type MeasureContext, type EventIndex, type Command, type DirtyRegion, type DomLikeElement, type DomLikeNode,
   type BlockSelection, type ClipboardFragment, type PastePlan, type EntrySpec, type MarkKind, type HarmKind, type CoreElement, type CaretPosition, type ContextChangeSpec,
 } from "@battuta/core";
@@ -315,6 +316,17 @@ export class DocumentSession {
     const ref = this.index.byId.get(targetId);
     const measure = ref ? this.score.measures[ref.measureIndex] : undefined;
     return measure ? fingTextsAt(measure, targetId) : [];
+  }
+  /** Ties + articulation/slur gates for the player (notated ids). */
+  playbackShaping(): PlaybackShaping {
+    return playbackShaping(this.score, this.index);
+  }
+  /** Pitched-event sequences of a block, one per (staff, layer) voice. */
+  blockPitchEvents(block: BlockSelection): PitchEvent[][] {
+    return collectPitchEvents(this.score, this.index, block.measureFrom, block.measureTo, block.staffFrom, block.staffTo);
+  }
+  setPitches(targets: PitchEvent[], label: string): DirtyRegion[] {
+    return this.execute(new SetPitchesCommand(targets, label));
   }
   /** meiHead > fileDesc > titleStmt > title text ("" when absent). */
   title(): string {

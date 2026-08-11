@@ -7,6 +7,7 @@
  * note lengths from the timemap's own on→off spans.
  */
 import * as Tone from "tone";
+import { mergeTiedSpans, GATE_DEFAULT } from "@battuta/core";
 import type { PlaybackData } from "./render/renderPool";
 
 // Vite inlines these as hashed asset URLs — embedded in the app bundle,
@@ -102,10 +103,20 @@ export class ScorePlayer {
     // id back to the notated one — the SVG only contains those, so
     // repeated passes light the same engraved notes.
     const vis = (id: string): string => data.idMap[id] ?? id;
+    // Ties: one attack per chain, held for the merged span. Slurs and
+    // articulations gate the release: legato/tenuto full value, staccato
+    // half, everything else slightly detached.
+    const ties = data.shaping?.ties ?? {};
+    const gates = data.shaping?.gates ?? {};
+    const { roots, durations } = mergeTiedSpans(data.events, ties, data.idMap);
     this.part = new Tone.Part((time, ev) => {
       for (const id of ev.on) {
+        if (roots[id] !== id) continue; // tie continuation: already sounding
         const note = data.notes[id];
-        if (note) sampler.triggerAttackRelease(Tone.Frequency(note.pitch, "midi").toFrequency(), (this.durMs.get(id) ?? 300) / 1000 / f, time, 0.8);
+        if (!note) continue;
+        const gate = gates[vis(id)] ?? GATE_DEFAULT;
+        const ms = durations[id] ?? this.durMs.get(id) ?? 300;
+        sampler.triggerAttackRelease(Tone.Frequency(note.pitch, "midi").toFrequency(), (ms * gate) / 1000 / f, time, 0.8);
       }
       Tone.getDraw().schedule(() => {
         if (this.state === "playing") this.onHighlight(ev.on.map(vis), ev.off.map(vis), ev.measureOn ? vis(ev.measureOn) : undefined);

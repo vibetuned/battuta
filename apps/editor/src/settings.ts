@@ -10,6 +10,8 @@ export interface Settings {
   zoom?: number;
   /** Playback tempo multiplier (1 = as encoded). */
   tempo?: number;
+  /** Folder of the last opened/saved score — the next dialog starts there. */
+  lastDir?: string;
 }
 
 const STORE = "battuta.settings.v1";

@@ -29,6 +29,8 @@ export interface PlaybackData {
   events: TimemapEvent[];
   notes: Record<string, { pitch: number; duration: number }>;
   idMap: Record<string, string>;
+  /** Ties + gates from the document (attached by the app, not the worker). */
+  shaping?: { ties: Record<string, string>; gates: Record<string, number> };
   error?: string;
 }
 

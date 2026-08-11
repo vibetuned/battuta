@@ -45,6 +45,10 @@ export { newId, ensureIds } from "./ids.js";
 export { EVENT_TAGS, EventIndex, buildEventIndex, caretLeft, caretRight, caretVertical, eventRange } from "./events.js";
 export type { CaretPosition, EventRef } from "./events.js";
 
+export { playbackShaping, mergeTiedSpans, GATE_DEFAULT } from "./playback.js";
+export type { PlaybackShaping } from "./playback.js";
+export { SetPitchesCommand, collectPitchEvents, reflectionForm, arityPalindromic, REFLECTION_CYCLE, REFLECTION_LABELS } from "./reflect.js";
+export type { PitchEvent, Pitch, ReflectionForm } from "./reflect.js";
 export { buildExpansion } from "./expansion.js";
 export type { ExpansionPlan } from "./expansion.js";
 export { CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand, RegenerateIdsCommand, SetTitleCommand } from "./commands.js";

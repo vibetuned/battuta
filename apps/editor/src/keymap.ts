@@ -61,6 +61,7 @@ export const defaultKeymap = (layout: Layout): Record<string, KeyBinding> => {
     merge: { keys: ["m"], label: "merge with next · grace cycle (2 pitches)", group: "rhythm" },
     split: { keys: ["x"], label: "split in half", group: "rhythm" },
     tuplet: { keys: ["T"], label: "tuplet 3:2 / 6:4 (selection)", group: "rhythm" },
+    reflect: { keys: ["R"], label: "reflection cycle: inversion → retrograde → retr. inversion → back", group: "rhythm", when: "block selection" },
     beam: { keys: ["b"], alt: true, label: "auto-beam measure", group: "rhythm" },
     fingering: { keys: ["⌥1–5"], label: "fingering (shift adds)", group: "marks", locked: true },
     fingerChange: { keys: ["⌥6–0"], label: "finger change 3-1 (6–0 = new finger 1–5)", group: "marks", locked: true },

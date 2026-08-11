@@ -182,16 +182,20 @@ check("a second + names the tab untitled-2", true);
 // --- 5. staves select: add below / remove at caret ---
 const stavesLabel = () => page.evaluate(() => document.querySelector('select[title*="staves"]')?.selectedOptions[0]?.textContent);
 check(`staves select shows the count (${await stavesLabel()})`, (await stavesLabel()) === "staves (1)");
+// the no-caret refusal must be tested BEFORE any add: adding now PLACES the caret
+await page.selectOption('select[title*="staves"]', "remove");
+await page.waitForFunction(() => document.querySelector("[data-notice]").textContent.includes("place the caret"), null, { timeout: 5000 });
+check("remove without a caret asks for one", true);
 await page.selectOption('select[title*="staves"]', "add");
 await page.waitForFunction(() => window.__SESSION__.staffCount === 2, null, { timeout: 10000 });
 check(`add staff appends one below (${await stavesLabel()})`, (await stavesLabel()) === "staves (2)");
 await page.waitForFunction(() => document.querySelectorAll('.tile[data-index="0"] g[class~="staff"]').length === 2, null, { timeout: 15000 });
 check("tiles render the new staff", true);
-await page.selectOption('select[title*="staves"]', "remove"); // no caret yet
-await page.waitForFunction(() => document.querySelector("[data-notice]").textContent.includes("place the caret"), null, { timeout: 5000 });
-check("remove without a caret asks for one", true);
-await page.locator('.tile[data-index="0"] g[class~="mRest"]').nth(1).click({ force: true });
-await page.waitForFunction(() => document.querySelector("main").dataset.caret !== "", null, { timeout: 5000 });
+check("the caret lands at the start of the new staff", await page.evaluate(() => {
+  const ref = window.__SESSION__.index.byId.get(document.querySelector("main").dataset.caret);
+  return ref && ref.measureIndex === 0 && ref.staffN === 2 && ref.layerN === 1;
+}));
+// remove uses that fresh caret: the new staff goes right back out
 await page.selectOption('select[title*="staves"]', "remove");
 await page.waitForFunction(() => window.__SESSION__.staffCount === 1, null, { timeout: 10000 });
 check("remove takes out the caret's staff", true);
@@ -924,8 +928,9 @@ check("harmony round unwinds cleanly", await page.evaluate(() =>
 {
   // notices are toasts now: fixed bottom-right container, still [data-notice]
   check("notices render as a bottom-right toast", await page.evaluate(() => {
-    const cs = getComputedStyle(document.querySelector("[data-notice]").parentElement);
-    return cs.position === "fixed" && cs.bottom !== "auto";
+    let el = document.querySelector("[data-notice]");
+    while (el && getComputedStyle(el).position !== "fixed") el = el.parentElement;
+    return !!el && getComputedStyle(el).bottom !== "auto";
   }));
 
   // title: button -> input -> Enter writes the meiHead title, one undo step
@@ -943,6 +948,12 @@ check("harmony round unwinds cleanly", await page.evaluate(() =>
   }));
   // the title edit is unsaved work: the tab must carry the dirty star
   check("an edited tab carries the dirty *", await page.evaluate(() => document.querySelector(".tab.active").textContent.includes("*")));
+  // the × dismisses the toast without waiting for the timeout
+  await page.waitForFunction(() => document.querySelector("[data-notice]").textContent.includes("title"), null, { timeout: 5000 });
+  await page.locator("[data-notice-dismiss]").click();
+  await page.waitForFunction(() => document.querySelector("[data-notice]").textContent === "", null, { timeout: 5000 });
+  check("the toast × dismisses it immediately", true);
+
   // the button relabels to the current title…
   check("the title button shows the title as its label", await page.evaluate(() => document.querySelector("[data-title-button]").textContent.trim() === "Kinderszenen Probe"));
   // …and page view actually prints it (meiHead rides serializeForPageView, header:auto)
@@ -1088,6 +1099,69 @@ check("harmony round unwinds cleanly", await page.evaluate(() =>
   await page.keyboard.press("Control+z");
   await page.waitForFunction(() => window.__SESSION__.score.measureParent.get(window.__SESSION__.score.measures[1])?.tag !== "ending", null, { timeout: 10000 });
   check("volta cleanup unwinds", true);
+
+  // ties + slurs shape the sound: the tie graph must reach the player
+  const tieDepth0 = await page.evaluate(() => window.__SESSION__.stack.undoDepth);
+  const tieIds = await page.evaluate(() => {
+    const s = window.__SESSION__;
+    const ids = s.index.eventsAt(0, 1, 1).filter((id) => s.index.byId.get(id)?.tag === "note").slice(0, 2);
+    s.setPitches([{ eventId: ids[0], pitches: [{ pname: "g", oct: 4 }] }, { eventId: ids[1], pitches: [{ pname: "g", oct: 4 }] }], "test tie");
+    s.tieChain(ids);
+    return ids;
+  });
+  await page.locator("button", { hasText: "page view" }).click();
+  await page.waitForFunction(() => document.querySelector(".pages .page svg"), null, { timeout: 60000 });
+  await page.evaluate(() => { window.__PLAYBACK__ = null; });
+  await page.locator("[data-player-toggle]").click();
+  await page.waitForFunction(() => window.__PLAYBACK__ && window.__PLAYBACK__.shaping, null, { timeout: 60000 });
+  check("playback data carries tie/slur shaping", true);
+  check("the tied pair reaches the player's merge graph", await page.evaluate((ids) => window.__PLAYBACK__.shaping.ties[ids[0]] === ids[1], tieIds));
+  await page.locator("[data-player-stop]").click();
+  await page.locator("button", { hasText: "edit view" }).click();
+  await page.waitForFunction(() => document.querySelector(".tile"), null, { timeout: 60000 });
+  await page.keyboard.press("Control+z");
+  await page.keyboard.press("Control+z");
+  await page.waitForFunction((d) => window.__SESSION__.stack.undoDepth === d, tieDepth0, { timeout: 10000 });
+  check("tie-shaping round unwinds", true);
+}
+
+
+// --- 7p. reflection cycle: shift+R on a block = P → I → R → RI → P ---
+{
+  const beforeReflect = await page.evaluate(() => window.__SESSION__.saveDocument());
+  // the volta cleanup just re-rendered: wait for real staves before dragging
+  await page.waitForFunction(() => document.querySelector('.tile[data-index="0"] g[class~="staff"]') && document.querySelector('.tile[data-index="1"] g[class~="staff"]'), null, { timeout: 60000 });
+  // block m1–m2 × staff 1 (same drag pattern as the volta round)
+  let rBlock = "";
+  for (let t = 0; t < 5 && rBlock !== "0-1/1-1"; t++) {
+    const a = await vCenter(0);
+    const b = await vCenter(1);
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down();
+    await page.mouse.move(b.x, b.y, { steps: 5 });
+    await page.mouse.up();
+    rBlock = await page
+      .waitForFunction(() => document.querySelector("main").dataset.block === "0-1/1-1", null, { timeout: 1500 })
+      .then(() => "0-1/1-1")
+      .catch(() => page.evaluate(() => document.querySelector("main").dataset.block));
+  }
+  check("block m1–m2 selected for the reflection", rBlock === "0-1/1-1");
+  await page.keyboard.press("Shift+KeyR");
+  await page.waitForFunction(() => document.querySelector("[data-notice]").textContent.includes("reflection: inversion"), null, { timeout: 5000 });
+  check("shift+R inverts (mirrored about the first note)", await page.evaluate((b) => window.__SESSION__.saveDocument() !== b, beforeReflect));
+  await page.keyboard.press("Shift+KeyR");
+  await page.waitForFunction(() => document.querySelector("[data-notice]").textContent.includes("retrograde"), null, { timeout: 5000 });
+  check("second press: retrograde", true);
+  await page.keyboard.press("Shift+KeyR");
+  await page.waitForFunction(() => document.querySelector("[data-notice]").textContent.includes("retrograde inversion"), null, { timeout: 5000 });
+  check("third press: retrograde inversion", true);
+  await page.keyboard.press("Shift+KeyR");
+  await page.waitForFunction(() => document.querySelector("[data-notice]").textContent.includes("back to the original"), null, { timeout: 5000 });
+  check("fourth press restores the document byte-identically", await page.evaluate((b) => window.__SESSION__.saveDocument() === b, beforeReflect));
+  // each press was one undo step: unwind the four
+  for (let i = 0; i < 4; i++) await page.keyboard.press("Control+z");
+  await page.waitForFunction((b) => window.__SESSION__.saveDocument() === b, beforeReflect, { timeout: 10000 });
+  check("the cycle unwinds through undo too", true);
 }
 
 // --- 8. open file… from disk ---

@@ -25,14 +25,24 @@ fn bench_report(report: String) {
     }
 }
 
+/// Point a dialog at the last-used folder (the frontend remembers it in
+/// its settings and passes it back) — only when it still exists.
+fn starting_dir(dir: Option<String>) -> Option<std::path::PathBuf> {
+    let d = dir.map(std::path::PathBuf::from).filter(|d| d.is_dir());
+    eprintln!("[shell] dialog starting dir: {d:?}");
+    d
+}
+
 /// Native open dialog: returns (path, contents) or None when cancelled.
 #[tauri::command]
-async fn open_score() -> Result<Option<(String, String)>, String> {
-    let Some(file) = rfd::AsyncFileDialog::new()
+async fn open_score(dir: Option<String>) -> Result<Option<(String, String)>, String> {
+    let mut dialog = rfd::AsyncFileDialog::new()
         .add_filter("MEI scores", &["mei", "xml"])
-        .set_title("Open score")
-        .pick_file()
-        .await
+        .set_title("Open score");
+    if let Some(d) = starting_dir(dir) {
+        dialog = dialog.set_directory(d);
+    }
+    let Some(file) = dialog.pick_file().await
     else {
         return Ok(None);
     };
@@ -49,13 +59,15 @@ async fn save_score(path: String, contents: String) -> Result<(), String> {
 
 /// Save-as dialog: returns the chosen path, or None when cancelled.
 #[tauri::command]
-async fn save_score_as(contents: String, suggested: String) -> Result<Option<String>, String> {
-    let Some(file) = rfd::AsyncFileDialog::new()
+async fn save_score_as(contents: String, suggested: String, dir: Option<String>) -> Result<Option<String>, String> {
+    let mut dialog = rfd::AsyncFileDialog::new()
         .add_filter("MEI scores", &["mei"])
         .set_file_name(&suggested)
-        .set_title("Save score")
-        .save_file()
-        .await
+        .set_title("Save score");
+    if let Some(d) = starting_dir(dir) {
+        dialog = dialog.set_directory(d);
+    }
+    let Some(file) = dialog.save_file().await
     else {
         return Ok(None);
     };

@@ -16,6 +16,7 @@ import {
   ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand,
   ChainTieCommand, ChordNoteAccidentalCommand, ToggleFingCommand, CycleHairpinCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, ToggleVoltaCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, TupletCommand, SetHarmCommand, AutoBeamCommand, UnbeamMeasuresCommand, chordNotes, MergeEventsCommand, SplitEventCommand, ChangeContextCommand, planContextChange,
   validateMeasureDurations, frac,
+  SetPitchesCommand, collectPitchEvents, reflectionForm, REFLECTION_CYCLE,
   type Command, type CommandContext, type CoreScore,
 } from "../src/index.js";
 import { scoreFrom } from "./helpers.js";
@@ -46,7 +47,7 @@ function makeCommand(ctx: CommandContext, d: CmdDescriptor): Command | null {
   const PNAMES = ["c", "d", "e", "f", "g", "a", "b"] as const;
   // Modulo must cover every case + default, or the tail of the pool is
   // silently never fuzzed (this was % 12 for a while: cases 12+ were dead).
-  switch (d.kind % 34) {
+  switch (d.kind % 35) {
     case 0: return new TransposeStepCommand(ids, (d.param % 5) - 2 || 1);
     case 1: return new TransposeOctaveCommand(ids, d.param % 2 === 0 ? 1 : -1);
     case 2: return new ToggleAccidentalCommand(ids, (["s", "f", "n"] as const)[d.param % 3]!);
@@ -140,6 +141,16 @@ function makeCommand(ctx: CommandContext, d: CmdDescriptor): Command | null {
     case 32: {
       const texts = ["Cmaj7", "G/B", "V65", "vii°7/vi", ""];
       return new SetHarmCommand(ids[0]!, texts[d.param % texts.length]!, d.param % 2 === 0 ? "chord" : "rna");
+    }
+    case 33: {
+      // a reflection form of a random measure-range: extraction is pure,
+      // the command only writes pitch triples (throws on arity -> no-op)
+      const to = Math.min(m + (d.param % 2), nMeasures - 1);
+      const seqs = collectPitchEvents(ctx.score, ctx.index, m, to, 1, 9);
+      const form = REFLECTION_CYCLE[d.param % REFLECTION_CYCLE.length]!;
+      const targets = seqs.flatMap((seq) => reflectionForm(seq, form) ?? []);
+      if (targets.length === 0) return new TransposeOctaveCommand(ids, 1); // nothing pitched: any command keeps the pool moving
+      return new SetPitchesCommand(targets, form);
     }
     case 31: {
       // a consecutive run of 3 events (wrap) or whatever sits at the seed

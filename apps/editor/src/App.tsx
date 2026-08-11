@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, isHarmText, harmSuggestions, HARM_CHARS, type HarmKind, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
+import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, isHarmText, harmSuggestions, HARM_CHARS, reflectionForm, REFLECTION_CYCLE, REFLECTION_LABELS, type ReflectionForm, type PitchEvent, type HarmKind, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
 import { RenderPool, type TileResult } from "./render/renderPool";
 import { loadKeymap, saveKeymapOverride, clearKeymapOverrides, keyMatches, type Keymap, type Layout } from "./keymap";
 import { ShortcutEditor } from "./ShortcutEditor";
@@ -29,6 +29,12 @@ interface OpenDoc {
 /** Tauri v2 global invoke (withGlobalTauri), or null in the browser. */
 /** Tab name from a native path: both separators (Windows), any case. */
 const docNameFromPath = (path: string): string => path.split(/[\\/]/).pop()?.replace(/\.(mei|xml)$/i, "") || "score";
+
+/** Folder of a native path (either separator); remembered for dialogs. */
+const rememberDir = (path: string): void => {
+  const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  if (cut > 0) saveSettings({ lastDir: path.slice(0, cut) });
+};
 
 const tauriInvoke = (): ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null => {
   const t = (window as unknown as { __TAURI__?: { core?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> } } }).__TAURI__;
@@ -532,6 +538,9 @@ export default function App() {
   // Undo-stack top at the last save, per doc: dirty = the top moved. Undoing
   // back to the saved command reads clean again, like a text editor.
   const savedMarks = useRef(new Map<number, unknown>());
+  /** shift+R cycle state: the base pitches captured at the first press.
+   * version-keyed — any other edit (or undo) re-bases the cycle. */
+  const reflectCycle = useRef<{ sig: string; base: PitchEvent[][]; step: number; version: number } | null>(null);
   const mainRef = useRef<HTMLElement>(null);
   // --- note input mode ---
   const [entryMode, setEntryMode] = useState(false);
@@ -633,7 +642,10 @@ export default function App() {
       .then((r) => {
         const pair = r as [string, string] | null;
         if (!pair) newDoc();
-        else openXml(docNameFromPath(pair[0]), pair[1], pair[0]);
+        else {
+          rememberDir(pair[0]);
+          openXml(docNameFromPath(pair[0]), pair[1], pair[0]);
+        }
       })
       .catch(() => newDoc());
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -753,6 +765,7 @@ export default function App() {
           setNotice(`playback failed: ${data.error}`);
           return;
         }
+        data.shaping = session.playbackShaping(); // ties + slur/artic gates
         if (import.meta.env.DEV || "__TAURI__" in window) (window as unknown as Record<string, unknown>).__PLAYBACK__ = data;
         return scorePlayer.play(data);
       })
@@ -899,11 +912,12 @@ export default function App() {
       fileInputRef.current?.click();
       return;
     }
-    invoke("open_score")
+    invoke("open_score", { dir: loadSettings().lastDir ?? null })
       .then((r) => {
         const pair = r as [string, string] | null;
         if (!pair) return; // cancelled
         const [path, xml] = pair;
+        rememberDir(path);
         openXml(docNameFromPath(path), xml, path);
       })
       .catch((e) => setNotice(`open failed: ${e}`));
@@ -940,10 +954,11 @@ export default function App() {
           .catch((e) => setNotice(`save failed: ${e}`));
         return;
       }
-      invoke("save_score_as", { contents: xml, suggested: `${active.name}.mei` })
+      invoke("save_score_as", { contents: xml, suggested: `${active.name}.mei`, dir: loadSettings().lastDir ?? null })
         .then((r) => {
           const path = r as string | null;
           if (!path) return; // cancelled
+          rememberDir(path);
           const name = docNameFromPath(path);
           markSaved();
           setDocs((ds) => ds.map((d) => (d.id === active.id ? { ...d, path, name } : d)));
@@ -1348,6 +1363,46 @@ export default function App() {
           setNotice(`repeat toggled around m${block.measureFrom + 1}–m${block.measureTo + 1} (𝄆 𝄇)`);
         } catch (err) {
           setNotice(`repeat refused: ${err instanceof Error ? err.message : err}`);
+        }
+        return;
+      }
+      if (hit("reflect") && !mod && block) {
+        // shift+R on a block: the serial forms of the selection — prime →
+        // inversion → retrograde → retrograde inversion → prime. Every
+        // form derives from the BASE captured at the first press (no
+        // compounding); any other edit in between re-bases the cycle.
+        e.preventDefault();
+        const sig = `${activeId}:${block.measureFrom}-${block.measureTo}/${block.staffFrom}-${block.staffTo}`;
+        let cyc = reflectCycle.current;
+        if (!cyc || cyc.sig !== sig || cyc.version !== session.version) {
+          cyc = { sig, base: session.blockPitchEvents(block), step: 0, version: session.version };
+        }
+        if (cyc.base.length === 0) {
+          setNotice("reflection refused: no notes in the selection");
+          return;
+        }
+        let targets: PitchEvent[] | null = null;
+        let form: ReflectionForm = "prime";
+        let skipped = false;
+        for (let attempts = 0; attempts < REFLECTION_CYCLE.length && !targets; attempts++) {
+          form = REFLECTION_CYCLE[cyc.step % REFLECTION_CYCLE.length]!;
+          cyc.step++;
+          const per = cyc.base.map((seq) => reflectionForm(seq, form));
+          if (per.every((t) => t !== null)) targets = per.flatMap((t) => t!);
+          else skipped = true; // retrograde over non-mirroring chord sizes
+        }
+        if (!targets) {
+          setNotice("reflection refused: nothing to transform");
+          return;
+        }
+        try {
+          session.setPitches(targets, form);
+          afterCommand(session);
+          cyc.version = session.version; // our own edit continues the cycle
+          reflectCycle.current = cyc;
+          setNotice(`reflection: ${REFLECTION_LABELS[form]}${skipped ? " (retrograde skipped: chord sizes don't mirror)" : ""}`);
+        } catch (err) {
+          setNotice(`reflection refused: ${err instanceof Error ? err.message : err}`);
         }
         return;
       }
@@ -2106,7 +2161,11 @@ export default function App() {
               .catch((err) => setError(String(err)));
           }}
         />
-        <button onClick={() => fileInputRef.current?.click()}>open file…</button>
+        {/* Routes through openScore: the NATIVE dialog in the shell (with
+            the remembered folder) — the raw file input was WebKit's own
+            chooser, which always started at Home. Browsers still get the
+            input via openScore's fallback. */}
+        <button onClick={openScore}>open file…</button>
         <button onClick={() => setView(view === "tiles" ? "pages" : "tiles")}>{view === "tiles" ? "page view" : "edit view"}</button>
         {view === "pages" && (
           <>
@@ -2218,30 +2277,37 @@ export default function App() {
         </span>
       </header>
       {/* Toasts, bottom-right above the status bar. The notice element stays
-          in the DOM (hidden when empty) — the e2e suites read [data-notice]. */}
+          in the DOM (hidden when empty) — the e2e suites read [data-notice].
+          The × dismisses before the timeout; the text itself stays
+          selectable (error messages get copied around). */}
       <div style={{ position: "fixed", right: 12, bottom: 34, zIndex: 55, display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", maxWidth: "46vw" }}>
         {error && (
-          <div data-error onClick={() => setError(null)} style={{ background: "#5b1f24", color: "#fdd", border: "1px solid #a33", borderRadius: 6, padding: "6px 12px", fontSize: 12, boxShadow: "0 4px 16px rgba(0,0,0,.35)", cursor: "pointer" }} title="click to dismiss">
-            {error}
+          <div data-error style={{ display: "flex", alignItems: "baseline", gap: 8, background: "#5b1f24", color: "#fdd", border: "1px solid #a33", borderRadius: 6, padding: "6px 10px", fontSize: 12, boxShadow: "0 4px 16px rgba(0,0,0,.35)", userSelect: "text" }}>
+            <button data-error-dismiss title="dismiss" onClick={() => setError(null)} style={{ background: "none", border: "none", color: "#faa", cursor: "pointer", fontSize: 13, padding: 0, lineHeight: 1 }}>
+              ×
+            </button>
+            <span>{error}</span>
           </div>
         )}
         <div
-          data-notice
-          onClick={() => setNotice(null)}
-          title="click to dismiss"
+          data-notice-toast
           style={{
-            display: notice ? "block" : "none",
+            display: notice ? "flex" : "none",
+            alignItems: "baseline",
+            gap: 8,
             background: "#1f2733",
-            color: notice?.includes("refused") || notice?.includes("failed") ? "#f99" : "#9d9",
             border: "1px solid #3a4656",
             borderRadius: 6,
-            padding: "6px 12px",
+            padding: "6px 10px",
             fontSize: 12,
             boxShadow: "0 4px 16px rgba(0,0,0,.35)",
-            cursor: "pointer",
+            userSelect: "text",
           }}
         >
-          {notice ?? ""}
+          <button data-notice-dismiss title="dismiss" onClick={() => setNotice(null)} style={{ background: "none", border: "none", color: "#89a", cursor: "pointer", fontSize: 13, padding: 0, lineHeight: 1 }}>
+            ×
+          </button>
+          <span data-notice style={{ color: notice?.includes("refused") || notice?.includes("failed") ? "#f99" : "#9d9" }}>{notice ?? ""}</span>
         </div>
       </div>
       {shortcutsOpen && (
@@ -2360,7 +2426,14 @@ export default function App() {
               if (op === "add") {
                 const n = session.addStaff();
                 afterCommand(session);
-                setNotice(`staff ${n} added below`);
+                // land the caret at the start of the fresh staff, ready
+                // to enter notes (its first event is the m1 whole rest)
+                anchor.current = null;
+                setSelection([]);
+                setBlock(null);
+                lastEntered.current = null;
+                setCaret({ measureIndex: 0, staffN: n, layerN: 1, eventIndex: 0 });
+                setNotice(`staff ${n} added below — caret at its start`);
               } else {
                 if (!caret) {
                   setNotice("place the caret on the staff to remove");
