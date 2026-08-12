@@ -79,6 +79,22 @@ for (const name of built) {
   if (!used.has(name)) warnings.push(`figure "${name}" is built but never used`);
 }
 
+// --- 2b. app screenshots (same rules as figures) ----------------------------
+
+const shotsManifest = JSON.parse(readFileSync(join(docsRoot, "public/shots/manifest.json"), "utf8"));
+const builtShots = new Set(shotsManifest.shots.map((s) => s.name));
+const usedShots = new Set();
+for (const page of pages) {
+  const src = readFileSync(page, "utf8");
+  for (const m of src.matchAll(/<Shot\s+name="([^"]+)"/g)) {
+    usedShots.add(m[1]);
+    if (!builtShots.has(m[1])) problems.push(`missing shot "${m[1]}" used in ${relative(docsRoot, page)}`);
+  }
+}
+for (const name of builtShots) {
+  if (!usedShots.has(name)) warnings.push(`shot "${name}" is built but never used`);
+}
+
 // --- 3. keymap coverage ----------------------------------------------------
 
 const keymap = JSON.parse(readFileSync(join(docsRoot, "src/data/keymap.json"), "utf8"));
@@ -94,7 +110,7 @@ for (const action of actions) {
 
 // --- report ----------------------------------------------------------------
 
-console.log(`checked ${htmlFiles.length} pages, ${built.size} figures, ${actions.length} keymap actions`);
+console.log(`checked ${htmlFiles.length} pages, ${built.size} figures, ${builtShots.size} shots, ${actions.length} keymap actions`);
 for (const w of warnings) console.warn(`  warning: ${w}`);
 for (const p of problems) console.error(`  error:   ${p}`);
 if (problems.length) {

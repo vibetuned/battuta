@@ -8,6 +8,7 @@ sidebar:
 
 import { Aside } from "@astrojs/starlight/components";
 import Figure from "../../../components/Figure.astro";
+import Shot from "../../../components/Shot.astro";
 
 battuta has two selection shapes, and they are for different jobs.
 
@@ -22,6 +23,8 @@ A run is an ordered stretch of events inside one voice.
 Runs are what you want for anything that applies *to notes*: transposing,
 accidentals, articulations, slurs, ties, hairpins, tuplets, pedal.
 
+<Shot name="selection-run" caption="A run in red, shift-clicked along the treble voice." />
+
 ## Block selections — green
 
 A block is a rectangle in the grid of **measures × staves** — the spreadsheet
@@ -29,6 +32,8 @@ model, where measures are rows and staves are columns.
 
 **Drag** across the score: as soon as the pointer leaves the measure or staff it
 started in, the drag becomes a block. Release to keep it.
+
+<Shot name="selection-block" caption="A block in green: two measures × both staves, painted by dragging." />
 
 Blocks are what you want for anything that applies *to regions*: copy and paste,
 repeat barlines, voltas, reflection, inserting or deleting measures.

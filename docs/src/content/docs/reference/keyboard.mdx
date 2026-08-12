@@ -7,6 +7,7 @@ sidebar:
 
 import { Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 import KeymapTable from "../../../components/KeymapTable.astro";
+import Shot from "../../../components/Shot.astro";
 
 Every action, exactly as the editor defines it. This page is generated from
 `apps/editor/src/keymap.ts`, so it cannot drift from the application — and the
@@ -60,6 +61,8 @@ These are fixed:
 
 Open the shortcut editor with **🌣**. It lists every action by group with its
 current keys.
+
+<Shot name="shortcut-editor" caption="The shortcut editor. An amber key shares its character with another action — legal when contexts separate them, like <kbd>r</kbd> for rests (input mode) and repeat barlines (selection)." width={480} />
 
 1. Click a binding.
 2. Press the key you want. Letters keep their case, <kbd>alt</kbd> is recorded,

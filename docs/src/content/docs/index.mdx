@@ -21,6 +21,7 @@ hero:
 
 import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
 import Figure from "../../components/Figure.astro";
+import Shot from "../../components/Shot.astro";
 
 battuta opens an MEI file, shows it as engraved notation, and lets you move a
 caret through it. Arrow keys walk the notes. <kbd>i</kbd> starts typing music.
@@ -29,6 +30,8 @@ the last attribute of the file on disk.
 
 It is not an engraver. [Verovio](https://www.verovio.org/) draws every note,
 and the document you opened is the thing you are editing — not a picture of it.
+
+<Shot name="page-view" caption="Page view with the player: Schumann's <em>Melodie</em>, engraved by Verovio, printed title and all." />
 
 <CardGrid>
   <Card title="Write music from the keyboard">

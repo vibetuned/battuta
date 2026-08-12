@@ -31,6 +31,18 @@ cairo — `rsvg-convert` from librsvg — rasterises the site icons from
 with ImageMagick. Both tools are optional: if they are missing the figures
 still build and the icon step warns.
 
+**`scripts/build-shots.mjs`** — real screenshots of the running editor
+(`npm run shots`). Playwright drives the actual app — the repo root's dev
+server — through a fixed script against the Schumann excerpts, and captures
+each UI shot at 2×: the window, header, status bar (idle and in input mode),
+selections, the shortcut editor, page view and the player. `<Shot>` renders
+them the way `<Figure>` renders engravings, with alt text from
+`public/shots/manifest.json`. Unlike the other assets the shots ARE
+committed: regenerating them needs the root workspace's node_modules and a
+Chrome, which a docs-only build should not require. Regenerate after UI
+changes; `npm run check` flags a page referencing a shot that does not
+exist, and shots that exist but go unused.
+
 **`scripts/build-keymap.mjs`** — the keyboard reference. It transpiles
 `apps/editor/src/keymap.ts` with esbuild, imports it, and dumps both default
 layouts to `src/data/keymap.json`. `KeymapTable.astro` renders slices of that

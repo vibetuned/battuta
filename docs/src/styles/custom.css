@@ -75,30 +75,3 @@ kbd {
   filter: invert(1) hue-rotate(180deg);
   opacity: 0.85;
 }
-
-/* Status-bar / UI mock used in the tour, so screenshots are not needed for
-   the bits of chrome that are pure text. */
-.ui-mock {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  align-items: center;
-  padding: 0.5rem 0.6rem;
-  margin: 1rem 0;
-  border: 1px solid var(--sl-color-gray-5);
-  border-radius: 0.35rem;
-  background: var(--sl-color-gray-7);
-  font-family: var(--sl-font-system-mono, ui-monospace, monospace);
-  font-size: var(--sl-text-xs);
-  color: var(--sl-color-gray-2);
-}
-.ui-mock span {
-  padding: 0.15rem 0.45rem;
-  border: 1px solid var(--sl-color-gray-5);
-  border-radius: 0.25rem;
-  white-space: nowrap;
-}
-.ui-mock span.on {
-  border-color: var(--sl-color-accent);
-  color: var(--sl-color-accent-high);
-}

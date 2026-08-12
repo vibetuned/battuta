@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "license": "AGPL-3.0-only",
-  "description": "battuta user guide — Astro Starlight site; notation figures rendered by Verovio, icons rasterised by cairo",
+  "description": "battuta user guide \u2014 Astro Starlight site; notation figures rendered by Verovio, icons rasterised by cairo",
   "type": "module",
   "scripts": {
     "predev": "npm run assets",
@@ -15,7 +15,8 @@
     "assets": "npm run figures && npm run keymap",
     "figures": "node scripts/build-figures.mjs",
     "keymap": "node scripts/build-keymap.mjs",
-    "check": "node scripts/check.mjs"
+    "check": "node scripts/check.mjs",
+    "shots": "node scripts/build-shots.mjs"
   },
   "dependencies": {
     "@astrojs/starlight": "^0.41.7",

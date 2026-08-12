@@ -7,28 +7,17 @@ sidebar:
 
 import { Aside } from "@astrojs/starlight/components";
 import Figure from "../../components/Figure.astro";
+import Shot from "../../components/Shot.astro";
 
 battuta has three bands: a **header** pinned at the top, the **score** in the
 middle, and a **status bar** fixed at the bottom. Nothing is hidden in menus —
 if a control exists, it is on screen.
 
+<Shot name="window" caption="The whole window with Schumann's <em>Melodie</em> open: header, score tiles flowed into rows, status bar." />
+
 ## The header
 
-<div class="ui-mock">
-  <span>battuta</span>
-  <span class="on">untitled-1 *</span>
-  <span>+</span>
-  <span>open file…</span>
-  <span>page view</span>
-  <span>+m</span>
-  <span>−m</span>
-  <span>⧉m</span>
-  <span>save</span>
-  <span>title</span>
-  <span>⏱</span>
-  <span>⟲id</span>
-  <span>🌣</span>
-</div>
+<Shot name="header" caption="The active tab carries the unsaved-changes star; the <strong>title</strong> button has relabelled itself to the score's title." />
 
 | Control | What it does |
 | --- | --- |
@@ -81,18 +70,7 @@ document, never as pixels.
 
 ## The status bar
 
-<div class="ui-mock">
-  <span class="on">1/8 ♪ (4)</span>
-  <span>[ m 10, s 2, v 1, n 6 ]</span>
-  <span>staves 2</span>
-  <span>voice 1</span>
-  <span>harmony</span>
-  <span>clef G2</span>
-  <span>key 0</span>
-  <span>meter 4/4</span>
-  <span>zoom 100%</span>
-  <span>MIDI &lt;&gt; 1</span>
-</div>
+<Shot name="statusbar" caption="State on the left, context and tools on the right." />
 
 Left side:
 
@@ -119,6 +97,8 @@ their change at the caret's measure:
 Errors, confirmations and refusals appear as **toasts** in the bottom-right
 corner. They fade on their own; the `×` on the left closes one early, and the
 text is selectable so an error message can be copied into a bug report.
+
+<Shot name="toast" caption="A confirmation toast." width={200} />
 
 A refusal is information, not a failure — battuta says no to edits that would
 produce a measure that doesn't add up, and the toast names the reason. See

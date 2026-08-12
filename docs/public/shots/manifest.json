@@ -1,0 +1,77 @@
+{
+  "scale": 2,
+  "shots": [
+    {
+      "name": "window",
+      "alt": "The battuta window: header with tabs, the score as measure tiles flowed into rows, and the status bar. Schumann's Melodie is open with the caret on its first note.",
+      "width": 1280,
+      "height": 800
+    },
+    {
+      "name": "header",
+      "alt": "The header: the tab strip (the active tab carries the unsaved-changes star), new-tab button, open, view toggle, measure buttons, save, title, and the id-repair and shortcut-editor buttons.",
+      "width": 1276,
+      "height": 59
+    },
+    {
+      "name": "statusbar",
+      "alt": "The status bar: the INPUT indicator and caret readout on the left; staves, voices, harmony, clef, key, meter, zoom and MIDI on the right.",
+      "width": 1280,
+      "height": 24
+    },
+    {
+      "name": "statusbar-input",
+      "alt": "Input mode on: the indicator turns green and reads the duration about to be written — here a quarter note on the 5 key — beside the caret readout.",
+      "width": 1280,
+      "height": 24
+    },
+    {
+      "name": "zoom-panel",
+      "alt": "The zoom panel over its status-bar button: minus, plus and reset, from 50% to 250% in 25% steps.",
+      "width": 190,
+      "height": 68
+    },
+    {
+      "name": "selection-run",
+      "alt": "An event run selected in red: shift-click from the caret, or shift+arrows, along one voice.",
+      "width": 1248,
+      "height": 245
+    },
+    {
+      "name": "selection-block",
+      "alt": "A block selection in green: a rectangle of measures × staves, painted by dragging.",
+      "width": 1248,
+      "height": 245
+    },
+    {
+      "name": "toast",
+      "alt": "A toast in the bottom-right corner confirming a copy; the × dismisses it early and the text can be selected.",
+      "width": 259,
+      "height": 51
+    },
+    {
+      "name": "shortcut-editor",
+      "alt": "The shortcut editor: every action grouped with its current keys, the QWERTY/AZERTY layout toggle, and rebinding by clicking a key and pressing a new one.",
+      "width": 676,
+      "height": 684
+    },
+    {
+      "name": "page-view",
+      "alt": "Page view: the whole document through Verovio's page layout, with the printed title — and the player controls in the header.",
+      "width": 1280,
+      "height": 800
+    },
+    {
+      "name": "player",
+      "alt": "The player while playing: pause and stop, the live tempo select, the clickable progress bar and the elapsed/total readout.",
+      "width": 1276,
+      "height": 59
+    },
+    {
+      "name": "player-highlight",
+      "alt": "The note being sounded lights up as the score plays — audio and highlight come from the same timeline.",
+      "width": 900,
+      "height": 380
+    }
+  ]
+}

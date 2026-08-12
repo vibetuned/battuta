@@ -6,6 +6,7 @@ sidebar:
 ---
 
 import { Aside } from "@astrojs/starlight/components";
+import Shot from "../../../components/Shot.astro";
 
 Playback in battuta is a checking tool, not a performance engine. It answers two
 questions: *did I write the notes I meant?* and *does the form I notated actually
@@ -14,6 +15,8 @@ play that way?*
 ## The player
 
 Switch to **page view** — the controls appear next to the view toggle.
+
+<Shot name="player" caption="Playing: pause, stop, the live tempo select, the clickable progress bar and the elapsed/total readout." />
 
 | Control | Does |
 | --- | --- |
@@ -25,6 +28,8 @@ Switch to **page view** — the controls appear next to the view toggle.
 The note being sounded lights up as it plays, and the view scrolls when the
 playing measure leaves the window. Audio and highlight come from **one** timeline,
 so they cannot drift apart.
+
+<Shot name="player-highlight" caption="The sounding notes highlighted mid-playback in page view." />
 
 Sound is a sampled piano — a subset of the Salamander piano bundled inside the
 application. No network request, no CDN, nothing to configure.
