@@ -34,6 +34,9 @@ export default defineConfig({
         { tag: "meta", attrs: { name: "twitter:image", content: "/og.png" } },
       ],
       social: [{ icon: "github", label: "GitHub", href: "https://github.com/vibetuned/battuta" }],
+      // Adds the click-to-enlarge handler for figures and screenshots on top
+      // of Starlight's own <head>.
+      components: { Head: "./src/components/Head.astro" },
       editLink: { baseUrl: "https://github.com/vibetuned/battuta/edit/main/docs/" },
       lastUpdated: true,
       tableOfContents: { minHeadingLevel: 2, maxHeadingLevel: 3 },

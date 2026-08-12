@@ -75,3 +75,135 @@ kbd {
   filter: invert(1) hue-rotate(180deg);
   opacity: 0.85;
 }
+
+/* Click-to-enlarge (behaviour in src/components/Head.astro). Screenshots are
+   captured at 2× and figures are vector, so both have more detail than the
+   content column can show — the overlay is where you actually read them. */
+figure.app-shot img,
+figure.notation-figure img {
+  cursor: zoom-in;
+}
+figure.app-shot img:focus-visible,
+figure.notation-figure img:focus-visible {
+  outline: 2px solid var(--sl-color-accent);
+  outline-offset: 3px;
+}
+
+/* Hover hint, so the enlargement is discoverable without a caption saying so.
+   It hangs off .zoom-frame, which is sized to the image itself. */
+figure.app-shot .zoom-frame::after,
+figure.notation-figure .zoom-frame::after {
+  content: "⤢";
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  padding: 0 0.3rem;
+  border-radius: 0.25rem;
+  background: rgb(18 22 28 / 72%);
+  color: #e7edf4;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+  pointer-events: none;
+}
+figure.app-shot .zoom-frame:hover::after,
+figure.notation-figure .zoom-frame:hover::after,
+figure.app-shot .zoom-frame:focus-within::after,
+figure.notation-figure .zoom-frame:focus-within::after {
+  opacity: 1;
+}
+
+dialog.img-zoom {
+  width: 100vw;
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  display: none;
+  cursor: zoom-out;
+}
+dialog.img-zoom[open] {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  place-items: center;
+  gap: 0.75rem;
+  padding: 2.5rem 1rem 1.5rem;
+  box-sizing: border-box;
+}
+dialog.img-zoom::backdrop {
+  background: rgb(6 9 12 / 82%);
+  backdrop-filter: blur(2px);
+}
+/* Pan mode: the image is wider than this screen can usefully show, so the
+   overlay scrolls it at full size rather than shrinking it back down. */
+dialog.img-zoom.pan[open] {
+  place-items: start;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+dialog.img-zoom.pan img {
+  max-height: none;
+}
+dialog.img-zoom.pan .img-zoom-caption {
+  position: sticky;
+  left: 0;
+  max-width: 96vw;
+}
+
+dialog.img-zoom img {
+  /* max-width is set per image so a raster is never upscaled past its pixels */
+  max-height: 100%;
+  height: auto;
+  object-fit: contain;
+  background: #fcfcfa;
+  border-radius: 0.4rem;
+  box-shadow: 0 8px 40px rgb(0 0 0 / 45%);
+}
+dialog.img-zoom .img-zoom-caption {
+  margin: 0;
+  max-width: 70ch;
+  text-align: center;
+  font-size: var(--sl-text-sm);
+  line-height: 1.5;
+  color: #c1ccd9;
+  text-wrap: pretty;
+}
+dialog.img-zoom .img-zoom-caption:empty {
+  display: none;
+}
+dialog.img-zoom .img-zoom-close {
+  /* fixed, not absolute: in pan mode an absolute corner scrolls away with the
+     image. Inside a modal dialog, fixed is relative to the viewport. */
+  position: fixed;
+  top: 0.5rem;
+  right: 0.75rem;
+  z-index: 1;
+  padding: 0 0.5rem;
+  border: none;
+  border-radius: 0.3rem;
+  background: transparent;
+  color: #c1ccd9;
+  font-size: 1.75rem;
+  line-height: 1.4;
+  cursor: pointer;
+}
+dialog.img-zoom .img-zoom-close:hover,
+dialog.img-zoom .img-zoom-close:focus-visible {
+  color: #fff;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  dialog.img-zoom[open] img {
+    animation: img-zoom-in 140ms ease-out;
+  }
+  @keyframes img-zoom-in {
+    from {
+      opacity: 0;
+      transform: scale(0.97);
+    }
+  }
+}

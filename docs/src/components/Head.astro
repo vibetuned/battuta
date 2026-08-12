@@ -1,0 +1,84 @@
+---
+/**
+ * Starlight's <Head>, plus the click-to-enlarge behaviour for figures and
+ * screenshots.
+ *
+ * It lives here rather than in Figure.astro / Shot.astro because a page can
+ * hold both: one copy of the handler per page, no matter how many images.
+ * The overlay is a native <dialog>, so Escape, focus trapping and the
+ * backdrop come from the platform instead of from us.
+ */
+import Default from "@astrojs/starlight/components/Head.astro";
+---
+
+<Default><slot /></Default>
+
+<script>
+  const SELECTOR = "figure.app-shot img, figure.notation-figure img";
+  let dialog: HTMLDialogElement | null = null;
+
+  function build(): HTMLDialogElement {
+    const el = document.createElement("dialog");
+    el.className = "img-zoom";
+    el.setAttribute("aria-label", "Enlarged image");
+    el.innerHTML = `
+      <button class="img-zoom-close" type="button" aria-label="Close">&times;</button>
+      <img alt="" />
+      <p class="img-zoom-caption"></p>`;
+    // Anywhere inside closes: the whole overlay is the dismiss target, which
+    // is what cursor: zoom-out promises.
+    el.addEventListener("click", () => el.close());
+    // Release the source so a closed overlay isn't holding a decoded image.
+    el.addEventListener("close", () => el.querySelector("img")!.removeAttribute("src"));
+    document.body.append(el);
+    return el;
+  }
+
+  function open(img: HTMLImageElement) {
+    dialog ??= build();
+    const big = dialog.querySelector("img")!;
+    const src = img.currentSrc || img.src;
+    big.src = src;
+    big.alt = img.alt;
+    // Rasters are capped at their own pixels — a 2× screenshot shown at full
+    // capture width is sharp, beyond that it is just blurry. Vector figures
+    // have no meaningful naturalWidth (Verovio emits a viewBox and no
+    // width/height), so they take the whole overlay and stay crisp.
+    const vector = /\.svg(?:[?#]|$)/i.test(src);
+    // The width the image was drawn for: on a narrow screen a desktop
+    // screenshot cannot be made to fit AND stay readable, so the overlay pans
+    // it at full size instead of shrinking it to the column width again.
+    const intended = Number(img.getAttribute("width")) || img.naturalWidth || 0;
+    const pan = intended > window.innerWidth * 1.15;
+    dialog.classList.toggle("pan", pan);
+    if (pan) {
+      big.style.maxWidth = "none";
+      big.style.width = `${intended}px`;
+    } else {
+      big.style.width = "auto";
+      big.style.maxWidth = !vector && img.naturalWidth ? `min(96vw, ${img.naturalWidth}px)` : "96vw";
+    }
+    const caption = img.closest("figure")?.querySelector("figcaption");
+    dialog.querySelector(".img-zoom-caption")!.innerHTML = caption?.innerHTML ?? "";
+    dialog.showModal();
+  }
+
+  const zoomable = (event: Event) => (event.target as HTMLElement | null)?.closest?.(SELECTOR) as HTMLImageElement | null;
+
+  document.addEventListener("click", (event) => {
+    const img = zoomable(event);
+    if (!img) return;
+    event.preventDefault();
+    open(img);
+  });
+
+  // The images carry tabindex, so the overlay is reachable without a pointer —
+  // which is exactly who needs an enlargement most.
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const img = zoomable(event);
+    if (!img) return;
+    event.preventDefault();
+    open(img);
+  });
+</script>

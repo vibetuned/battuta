@@ -29,14 +29,11 @@ const natural = width ?? entry.width;
 ---
 
 <figure class="notation-figure">
-  <img
-    src={src}
-    alt={entry.alt}
-    width={entry.width}
-    height={entry.height}
-    style={natural ? `width:min(100%, ${natural}px)` : undefined}
-    loading="lazy"
-  />
+  {/* The frame owns the width so the hover hint can sit on the image's own
+      corner rather than the column's. */}
+  <span class="zoom-frame" style={natural ? `width:min(100%, ${natural}px)` : undefined}>
+    <img src={src} alt={entry.alt} width={entry.width} height={entry.height} loading="lazy" tabindex="0" />
+  </span>
   {caption && <figcaption set:html={caption} />}
 </figure>
 
@@ -44,9 +41,14 @@ const natural = width ?? entry.width;
   .notation-figure {
     margin: 1rem 0 1.5rem;
   }
+  .notation-figure .zoom-frame {
+    display: block;
+    position: relative;
+    max-width: 100%;
+  }
   .notation-figure img {
     display: block;
-    max-width: 100%;
+    width: 100%;
     height: auto;
     /* Notation is ink on paper: a light card under both themes, rather than
        grey-on-grey. The SVG's ink colour is fixed at build time. */

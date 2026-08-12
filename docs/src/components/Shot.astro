@@ -26,14 +26,11 @@ const natural = width ?? entry.width;
 ---
 
 <figure class="app-shot">
-  <img
-    src={src}
-    alt={entry.alt}
-    width={entry.width}
-    height={entry.height}
-    style={`width:min(100%, ${natural}px)`}
-    loading="lazy"
-  />
+  {/* The frame owns the width so the hover hint can sit on the image's own
+      corner rather than the column's. */}
+  <span class="zoom-frame" style={`width:min(100%, ${natural}px)`}>
+    <img src={src} alt={entry.alt} width={entry.width} height={entry.height} loading="lazy" tabindex="0" />
+  </span>
   {caption && <figcaption set:html={caption} />}
 </figure>
 
@@ -41,9 +38,14 @@ const natural = width ?? entry.width;
   .app-shot {
     margin: 1rem 0 1.5rem;
   }
+  .app-shot .zoom-frame {
+    display: block;
+    position: relative;
+    max-width: 100%;
+  }
   .app-shot img {
     display: block;
-    max-width: 100%;
+    width: 100%;
     height: auto;
     border: 1px solid var(--sl-color-gray-5);
     border-radius: 0.45rem;

@@ -58,6 +58,28 @@ show the bindings they discuss without anyone retyping them.
   reference table (a warning, not an error — system chords legitimately live
   only there)
 
+## Click to enlarge
+
+Both `<Figure>` and `<Shot>` images open in an overlay when clicked (or focused
+and Enter'd — the images carry `tabindex`). The behaviour is one handler in
+`src/components/Head.astro`, a Starlight `Head` override, so a page gets exactly
+one copy of it however many images it holds; the overlay is a native `<dialog>`,
+which is where Escape, focus trapping and the backdrop come from.
+
+Two sizing rules, both there to serve readability:
+
+- **Fit** — the default. Rasters are never upscaled past their own pixels (a 2×
+  screenshot at full capture width is sharp; beyond that it is just blurry);
+  vector figures take the whole overlay, since SVG has no such ceiling.
+- **Pan** — when the image was drawn for a width this screen cannot show
+  (a 1280-wide screenshot on a phone), the overlay scrolls it at full size
+  instead of shrinking it back to the column width, which would defeat the
+  point.
+
+The hover hint (⤢) and the `zoom-in` cursor live in `src/styles/custom.css`,
+keyed on `.zoom-frame` — the wrapper that carries each image's width so the
+hint sits on the image's corner rather than the column's.
+
 ## Adding to the guide
 
 - **A new page**: add the `.mdx` file under `src/content/docs/`, then list its
