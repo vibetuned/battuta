@@ -1310,6 +1310,12 @@ export default function App() {
           markTry(() => session.measureRepeat(caret), "measure repeat");
           return;
         }
+        // attack intensity (I — plain i toggles note input): a dynam
+        // cycling sf → sfz → rinf → rfz → off at the target
+        if (hit("intensity") && target) {
+          markTry(() => session.cycleDynam(target, ["sf", "sfz", "rinf", "rfz"]), "intensity");
+          return;
+        }
         // one key circles the four ornaments: arpeggio (chords) → tremolo
         // → trill → mordent → off
         if (hit("ornament") && target) {

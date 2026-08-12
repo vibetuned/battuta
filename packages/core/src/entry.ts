@@ -1344,7 +1344,13 @@ export class CycleDynamCommand implements Command {
   readonly label = "cycle dynamic";
   private memento: { measure: CoreElement; at: number; before: CoreElement | null; after: CoreElement | null } | null = null;
 
-  constructor(private readonly targetId: string) {}
+  /** Default = the volume cycle; the attack-intensity key passes
+   * ["sf", "sfz", "rinf", "rfz"]. One <dynam> per note: a text from
+   * OUTSIDE the given cycle is removed first (press again to start). */
+  constructor(
+    private readonly targetId: string,
+    private readonly cycle: string[] = ["p", "mp", "mf", "f"],
+  ) {}
 
   apply(ctx: CommandContext): DirtyRegion[] {
     const ref = ctx.index.byId.get(this.targetId);
@@ -1353,10 +1359,11 @@ export class CycleDynamCommand implements Command {
     if (!measure) throw new Error("measure not found");
     const existing = childElements(measure).find((c) => c.tag === "dynam" && c.attrs["startid"] === `#${this.targetId}`) ?? null;
     const value = existing?.children[0];
-    // Softest to loudest, then off: none -> p -> mp -> mf -> f -> none.
-    const NEXT: Record<string, string> = { p: "mp", mp: "mf", mf: "f" };
+    // Through the cycle, then off: none -> [0] -> … -> [last] -> none.
+    const NEXT: Record<string, string> = {};
+    for (let i = 0; i + 1 < this.cycle.length; i++) NEXT[this.cycle[i]!] = this.cycle[i + 1]!;
     if (!existing) {
-      const dynam: CoreElement = { tag: "dynam", attrs: { "xml:id": newId(), staff: String(ref.staffN), startid: `#${this.targetId}` }, children: ["p"] };
+      const dynam: CoreElement = { tag: "dynam", attrs: { "xml:id": newId(), staff: String(ref.staffN), startid: `#${this.targetId}` }, children: [this.cycle[0]!] };
       measure.children.push(dynam);
       this.memento = { measure, at: measure.children.length - 1, before: null, after: dynam };
     } else if (typeof value === "string" && NEXT[value]) {

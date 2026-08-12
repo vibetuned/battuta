@@ -1271,7 +1271,7 @@ check("harmony round unwinds cleanly", await page.evaluate(() =>
 }
 
 
-// --- 7r. 3/2 meter + tie-after-tie chains ---
+// --- 7r. 3/2 meter + tie-after-tie chains + attack intensity ---
 {
   // a scratch tab: 3/2 on empty measures, then three entered notes for
   // the tie chain — discarded whole at the end (no undo bookkeeping)
@@ -1309,6 +1309,22 @@ check("harmony round unwinds cleanly", await page.evaluate(() =>
     const ties = window.__SESSION__.playbackShaping().ties;
     return ties[ids[0]] === ids[1] && ties[ids[1]] === ids[2];
   }, chain));
+
+  // attack intensity: I cycles sf → sfz → rinf → rfz → off at the caret
+  await clickEvent(chain[0]);
+  for (const want of ["sf", "sfz", "rinf", "rfz"]) {
+    await page.keyboard.press("Shift+KeyI");
+    await page.waitForFunction((w) => {
+      const m = window.__SESSION__.score.measures[0];
+      return m.children.some((c) => typeof c !== "string" && c.tag === "dynam" && c.children.join("") === w);
+    }, want, { timeout: 5000 });
+  }
+  check("I cycles the attack intensity sf → sfz → rinf → rfz", true);
+  await page.waitForFunction(() => document.querySelector('.tile[data-index="0"] g[class~="dynam"]'), null, { timeout: 15000 });
+  check("…and Verovio draws the intensity dynam", true);
+  await page.keyboard.press("Shift+KeyI");
+  await page.waitForFunction(() => !window.__SESSION__.score.measures[0].children.some((c) => typeof c !== "string" && c.tag === "dynam"), null, { timeout: 5000 });
+  check("a fifth press clears it", true);
 
   // discard the scratch tab, back to the fixture
   await page.locator(".tab.active .tab-close").click();

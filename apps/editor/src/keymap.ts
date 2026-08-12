@@ -53,6 +53,7 @@ export const defaultKeymap = (layout: Layout): Record<string, KeyBinding> => {
     coda: { keys: ["o"], label: "coda → To Coda → segno → fine → D.S. → D.C.", group: "marks" },
     ornament: { keys: ["w"], label: "ornament cycle (arpeggio/tremolo/trill/mordent)", group: "marks" },
     dynamics: { keys: ["p"], label: "dynamics cycle · hairpin (selection)", group: "marks" },
+    intensity: { keys: ["I"], label: "attack intensity: sf → sfz → rinf → rfz", group: "marks" },
     pedal: { keys: ["P"], label: "pedal (selection)", group: "marks" },
     simile: { keys: az ? ["ù"] : ["'"], label: "simile slash (one beat)", group: "repeats" },
     measureRepeat: { keys: az ? ["%"] : ['"'], label: "measure repeat % → %%", group: "repeats" },

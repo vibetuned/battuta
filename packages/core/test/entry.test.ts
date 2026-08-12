@@ -198,6 +198,46 @@ describe("ToggleTieCommand", () => {
   });
 });
 
+describe("CycleDynamCommand intensity cycle", () => {
+  it("cycles sf -> sfz -> rinf -> rfz -> off and unwinds byte-identically", () => {
+    const body = `
+      <measure n="1" xml:id="m1"><staff n="1"><layer n="1">
+        <note pname="c" oct="4" dur="1" xml:id="n1"/>
+      </layer></staff></measure>`;
+    const { score } = scoreFrom(mei(body));
+    const before = serialize(score.scoreEl);
+    const INTENSITY = ["sf", "sfz", "rinf", "rfz"];
+    const dynText = () => findAll(score.measures[0]!, "dynam").map((d) => d.children.join(""));
+    const cmds: CycleDynamCommand[] = [];
+    for (const want of INTENSITY) {
+      const cmd = new CycleDynamCommand("n1", INTENSITY);
+      cmd.apply(ctxFor(score));
+      cmds.push(cmd);
+      expect(dynText()).toEqual([want]);
+    }
+    const off = new CycleDynamCommand("n1", INTENSITY);
+    off.apply(ctxFor(score));
+    cmds.push(off);
+    expect(dynText()).toEqual([]);
+    for (const cmd of cmds.reverse()) cmd.revert(ctxFor(score));
+    expect(serialize(score.scoreEl)).toBe(before);
+  });
+
+  it("a foreign dynam text (volume f) is removed first, then the cycle starts", () => {
+    const body = `
+      <measure n="1" xml:id="m1"><staff n="1"><layer n="1">
+        <note pname="c" oct="4" dur="1" xml:id="n1"/>
+      </layer></staff><dynam xml:id="d1" startid="#n1">f</dynam></measure>`;
+    const { score } = scoreFrom(mei(body));
+    const INTENSITY = ["sf", "sfz", "rinf", "rfz"];
+    const dynText = () => findAll(score.measures[0]!, "dynam").map((d) => d.children.join(""));
+    new CycleDynamCommand("n1", INTENSITY).apply(ctxFor(score));
+    expect(dynText()).toEqual([]); // one dynam per note: clear the f first
+    new CycleDynamCommand("n1", INTENSITY).apply(ctxFor(score));
+    expect(dynText()).toEqual(["sf"]);
+  });
+});
+
 describe("MergeEventsCommand / SplitEventCommand", () => {
   const MERGE_BODY = `
     <measure n="1" xml:id="m1">

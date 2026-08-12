@@ -45,6 +45,13 @@ correction — stay in [PLANNING.md](PLANNING.md).
   window key listener re-attaches after React effects, so a fast second
   key hit a stale closure; the handler now reads the buffer through a
   ref. (This was the wandering phase5 "flake" at the harm commit.)
+- **Attack intensity** (`I` — shift+i, since plain `i` toggles note
+  input): cycles sf → sfz → rinf → rfz → off at the target note. These
+  are MEI `<dynam>`s, not articulations, so the volume-cycle machinery
+  was generalized (`CycleDynamCommand` takes its text list); one dynam
+  per note — an existing volume marking is cleared first, and the same
+  applies in reverse. Verovio renders all four with SMuFL dynamics
+  glyphs (probed).
 - **Tie after tie fixed** (n_n_n): tying the second pair used to
   clobber the shared note's `tie="t"` with `"i"`, orphaning the first
   tie (Verovio drops unmatched halves — it vanished from the page and

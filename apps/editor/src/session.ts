@@ -260,8 +260,8 @@ export class DocumentSession {
     const ref = this.index.byId.get(targetId);
     return (ref && meterCapacity(this.contexts[ref.measureIndex]?.get(ref.staffN)?.meter ?? {})) || frac(4, 4);
   }
-  cycleDynam(targetId: string): DirtyRegion[] {
-    return this.execute(new CycleDynamCommand(targetId));
+  cycleDynam(targetId: string, cycle?: string[]): DirtyRegion[] {
+    return this.execute(new CycleDynamCommand(targetId, cycle));
   }
   cycleHairpin(startId: string, endId: string): DirtyRegion[] {
     return this.execute(new CycleHairpinCommand(startId, endId));
