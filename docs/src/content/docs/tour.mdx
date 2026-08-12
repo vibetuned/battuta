@@ -1,0 +1,125 @@
+---
+title: A tour of the window
+description: Every control in battuta's header, score area and status bar, named and explained.
+sidebar:
+  order: 2
+---
+
+import { Aside } from "@astrojs/starlight/components";
+import Figure from "../../components/Figure.astro";
+
+battuta has three bands: a **header** pinned at the top, the **score** in the
+middle, and a **status bar** fixed at the bottom. Nothing is hidden in menus —
+if a control exists, it is on screen.
+
+## The header
+
+<div class="ui-mock">
+  <span>battuta</span>
+  <span class="on">untitled-1 *</span>
+  <span>+</span>
+  <span>open file…</span>
+  <span>page view</span>
+  <span>+m</span>
+  <span>−m</span>
+  <span>⧉m</span>
+  <span>save</span>
+  <span>title</span>
+  <span>⏱</span>
+  <span>⟲id</span>
+  <span>🌣</span>
+</div>
+
+| Control | What it does |
+| --- | --- |
+| **tabs** | One per open score. A trailing <code>*</code> means unsaved changes; <code>×</code> closes the tab. Undoing back to the saved state clears the star. |
+| **+** | A fresh blank score: one treble staff, 4/4, four empty measures, named `untitled-1`, `-2`, … |
+| **open file…** | The system open dialog, starting in the folder you last used. |
+| **page view** / **edit view** | Switches between the two renderings — see [The two views](#the-two-views). |
+| **+m −m ⧉m** | Insert, delete, duplicate measures at the caret or over the selected block. Same as numpad <kbd>+</kbd> <kbd>−</kbd> <kbd>*</kbd>. |
+| **save** | Saves to the score's own path, or opens save-as if it has none. |
+| **title** | Inline editor for the score title; the button relabels itself to the current title. Page view prints it. |
+| **⏱** | Shows or hides the performance numbers (render timings, per-tile milliseconds). Off by default. |
+| **⟲id** | Regenerates every `xml:id` in the document and rewrites all references to follow — the repair for files that accumulated duplicate ids. One undo step. |
+| **🌣** | The shortcut editor: every action, its keys, and the rebinding UI. |
+
+In page view the header also grows the player: **▶ / ⏸**, **⏹**, a tempo
+select, a clickable progress bar and a `mm:ss / mm:ss` readout. See
+[Playback](../guide/playback/).
+
+## The score area
+
+<Figure name="real-score" caption="Four measures of a real score in battuta — Schumann, <em>Melodie</em> from Album für die Jugend, op. 68. Fingerings, slurs and hairpins are all editable document content, not decoration." />
+
+<Aside type="note" title="Three colours, three kinds of state">
+The **caret** is blue, an **event selection** is red, and a **block
+selection** is green. Everything else is Verovio's engraving, untouched.
+</Aside>
+
+Clicking a note puts the caret on it. Dragging across measures or staves
+paints a block. Nothing you click ever changes the notation — the rendering
+is read-only, and all interaction happens on an overlay above it.
+
+The view follows the caret: when navigation or note entry pushes the caret off
+screen, the score scrolls it back into the middle. Re-layout and zoom never
+yank the view.
+
+### The two views
+
+**Edit view** (the default) renders each measure as its own small engraving and
+flows those tiles into rows like words in a paragraph. That is what makes
+editing instant: a keystroke re-renders one tile, not the score. The cost is
+cosmetic — spacing is justified per measure rather than across the page, and
+slurs or ties that cross a tile edge are drawn as broken continuations, the
+same convention as a system break.
+
+**Page view** renders the whole document through Verovio's normal page layout:
+proper spacing, real spanning slurs, the printed title, measure numbers at
+system starts. Use it to proofread, and to play the score. The caret and
+selection survive the switch, because both are stored as positions in the
+document, never as pixels.
+
+## The status bar
+
+<div class="ui-mock">
+  <span class="on">1/8 ♪ (4)</span>
+  <span>[ m 10, s 2, v 1, n 6 ]</span>
+  <span>staves 2</span>
+  <span>voice 1</span>
+  <span>harmony</span>
+  <span>clef G2</span>
+  <span>key 0</span>
+  <span>meter 4/4</span>
+  <span>zoom 100%</span>
+  <span>MIDI &lt;&gt; 1</span>
+</div>
+
+Left side:
+
+- **`INPUT (i)`** — click it to toggle note input. While input is on it turns
+  green and reads the current duration, its note glyph, and the digit key that
+  selects it: `1/8 ♪ (4)`.
+- **caret readout** — `[ m 10, s 2, v 1, n 6 ]`: measure, staff, voice, and
+  index of the event under the caret, all counted from 1.
+
+Right side, all showing **the context in force at the caret** and applying
+their change at the caret's measure:
+
+- **staves** — the staff count, plus *add staff below* and *remove caret staff*.
+- **voices** — the caret's voice, with switch / add / remove.
+- **harmony** — opens a [chord-symbol or Roman-numeral lane](../guide/harmony/).
+- **clef** — per staff. Stepping onto a tenor-clef staff flips the indicator.
+- **key** and **meter** — score-wide from the caret's measure onward.
+- **zoom** — click for **+ / − / reset**; 50 %–250 % in 25 % steps.
+- **MIDI** — `MIDI ><` grey when nothing is connected, green `MIDI <>` with a
+  device count when a controller is. Click it to list the devices.
+
+## Messages
+
+Errors, confirmations and refusals appear as **toasts** in the bottom-right
+corner. They fade on their own; the `×` on the left closes one early, and the
+text is selectable so an error message can be copied into a bug report.
+
+A refusal is information, not a failure — battuta says no to edits that would
+produce a measure that doesn't add up, and the toast names the reason. See
+[Why an edit gets refused](../concepts/#why-an-edit-gets-refused).

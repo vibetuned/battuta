@@ -1,0 +1,84 @@
+---
+title: Repeats and form
+description: Repeat barlines, volta brackets, segno, coda, fine, D.S. and D.C. — and how playback takes the jumps you wrote.
+sidebar:
+  order: 8
+---
+
+import KeymapTable from "../../../components/KeymapTable.astro";
+import { Aside } from "@astrojs/starlight/components";
+import Figure from "../../../components/Figure.astro";
+
+## Repeat barlines
+
+Select a block of measures and press <kbd>r</kbd>.
+
+<Figure name="repeat-barlines" caption="Two measures wrapped in repeat barlines." />
+
+The same block again removes them, and undo restores whatever barline the repeat
+overwrote — a double bar you had there survives the round trip.
+
+<Aside type="note" title="r means rest in input mode">
+Inside note input, <kbd>r</kbd> writes a rest. Leave input mode (<kbd>esc</kbd>)
+to use it for repeats.
+</Aside>
+
+## Volta brackets
+
+With a block selected, <kbd>shift</kbd> + <kbd>1</kbd>…<kbd>9</kbd> toggles that
+ending number on the bracket over those measures.
+
+<Figure name="voltas" caption="A first-and-second-time ending, then a third-time ending." />
+
+Numbers build up into sets: press <kbd>shift</kbd> + <kbd>1</kbd> then
+<kbd>shift</kbd> + <kbd>2</kbd> on the same block and you get `1, 2`. Removing
+the last number removes the bracket. A block that would cross an existing ending
+is refused.
+
+Closing barlines are renormalised across the whole bracket group automatically:
+every bracket that has a later sibling ends with a repeat barline, the last one
+ends with a double barline — unless it closes the score, whose final barline is
+left as it is.
+
+In edit view each measure draws its own segment of the bracket; page view shows
+the true spanning bracket.
+
+## Segno, coda, fine, D.S. and D.C.
+
+<kbd>o</kbd> cycles the whole repeat-mark family on the target:
+
+**coda sign → To Coda → segno → fine → D.S. → D.C. → off**
+
+<Figure name="repeat-marks" caption="Segno and To Coda in the first measure, the coda sign and Fine in the second, D.S. in the third." />
+
+The two coda marks are worth a word, because MEI encodes both the same way and
+battuta distinguishes them by their text: the **coda sign** is the destination,
+and **To Coda** is the jump-out marker. Written as a pair they behave like the
+real thing — a D.S. or D.C. recap that reaches *To Coda* jumps to the sign. Either
+mark on its own is decorative.
+
+## Playback follows the form
+
+This is the part that makes the notation worth writing: press play and the score
+takes the route you notated.
+
+- **Plain repeat barlines** are taken.
+- **Voltas** are honoured, including number sets like `[1, 2][3]` — the repeat
+  passes take their own endings, and the recap takes only the final ending.
+- **One dal-segno or da-capo jump** is followed, with *fine* and *To Coda*
+  respected. The first pass **stops at the jump mark** rather than running to the
+  end, so a mid-score D.C. sounds like a mid-score D.C.; the material after it
+  plays only when a *To Coda* jump leads there.
+- The loop-back target is the repeat sign when there is one, otherwise the top of
+  the score.
+- Repeated passes light up the same notes you wrote, because every repeated copy
+  is mapped back to its notated element for the highlight.
+
+Exotic forms battuta cannot resolve are played unexpanded — straight through,
+once — rather than guessed at.
+
+See [Playback](../playback/) for the player itself.
+
+## All repeat bindings
+
+<KeymapTable group="repeats" />

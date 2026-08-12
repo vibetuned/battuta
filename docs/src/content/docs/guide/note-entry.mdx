@@ -1,0 +1,146 @@
+---
+title: Note entry
+description: Typing music at the caret — durations, pitches, chords, rests, accidentals, MIDI input, and the overwrite model behind it all.
+sidebar:
+  order: 3
+---
+
+import KeymapTable from "../../../components/KeymapTable.astro";
+import { Aside, Steps } from "@astrojs/starlight/components";
+import Figure from "../../../components/Figure.astro";
+
+## Turning input on and off
+
+<kbd>i</kbd> enters note input. <kbd>Insert</kbd> toggles it both ways, and
+<kbd>esc</kbd> leaves it. The `INPUT (i)` box in the status bar is the
+indicator — and a button, if you'd rather click.
+
+While input is on, that box reads out what you are about to write:
+`1/8 ♪ (4)` means an eighth note, and that <kbd>4</kbd> is the key that
+selected it.
+
+<Aside type="caution" title="Letters mean pitches in input mode">
+Note input takes over <kbd>a</kbd>–<kbd>g</kbd>. That is why the flat is
+<kbd>v</kbd> rather than <kbd>f</kbd> here, and why some commands wait until
+you press <kbd>esc</kbd>. Everything else — arrows, <kbd>ctrl</kbd> chords,
+<kbd>alt</kbd> combinations, the dot, merge and split — keeps working.
+</Aside>
+
+## Durations
+
+| Key | Duration | | Key | Duration |
+| --- | --- | --- | --- | --- |
+| <kbd>7</kbd> | whole | | <kbd>3</kbd> | sixteenth |
+| <kbd>6</kbd> | half | | <kbd>2</kbd> | thirty-second |
+| <kbd>5</kbd> | quarter | | <kbd>1</kbd> | sixty-fourth |
+| <kbd>4</kbd> | eighth | | | |
+
+<Figure name="durations" caption="The whole palette, whole note to sixty-fourth." />
+
+The digit sets the duration for what you write **next**; it never changes a note
+that is already there. To change an existing note, use <kbd>alt</kbd> +
+<kbd>←</kbd> / <kbd>→</kbd> — see [Rhythm](../rhythm/).
+
+Durations are matched by **physical key position** as well as by character, so
+the number row works on AZERTY without Shift, and the numeric keypad works
+everywhere.
+
+## Pitches, chords and rests
+
+- **<kbd>a</kbd>–<kbd>g</kbd>** writes a note. The octave is guessed from the
+  music around the caret, so scales and stepwise lines stay put instead of
+  jumping.
+- **<kbd>shift</kbd> + <kbd>A</kbd>–<kbd>G</kbd>** adds a note to the one you
+  just entered, building a chord.
+- **<kbd>r</kbd>** writes a rest of the current duration.
+
+<Figure name="chord" caption="Type c, then shift+E and shift+G." />
+
+## Accidentals
+
+<KeymapTable group="accidentals" />
+
+In input mode use <kbd>s</kbd> sharp, <kbd>v</kbd> flat, <kbd>n</kbd> natural.
+Outside input mode <kbd>f</kbd> also flattens, since no pitch letters are needed
+there. <kbd>shift</kbd> + <kbd>s</kbd> writes a double sharp when nothing is
+selected.
+
+Pressing the same accidental twice removes it; a different one replaces it.
+
+<Figure name="accidentals" caption="Sharp, flat, natural, double sharp." />
+
+### On a chord, battuta asks which note
+
+An accidental on a chord would otherwise sharpen everything. Instead a small
+picker opens listing the chord's notes — `1:c4 2:e4 3:g4`. Press the note's
+letter or its number to apply the accidental to that note alone, <kbd>esc</kbd>
+to cancel.
+
+<Figure name="chord-accidental" caption="One sharp, one note — the rest of the chord untouched." />
+
+## The dot
+
+<kbd>.</kbd> adds or removes an augmentation dot (on AZERTY, <kbd>:</kbd> is the
+unshifted key, and the keypad's <kbd>.</kbd> works too). Press it repeatedly for
+a second dot.
+
+The dot always applies to a real event: the note you just entered, or — once the
+caret has moved — the note or rest under the caret. It works outside input mode
+too. The extra time comes out of the rests that follow, and goes back to them
+when you remove the dot. Notes you enter afterwards inherit the dotted state.
+
+## Deleting
+
+- **<kbd>Delete</kbd>** turns the caret's event (or the whole selection) into
+  rests of the same written duration. A chord becomes one rest.
+- **<kbd>Backspace</kbd>** erases *backward* like a text editor: the previous
+  note becomes a rest and the caret steps onto it. With a selection it behaves
+  like Delete.
+
+Deleting never shortens a measure — it replaces notes with rests, which is what
+keeps the measure valid.
+
+## Why entry is an overwrite mode
+
+Writing a note does not push the rest of the measure along. It replaces what is
+already at the caret:
+
+- **Equal duration** — swapped in place.
+- **Shorter** — the leftover time becomes rests.
+- **Longer** — the following events are consumed to make room, and battuta
+  refuses loudly if that would cross a beam, a tuplet, or the barline.
+
+The measure's total never changes, so the document is never briefly invalid and
+undo always has something exact to return to. (If a longer note is blocked by a
+beam, battuta un-beams the measure first — see
+[beams are formatting](../rhythm/#beams-are-formatting).)
+
+## MIDI input
+
+A MIDI keyboard is a first-class input, not an add-on. With input mode on:
+
+<Steps>
+
+1. Play a note — it is entered at the caret with the current duration.
+2. Hold several keys down together — they build a chord.
+3. Release, and the caret advances.
+
+</Steps>
+
+Devices hot-plug: connect or disconnect while battuta is running and the status
+bar's `MIDI` indicator updates, turning green with a device count. Click it to
+see what is connected. If you play a note while input mode is off, battuta hints
+that you should press <kbd>i</kbd>.
+
+The desktop app bridges MIDI natively (ALSA on Linux, CoreMIDI on macOS) because
+WebKit has no Web MIDI API; in Chromium the same pipeline runs on Web MIDI. Every
+route ends in the same entry code, so behaviour is identical.
+
+## All entry bindings
+
+<KeymapTable group="entry" />
+
+## Next
+
+- [Rhythm](../rhythm/) — changing durations, tuplets, beams, grace notes.
+- [Marks and expression](../marks/) — articulations, dynamics, slurs and ties.

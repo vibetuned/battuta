@@ -1,0 +1,135 @@
+---
+title: Marks and expression
+description: Ties, slurs, articulations, ornaments, dynamics, hairpins, pedal and fingering — everything you attach to notes.
+sidebar:
+  order: 5
+---
+
+import KeymapTable from "../../../components/KeymapTable.astro";
+import { Aside } from "@astrojs/starlight/components";
+import Figure from "../../../components/Figure.astro";
+
+Every mark on this page follows the same two rules, so there is only one thing to
+learn:
+
+- **The target** is the note you just entered while input mode is on, otherwise
+  the note (or chord) under the caret — or the selection, where a selection makes
+  sense.
+- **Pressing again removes it.** Marks toggle, cycles step forward and eventually
+  step off. Each press is one undo step.
+
+## Ties
+
+<KeymapTable ids={["tie"]} />
+
+With no selection, <kbd>t</kbd> ties the caret's note **back to its predecessor** —
+including across the barline when the note opens a measure. The pitches have to
+match; battuta refuses rather than write a tie between different notes.
+
+With a run selected, <kbd>t</kbd> ties **every consecutive pair** in it, which is
+how you notate a note held over several measures. The same selection unties it.
+
+<Figure name="tie-chain" caption="One pitch held over three notes and a barline." />
+
+Tie chains are handled as chains, not as isolated pairs: the shared note in the
+middle gets the right MEI value, and untying any link splits the chain into valid
+remainders instead of orphaning half a tie. Playback and rendering follow
+automatically — a chain sounds as one attack for its whole length.
+
+## Slurs
+
+<KeymapTable ids={["slurDoubleSharp"]} />
+
+Select a run and press <kbd>shift</kbd> + <kbd>s</kbd>, or place the caret and
+press it to slur to the next event. The same endpoints again remove the slur.
+
+<Figure name="slur" caption="A slur over a selected run; the run may cross any number of measures." />
+
+Cross-staff slurs work too: shift-click a note on one staff and a note on
+another — that gives an [endpoint pair](../selection/#endpoint-pairs-across-staves) —
+then press <kbd>shift</kbd> + <kbd>s</kbd>.
+
+With nothing selected, <kbd>shift</kbd> + <kbd>s</kbd> writes a **double sharp**
+instead. On a chord it opens the per-note picker.
+
+## Articulations
+
+<KeymapTable ids={["staccato", "accent", "marcato", "staccatissimo", "fermata"]} />
+
+<Figure name="articulations" caption="Staccato, accent, marcato, staccatissimo." />
+
+Marcato is the accent key shifted, and staccatissimo is the staccato key shifted —
+so there are two keys to remember, not four. (On AZERTY the shifted characters
+differ but the physical keys are the same.)
+
+<kbd>h</kbd> puts a fermata over the target.
+
+<Figure name="fermata" caption="A fermata on the final note." />
+
+## Ornaments
+
+<kbd>w</kbd> cycles through the ornaments: on a chord it starts with the
+**arpeggio**, then **tremolo**, **trill**, **mordent**, then off.
+
+<Figure name="ornaments" caption="Arpeggiated chord, tremolo, trill, mordent." />
+
+## Dynamics
+
+<kbd>p</kbd> with nothing selected cycles the volume marking on the target note:
+**p → mp → mf → f → off**.
+
+<Figure name="dynamics" caption="The volume cycle." />
+
+<kbd>shift</kbd> + <kbd>i</kbd> cycles **attack intensity** instead:
+**sf → sfz → rinf → rfz → off**. A note carries one dynamic marking at a time, so
+starting one cycle clears a marking from the other.
+
+<Figure name="intensity" caption="sf, sfz, rinf, rfz." />
+
+<Aside type="note" title="Why shift+i and not i">
+Plain <kbd>i</kbd> is note input, which you reach for far more often. Attack
+intensity is the shifted neighbour.
+</Aside>
+
+### Hairpins
+
+<kbd>p</kbd> **with a run selected** cycles a hairpin over it: none → crescendo →
+diminuendo → none. Runs that cross measures are fine, and so are endpoint pairs
+across staves.
+
+<Figure name="hairpin" caption="A crescendo over four notes, then a diminuendo." />
+
+## Pedal
+
+<kbd>shift</kbd> + <kbd>p</kbd> over a selection puts the pedal down at the first
+note and up at the last.
+
+<Figure name="pedal" caption="Pedal down at the first note, released at the last." />
+
+## Fingering
+
+<KeymapTable ids={["fingering", "fingerChange"]} />
+
+<kbd>alt</kbd> + <kbd>1</kbd>…<kbd>5</kbd> sets the fingering on the target note
+or chord. The same number again removes it, a different one replaces it.
+<kbd>alt</kbd> + <kbd>shift</kbd> + <kbd>1</kbd>…<kbd>5</kbd> **stacks** an extra
+finger, for chords and substitutions.
+
+<kbd>alt</kbd> + <kbd>6</kbd>…<kbd>0</kbd> writes a **change of finger** on the
+existing fingering, where 6–0 stand for the new fingers 1–5: <kbd>alt</kbd> +
+<kbd>2</kbd> then <kbd>alt</kbd> + <kbd>6</kbd> gives `2-1`. The same key removes
+the substitution; a different one replaces it.
+
+<Figure name="fingering" caption="Fingerings 1, 2, 3 and the substitution 3-1." />
+
+These bindings are matched by physical key, so the digit row behaves the same on
+every keyboard layout.
+
+## All mark bindings
+
+<KeymapTable group="marks" />
+
+## Next
+
+- [Repeats and form](../form/) — segno, coda, voltas, and playing the form.
+- [Harmony lanes](../harmony/) — chord symbols and Roman numerals.

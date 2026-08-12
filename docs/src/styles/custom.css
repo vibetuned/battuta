@@ -1,0 +1,104 @@
+/* battuta guide — a quiet slate palette close to the editor's own chrome,
+   plus the keycap styling the guide leans on heavily. */
+
+:root {
+  --sl-font: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --sl-color-accent-low: #16253a;
+  --sl-color-accent: #3d7fbf;
+  --sl-color-accent-high: #cfe2f5;
+  --sl-color-white: #ffffff;
+  --sl-color-gray-1: #e7edf4;
+  --sl-color-gray-2: #c1ccd9;
+  --sl-color-gray-3: #8b99a9;
+  --sl-color-gray-4: #58646f;
+  --sl-color-gray-5: #39434e;
+  --sl-color-gray-6: #262e38;
+  --sl-color-gray-7: #1b222a;
+  --sl-color-black: #12161c;
+}
+
+:root[data-theme="light"] {
+  --sl-color-accent-low: #d5e5f5;
+  --sl-color-accent: #1f5f9e;
+  --sl-color-accent-high: #123a5e;
+  --sl-color-white: #161c23;
+  --sl-color-gray-1: #24303c;
+  --sl-color-gray-2: #3d4a58;
+  --sl-color-gray-3: #5b6875;
+  --sl-color-gray-4: #8d99a5;
+  --sl-color-gray-5: #c8d1da;
+  --sl-color-gray-6: #eef2f6;
+  --sl-color-gray-7: #f6f8fb;
+  --sl-color-black: #ffffff;
+}
+
+/* Keycaps. The guide names a lot of keys; they must read as keys. */
+kbd {
+  display: inline-block;
+  padding: 0.05em 0.42em;
+  border: 1px solid var(--sl-color-gray-5);
+  border-bottom-width: 2px;
+  border-radius: 0.3rem;
+  background: var(--sl-color-gray-6);
+  color: var(--sl-color-white);
+  font-family: var(--sl-font-system-mono, ui-monospace, monospace);
+  font-size: 0.9em;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+/* Musical glyphs inside prose (♭ ♯ 𝄋 %) need a font that has them. */
+.glyph {
+  font-family: "Bravura Text", "Noto Music", ui-serif, serif;
+  font-size: 1.15em;
+  line-height: 1;
+}
+
+/* Tables of actions get room to breathe. */
+.sl-markdown-content table {
+  display: table;
+  width: 100%;
+}
+.sl-markdown-content th {
+  text-align: left;
+}
+
+/* Landing-page card art: the cairo rasters. */
+.card-art {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0.2rem 0 0.6rem;
+  opacity: 0.9;
+}
+:root[data-theme="dark"] .card-art {
+  filter: invert(1) hue-rotate(180deg);
+  opacity: 0.85;
+}
+
+/* Status-bar / UI mock used in the tour, so screenshots are not needed for
+   the bits of chrome that are pure text. */
+.ui-mock {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.5rem 0.6rem;
+  margin: 1rem 0;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.35rem;
+  background: var(--sl-color-gray-7);
+  font-family: var(--sl-font-system-mono, ui-monospace, monospace);
+  font-size: var(--sl-text-xs);
+  color: var(--sl-color-gray-2);
+}
+.ui-mock span {
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.25rem;
+  white-space: nowrap;
+}
+.ui-mock span.on {
+  border-color: var(--sl-color-accent);
+  color: var(--sl-color-accent-high);
+}

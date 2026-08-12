@@ -1,0 +1,131 @@
+---
+title: Install battuta
+description: Download and launch battuta on Linux, macOS or Windows, or run it from source in a browser.
+sidebar:
+  order: 1
+---
+
+import { Tabs, TabItem, Steps, Aside } from "@astrojs/starlight/components";
+
+battuta is a desktop application. It reads and writes MEI files on your own
+disk, needs no account, and makes no network requests — nothing you open
+leaves your machine.
+
+## Download a build
+
+Bundles are attached to each [GitHub release](https://github.com/vibetuned/battuta/releases).
+
+<Tabs>
+  <TabItem label="Linux" icon="linux">
+
+Two bundles, both 64-bit x86:
+
+- **`battuta_<version>_amd64.deb`** — the small one (~6 MB); it uses the
+  WebKitGTK already on your system.
+  ```sh
+  sudo apt install ./battuta_0.0.1_amd64.deb
+  ```
+- **`battuta_<version>_amd64.AppImage`** — self-contained (~81 MB, WebKitGTK
+  bundled); no install step.
+  ```sh
+  chmod +x battuta_0.0.1_amd64.AppImage
+  ./battuta_0.0.1_amd64.AppImage
+  ```
+
+MIDI input goes through ALSA. The `.deb` declares that dependency, so it comes
+in with the package; if you use the AppImage on a minimal system and the status
+bar never finds your keyboard, install your distribution's ALSA runtime.
+
+  </TabItem>
+  <TabItem label="macOS" icon="apple">
+
+Download the `.dmg`, open it, drag battuta to Applications.
+
+The disk image is **not signed with an Apple Developer ID**, so Gatekeeper
+warns you the first time. Open it from Finder's context menu → *Open* to get
+the "open anyway" choice, or clear the quarantine flag yourself:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/battuta.app
+```
+
+Verified on Apple Silicon: the app launches, `.mei` files open by
+double-click, and MIDI keyboards hot-plug through CoreMIDI.
+
+  </TabItem>
+  <TabItem label="Windows" icon="seti:windows">
+
+Download the NSIS installer (`battuta_<version>_x64-setup.exe`). It
+bootstraps Microsoft's WebView2 runtime if the machine doesn't have it.
+
+<Aside type="caution" title="Untested platform">
+Windows bundles come out of the same release build as the others, but battuta
+has not had a test round on Windows yet. Expect rough edges — and please
+[report them](https://github.com/vibetuned/battuta/issues).
+</Aside>
+
+  </TabItem>
+</Tabs>
+
+### Opening `.mei` files by double-click
+
+The Linux packages register `*.mei` as `application/x-mei+xml` and hand the
+clicked file to battuta, so double-clicking a score in your file manager opens
+it in a new tab. macOS does the same through the app bundle. If a file manager
+still opens `.mei` in a text editor, set battuta as the default application for
+the type once — the association is registered, the preference is yours.
+
+## Run from source
+
+Useful for trying the editor without installing anything: the frontend is a
+plain web app and runs in any modern browser (Chromium and Firefox both work;
+Web MIDI needs Chromium).
+
+<Steps>
+
+1. Get the sources and dependencies — Node 22 or newer:
+
+   ```sh
+   git clone https://github.com/vibetuned/battuta.git
+   cd battuta
+   npm install
+   ```
+
+2. Start the editor:
+
+   ```sh
+   npm run dev --workspace @battuta/editor
+   ```
+
+3. Open the printed URL. In a browser, *open file…* and <kbd>ctrl</kbd> +
+   <kbd>s</kbd> fall back to a file picker and a download instead of native
+   dialogs; everything else behaves the same.
+
+</Steps>
+
+### Building the desktop shell
+
+The desktop app is [Tauri 2](https://tauri.app/). Building it needs Rust plus
+the platform's webview and audio headers — on Debian/Ubuntu:
+
+```sh
+sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libasound2-dev \
+  librsvg2-dev build-essential curl wget file libssl-dev
+```
+
+Then:
+
+```sh
+npm run build -w @battuta/core
+npm run build -w @battuta/editor
+cd apps/editor && npx tauri build
+```
+
+The bundles land in `apps/editor/src-tauri/target/release/bundle/`. The binary
+prints at startup whether it is serving embedded assets or talking to the dev
+server, so you always know which one you launched.
+
+## What's next
+
+- [A tour of the window](../tour/) — every control, named.
+- [Your first score](../first-score/) — from blank to a phrase you can hear.

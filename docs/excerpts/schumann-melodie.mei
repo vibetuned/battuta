@@ -1,0 +1,736 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.0">
+  <meiHead>
+    <fileDesc>
+      <titleStmt>
+        <title>Melodie</title>
+      </titleStmt>
+      <pubStmt/>
+    </fileDesc>
+  </meiHead>
+  <music>
+    <body>
+      <mdiv>
+        <score>
+          <scoreDef meter.count="4" meter.unit="4" keysig="0" xml:id="bt-pt0v3k1e">
+            <staffGrp xml:id="bt-ombue9e8">
+              <staffDef n="1" lines="5" clef.shape="G" clef.line="2" xml:id="bt-3nxwj69z"/>
+              <staffDef n="2" lines="5" xml:id="bt-s26ds2ah" clef.shape="F" clef.line="4"/>
+            </staffGrp>
+          </scoreDef>
+          <section>
+            <measure n="1" xml:id="bt-w9o0jypv">
+              <staff n="1" xml:id="bt-d3iu3wqy">
+                <layer n="1" xml:id="bt-mv6qq5ly">
+                  <note xml:id="bt-potm4j97" dur="4" pname="e" oct="5"/>
+                  <note xml:id="bt-zae6z2ao" dur="4" pname="d" oct="5"/>
+                  <note xml:id="bt-6nuczyzp" dur="4" pname="c" oct="5"/>
+                  <note xml:id="bt-c1j9hxtn" dur="4" pname="b" oct="4"/>
+                </layer>
+              </staff>
+              <staff n="2" xml:id="bt-7q1qilel">
+                <layer n="1" xml:id="bt-eb7b1qxz">
+                  <beam xml:id="bt-ag6hr207">
+                    <note xml:id="bt-mcodc8xy" dur="8" pname="e" oct="2"/>
+                    <note xml:id="bt-qy9f6xp0" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-wf8lgl87" dur="8" pname="a" oct="2"/>
+                    <note xml:id="bt-j69gp2xx" dur="8" pname="b" oct="2"/>
+                  </beam>
+                  <beam xml:id="bt-6ovvuk2y">
+                    <note xml:id="bt-z3rgaq0d" dur="8" pname="g" oct="2"/>
+                    <note xml:id="bt-xgc12x6j" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-lo0ebp7w" dur="8" pname="e" oct="2"/>
+                    <note xml:id="bt-th1skdk0" dur="8" pname="g" oct="2"/>
+                  </beam>
+                </layer>
+              </staff>
+              <slur xml:id="bt-xqem4clg" startid="#bt-mcodc8xy" endid="#bt-7fg8nbqu" staff="2"/>
+              <slur xml:id="bt-ml1l323h" startid="#bt-potm4j97" endid="#bt-3dhrzj3s" staff="1"/>
+              <fing xml:id="bt-7r69z4wo" staff="1" startid="#bt-potm4j97" place="above">5</fing>
+              <fing xml:id="bt-r8tpkhya" staff="1" startid="#bt-c1j9hxtn" place="above">2</fing>
+              <fing xml:id="bt-c0lgzw8q" staff="2" startid="#bt-mcodc8xy" place="above">5</fing>
+            </measure>
+            <measure n="2" xml:id="bt-xfyqidyd">
+              <staff n="1" xml:id="bt-ee4czkba">
+                <layer n="1" xml:id="bt-cv1xw7gv">
+                  <beam xml:id="bt-0j3ok2wi">
+                    <note xml:id="bt-8bv1hoio" dur="8" pname="a" oct="4"/>
+                    <note xml:id="bt-pe0voy76" dur="8" pname="c" oct="5"/>
+                    <note xml:id="bt-67bb3pqk" dur="8" pname="b" oct="4"/>
+                    <note xml:id="bt-2txeew5m" dur="8" pname="d" oct="5"/>
+                  </beam>
+                  <note xml:id="bt-fr5lgbkj" dur="4" pname="c" oct="5"/>
+                  <note xml:id="bt-3dhrzj3s" dur="4" pname="g" oct="4"/>
+                </layer>
+              </staff>
+              <staff n="2" xml:id="bt-z0ol1gns">
+                <layer n="1" xml:id="bt-wbdck3k2">
+                  <beam xml:id="bt-wnt0ntry">
+                    <note xml:id="bt-cmbq6o17" dur="8" pname="a" oct="2"/>
+                    <note xml:id="bt-qqief65r" dur="8" pname="f" oct="2"/>
+                    <note xml:id="bt-43rjzr8u" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-7xgz8tig" dur="8" pname="a" oct="2"/>
+                  </beam>
+                  <beam xml:id="bt-j2mnwszo">
+                    <note xml:id="bt-htcq1n6w" dur="8" pname="g" oct="2"/>
+                    <note xml:id="bt-6acbu54s" dur="8" pname="a" oct="2"/>
+                    <note xml:id="bt-94s4o15h" dur="8" pname="g" oct="2"/>
+                    <note xml:id="bt-7fg8nbqu" dur="8" pname="f" oct="2"/>
+                  </beam>
+                </layer>
+              </staff>
+              <fing xml:id="bt-1d2em9aw" staff="1" startid="#bt-8bv1hoio" place="above">1</fing>
+              <fing xml:id="bt-yiw3odo1" staff="2" startid="#bt-cmbq6o17" place="above">2</fing>
+            </measure>
+            <measure n="3" xml:id="bt-pri12tx1">
+              <staff n="1" xml:id="bt-y178vac5">
+                <layer n="1" xml:id="bt-i0syfm76">
+                  <note xml:id="bt-5oxsk88t" dur="4" pname="g" oct="5"/>
+                  <note xml:id="bt-vy30bqvv" dur="4" pname="f" oct="5"/>
+                  <note xml:id="bt-mnfdz9nn" dur="4" pname="e" oct="5"/>
+                  <note xml:id="bt-sydyc3ec" dur="4" pname="c" oct="5"/>
+                </layer>
+              </staff>
+              <staff n="2" xml:id="bt-bw61kgh4">
+                <layer n="1" xml:id="bt-db0rtvrn">
+                  <beam xml:id="bt-jtiim3se">
+                    <note xml:id="bt-ajze3yjo" dur="8" pname="g" oct="2"/>
+                    <note xml:id="bt-bczd8i1q" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-fmm59l0f" dur="8" pname="f" oct="2"/>
+                    <note xml:id="bt-n4lwzjzx" dur="8" pname="b" oct="2"/>
+                  </beam>
+                  <beam xml:id="bt-v1hpjfpe">
+                    <note xml:id="bt-4t7jlw06" dur="8" pname="e" oct="2"/>
+                    <note xml:id="bt-lt0cozq7" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-xd60fov4" dur="8" pname="g" oct="2"/>
+                    <note xml:id="bt-jdn16wce" dur="8" pname="b" oct="2"/>
+                  </beam>
+                </layer>
+              </staff>
+              <slur xml:id="bt-0dd37tr4" startid="#bt-ajze3yjo" endid="#bt-2pl7il2g" staff="2"/>
+              <slur xml:id="bt-2863swz8" startid="#bt-5oxsk88t" endid="#bt-mdnd5b8u" staff="1"/>
+              <fing xml:id="bt-nxo1b6ab" staff="1" startid="#bt-5oxsk88t" place="above">5</fing>
+              <fing xml:id="bt-y88had5w" staff="2" startid="#bt-xd60fov4" place="above">2</fing>
+              <hairpin xml:id="bt-vc1e5f5u" staff="1" form="cres" startid="#bt-mnfdz9nn" endid="#bt-sydyc3ec"/>
+            </measure>
+            <measure n="4" xml:id="bt-z3ptsc08">
+              <staff n="1" xml:id="bt-u1kfm4bu">
+                <layer n="1" xml:id="bt-ue7b79nw">
+                  <note xml:id="bt-zn57tsnu" dur="4" pname="b" oct="4"/>
+                  <chord xml:id="bt-08j8mojn" dur="4">
+                    <note xml:id="bt-fm5qkxx6" pname="f" oct="4" accid="s"/>
+                    <note xml:id="bt-vqs4eerw" pname="a" oct="4"/>
+                  </chord>
+                  <note xml:id="bt-mdnd5b8u" dur="4" pname="g" oct="4"/>
+                  <rest xml:id="bt-t9nch8yz" dur="4"/>
+                </layer>
+              </staff>
+              <staff n="2" xml:id="bt-er25w9a6">
+                <layer n="1" xml:id="bt-fpnu1vyh">
+                  <beam xml:id="bt-by32dssf">
+                    <note xml:id="bt-3pyrw1ny" dur="8" pname="f" oct="2"/>
+                    <note xml:id="bt-4rmxrs0s" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-0wbkee1b" dur="8" pname="e" oct="2"/>
+                    <note xml:id="bt-16iujaw3" dur="8" pname="f" oct="2"/>
+                  </beam>
+                  <beam xml:id="bt-p0gkbpuf">
+                    <note xml:id="bt-j41ij4j8" dur="8" pname="d" oct="2"/>
+                    <note xml:id="bt-wc7fm3s5" dur="8" pname="f" oct="2"/>
+                  </beam>
+                  <note xml:id="bt-2pl7il2g" dur="4" pname="b" oct="1"/>
+                </layer>
+              </staff>
+              <fing xml:id="bt-gn2cr68w" staff="1" startid="#bt-zn57tsnu" place="above">3</fing>
+              <fing xml:id="bt-dysazqhh" staff="1" startid="#bt-08j8mojn" place="above">1</fing>
+              <fing xml:id="bt-1j09cziv" staff="1" startid="#bt-08j8mojn" place="above">2</fing>
+              <fing xml:id="bt-4yx65ud5" staff="1" startid="#bt-mdnd5b8u" place="above">1</fing>
+              <fing xml:id="bt-ij7mnqwa" staff="2" startid="#bt-3pyrw1ny" place="above">3</fing>
+              <fing xml:id="bt-eiojw3p8" staff="2" startid="#bt-2pl7il2g" place="above">5</fing>
+              <hairpin xml:id="bt-4dxdfpe4" staff="1" form="dim" startid="#bt-zn57tsnu" endid="#bt-08j8mojn"/>
+            </measure>
+            <measure n="5" xml:id="bt-ba0l0gui">
+              <staff n="1" xml:id="bt-srumc7k1">
+                <layer n="1" xml:id="bt-2luf6e8y">
+                  <note xml:id="bt-y083nf7i" dur="4" pname="d" oct="5"/>
+                  <note xml:id="bt-jo2ym9bf" dur="4" pname="c" oct="5"/>
+                  <note xml:id="bt-e6fs6rgj" dur="4" pname="b" oct="4"/>
+                  <rest xml:id="bt-m99m99gs" dur="4"/>
+                </layer>
+              </staff>
+              <staff n="2" xml:id="bt-tzesnbot">
+                <layer n="1" xml:id="bt-n1s2s43i">
+                  <beam xml:id="bt-tn8cn7qf">
+                    <note xml:id="bt-c7eb4mid" dur="8" pname="a" oct="2" accid="n"/>
+                    <note xml:id="bt-5lbgy6o0" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-qro38mc7" dur="8" pname="g" oct="2"/>
+                    <note xml:id="bt-wc9f70td" dur="8" pname="b" oct="2"/>
+                  </beam>
+                  <beam xml:id="bt-zs0fkpjd">
+                    <note xml:id="bt-m6zyobmd" dur="8" pname="f" oct="2"/>
+                    <note xml:id="bt-a634maam" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-x0firad9" dur="8" pname="a" oct="2" accid="s"/>
+                    <note xml:id="bt-rs7xcms7" dur="8" pname="b" oct="2"/>
+                  </beam>
+                </layer>
+              </staff>
+              <slur xml:id="bt-5ypegk5r" startid="#bt-c7eb4mid" endid="#bt-gv4gfa31" staff="2"/>
+              <slur xml:id="bt-h61kx531" startid="#bt-y083nf7i" endid="#bt-omanhf14" staff="1"/>
+              <fing xml:id="bt-0y6tqo2z" staff="1" startid="#bt-y083nf7i" place="above">3</fing>
+              <fing xml:id="bt-te12fba9" staff="2" startid="#bt-c7eb4mid" place="above">2</fing>
+              <dynam xml:id="bt-y5ctyrqr" staff="1" startid="#bt-y083nf7i">p</dynam>
+            </measure>
+            <measure n="6" xml:id="bt-vn0v2nmz">
+              <staff n="1" xml:id="bt-dxovfwwr">
+                <layer n="1" xml:id="bt-s2bn2xs6">
+                  <note xml:id="bt-9rz4vqau" dur="4" pname="f" oct="5"/>
+                  <note xml:id="bt-vaa5mfpg" dur="4" pname="e" oct="5"/>
+                  <note xml:id="bt-omanhf14" dur="4" pname="d" oct="5"/>
+                  <rest xml:id="bt-fo8drq2g" dur="4"/>
+                </layer>
+              </staff>
+              <staff n="2" xml:id="bt-lsyzljc2">
+                <layer n="1" xml:id="bt-f7qq9gcz">
+                  <beam xml:id="bt-u2ohyu9p">
+                    <note xml:id="bt-613a4965" dur="8" pname="f" oct="2"/>
+                    <note xml:id="bt-qn6s5tdk" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-inmtbji5" dur="8" pname="e" oct="2"/>
+                    <note xml:id="bt-9w88f309" dur="8" pname="b" oct="2"/>
+                  </beam>
+                  <beam xml:id="bt-n3rngi06">
+                    <note xml:id="bt-o1sy3im4" dur="8" pname="d" oct="2"/>
+                    <note xml:id="bt-1d8y4ezs" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-cisfm5ee" dur="8" pname="a" oct="2" accid="s"/>
+                    <note xml:id="bt-gv4gfa31" dur="8" pname="b" oct="2"/>
+                  </beam>
+                </layer>
+              </staff>
+              <fing xml:id="bt-nutkftkw" staff="1" startid="#bt-9rz4vqau" place="above">4</fing>
+              <fing xml:id="bt-slzm99u3" staff="2" startid="#bt-613a4965" place="above">3</fing>
+            </measure>
+            <measure n="7" xml:id="bt-a619g99x">
+              <staff n="1" xml:id="bt-107kpxy0">
+                <layer n="1" xml:id="bt-wsgvxrbe">
+                  <note xml:id="bt-jax1pex4" dur="4" pname="g" oct="5"/>
+                  <note xml:id="bt-0wapud38" dur="4" pname="f" oct="5"/>
+                  <note xml:id="bt-7w4jsbr2" dur="4" pname="e" oct="5"/>
+                  <note xml:id="bt-9t2d9m5w" dur="4" pname="d" oct="5"/>
+                </layer>
+              </staff>
+              <staff n="2" xml:id="bt-qyuvby19">
+                <layer n="1" xml:id="bt-3rgjmm42">
+                  <beam xml:id="bt-v53uczjm">
+                    <note xml:id="bt-oyhyr5et" dur="8" pname="a" oct="2" accid="n"/>
+                    <note xml:id="bt-egwzc0or" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-l9cnxdh7" dur="8" pname="a" oct="2"/>
+                    <note xml:id="bt-bp26hjif" dur="8" pname="b" oct="2"/>
+                  </beam>
+                  <beam xml:id="bt-hpmitgw9">
+                    <note xml:id="bt-xaojw993" dur="8" pname="g" oct="2"/>
+                    <note xml:id="bt-ptqcf10k" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-083kiij1" dur="8" pname="e" oct="2"/>
+                    <note xml:id="bt-xzrzxd2n" dur="8" pname="b" oct="2"/>
+                  </beam>
+                </layer>
+              </staff>
+              <slur xml:id="bt-7s01p1rc" startid="#bt-oyhyr5et" endid="#bt-g3r3vnoq" staff="2"/>
+              <slur xml:id="bt-i60lwc7t" startid="#bt-jax1pex4" endid="#bt-34ud3ou1" staff="1"/>
+              <fing xml:id="bt-ux94nzmk" staff="1" startid="#bt-jax1pex4" place="above">5</fing>
+              <fing xml:id="bt-q0kk961t" staff="2" startid="#bt-oyhyr5et" place="above">2</fing>
+              <hairpin xml:id="bt-3edg3l16" staff="1" form="dim" startid="#bt-jax1pex4" endid="#bt-9t2d9m5w"/>
+            </measure>
+            <measure n="8" xml:id="bt-w29pzbro">
+              <staff n="1" xml:id="bt-2nhpip4f">
+                <layer n="1" xml:id="bt-8gxjt9e7">
+                  <beam xml:id="bt-4vjhs2iq">
+                    <note xml:id="bt-y5omu6ye" dur="8" pname="d" oct="5"/>
+                    <note xml:id="bt-vshsocf2" dur="8" pname="f" oct="5"/>
+                    <note xml:id="bt-vifiaomc" dur="8" pname="e" oct="5"/>
+                    <note xml:id="bt-rual0g5c" dur="8" pname="g" oct="5"/>
+                  </beam>
+                  <beam xml:id="bt-kpip5kh5">
+                    <chord xml:id="bt-qasp0wkj" dur="8">
+                      <note xml:id="bt-r81nyzuj" pname="a" oct="4"/>
+                      <note xml:id="bt-39joaesx" pname="f" oct="5"/>
+                    </chord>
+                    <note xml:id="bt-ihoo90o8" dur="8" pname="c" oct="5" accid="n"/>
+                    <note xml:id="bt-7xuuzist" dur="8" pname="b" oct="4"/>
+                    <note xml:id="bt-34ud3ou1" dur="8" pname="d" oct="5"/>
+                  </beam>
+                </layer>
+              </staff>
+              <staff n="2" xml:id="bt-3mcl8u42">
+                <layer n="1" xml:id="bt-n42oe3x7">
+                  <beam xml:id="bt-8psurx26">
+                    <note xml:id="bt-6ssamyt8" dur="8" pname="d" oct="2"/>
+                    <note xml:id="bt-6wr5nrrp" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-xe7siws6" dur="8" pname="e" oct="2"/>
+                    <note xml:id="bt-kbrwi2zv" dur="8" pname="e" oct="2" accid="s"/>
+                  </beam>
+                  <note xml:id="bt-kdnj0ktr" dur="4" pname="f" oct="2"/>
+                  <note xml:id="bt-g3r3vnoq" dur="4" pname="b" oct="2"/>
+                </layer>
+              </staff>
+              <fing xml:id="bt-m047ewbn" staff="1" startid="#bt-y5omu6ye" place="above">1</fing>
+              <fing xml:id="bt-bxxv68jp" staff="1" startid="#bt-vshsocf2" place="above">4</fing>
+              <fing xml:id="bt-zo3wuqjg" staff="1" startid="#bt-vifiaomc" place="above">3</fing>
+              <fing xml:id="bt-v46zywq3" staff="1" startid="#bt-rual0g5c" place="above">5</fing>
+              <fing xml:id="bt-8x9n723b" staff="1" startid="#bt-qasp0wkj" place="above">1</fing>
+              <fing xml:id="bt-peeeup5r" staff="1" startid="#bt-qasp0wkj" place="above">4</fing>
+              <fing xml:id="bt-2gyinpfn" staff="1" startid="#bt-ihoo90o8" place="above">2</fing>
+              <fing xml:id="bt-g5tgk1uo" staff="1" startid="#bt-7xuuzist" place="above">1</fing>
+              <fing xml:id="bt-llyhxv93" staff="1" startid="#bt-34ud3ou1" place="above">2</fing>
+              <fing xml:id="bt-e1bigii6" staff="2" startid="#bt-xe7siws6" place="above">4</fing>
+            </measure>
+            <measure n="9" xml:id="bt-3gfw8p39">
+              <staff n="1" xml:id="bt-q3bzbb9g">
+                <layer n="1" xml:id="bt-3gtmlwwv">
+                  <chord xml:id="bt-r7r1mdrl" dur="4">
+                    <note xml:id="bt-i6818a59" pname="e" oct="5"/>
+                    <note xml:id="bt-rly3xtlb" pname="c" oct="5"/>
+                  </chord>
+                  <note xml:id="bt-b4bkal9s" dur="4" pname="d" oct="5"/>
+                  <note xml:id="bt-2crcn6ne" dur="4" pname="c" oct="5"/>
+                  <note xml:id="bt-6gpxrq72" dur="4" pname="b" oct="4"/>
+                </layer>
+              </staff>
+              <staff n="2" xml:id="bt-vhyvig00">
+                <layer n="1" xml:id="bt-0f4cf2bo">
+                  <beam xml:id="bt-03jybe7u">
+                    <note xml:id="bt-rcauoxop" dur="8" pname="e" oct="2"/>
+                    <note xml:id="bt-z4mihwba" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-zztllr4p" dur="8" pname="a" oct="2"/>
+                    <note xml:id="bt-zpoz024s" dur="8" pname="b" oct="2"/>
+                  </beam>
+                  <beam xml:id="bt-yamn0rbe">
+                    <note xml:id="bt-pu5xj4ap" dur="8" pname="g" oct="2"/>
+                    <note xml:id="bt-381etlw4" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-zm07vhdk" dur="8" pname="e" oct="2"/>
+                    <note xml:id="bt-8gtgeg6g" dur="8" pname="g" oct="2"/>
+                  </beam>
+                </layer>
+              </staff>
+              <slur xml:id="bt-f57mugh9" startid="#bt-rcauoxop" endid="#bt-1m2ue2w5" staff="2"/>
+              <slur xml:id="bt-yr1lj69u" startid="#bt-r7r1mdrl" endid="#bt-43jp0hww" staff="1"/>
+              <fing xml:id="bt-zcu3a8o1" staff="1" startid="#bt-r7r1mdrl" place="above">1</fing>
+              <fing xml:id="bt-olhtg711" staff="1" startid="#bt-r7r1mdrl" place="above">3</fing>
+              <fing xml:id="bt-ca8o15jm" staff="1" startid="#bt-b4bkal9s" place="above">2</fing>
+              <fing xml:id="bt-43fncx6b" staff="1" startid="#bt-2crcn6ne" place="above">1</fing>
+              <fing xml:id="bt-cziufl52" staff="1" startid="#bt-6gpxrq72" place="above">2</fing>
+              <fing xml:id="bt-caakilld" staff="2" startid="#bt-rcauoxop" place="above">5</fing>
+            </measure>
+            <measure n="10" xml:id="bt-qwktw6gg">
+              <staff n="1" xml:id="bt-q1v8g0a8">
+                <layer n="1" xml:id="bt-atuwevwv">
+                  <beam xml:id="bt-bkiypv7u">
+                    <note xml:id="bt-y0t96x10" dur="8" pname="a" oct="4"/>
+                    <note xml:id="bt-i7of3wi4" dur="8" pname="c" oct="5"/>
+                    <note xml:id="bt-tbnatn9a" dur="8" pname="b" oct="4"/>
+                    <note xml:id="bt-1m9a1ybv" dur="8" pname="d" oct="5"/>
+                  </beam>
+                  <note xml:id="bt-htjc3tal" dur="4" pname="c" oct="5"/>
+                  <note xml:id="bt-43jp0hww" dur="4" pname="g" oct="4"/>
+                </layer>
+              </staff>
+              <staff n="2" xml:id="bt-950fdsj0">
+                <layer n="1" xml:id="bt-2qibsw6p">
+                  <beam xml:id="bt-fh31v32l">
+                    <note xml:id="bt-guo1qlz8" dur="8" pname="a" oct="2"/>
+                    <note xml:id="bt-dgnh3j8e" dur="8" pname="f" oct="2"/>
+                    <note xml:id="bt-qr7mk0p3" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-id1x7t04" dur="8" pname="a" oct="2"/>
+                  </beam>
+                  <beam xml:id="bt-8y3mmbqz">
+                    <note xml:id="bt-uqkhrsp0" dur="8" pname="g" oct="2"/>
+                    <note xml:id="bt-np8idyda" dur="8" pname="a" oct="2"/>
+                    <note xml:id="bt-q0twq5b9" dur="8" pname="g" oct="2"/>
+                    <note xml:id="bt-1m2ue2w5" dur="8" pname="e" oct="2"/>
+                  </beam>
+                </layer>
+              </staff>
+              <fing xml:id="bt-6axerbhs" staff="1" startid="#bt-y0t96x10" place="above">1</fing>
+              <fing xml:id="bt-u7kc3fy5" staff="1" startid="#bt-1m9a1ybv" place="above">4</fing>
+              <fing xml:id="bt-yi1pena9" staff="1" startid="#bt-htjc3tal" place="above">3</fing>
+              <fing xml:id="bt-e1s23s22" staff="2" startid="#bt-guo1qlz8" place="above">2</fing>
+            </measure>
+            <measure n="11" xml:id="bt-0g5hoha4">
+              <staff n="1" xml:id="bt-d0ue74wr">
+                <layer n="1" xml:id="bt-n13ya3eb">
+                  <note xml:id="bt-3df1vlf2" dur="4" pname="a" oct="5"/>
+                  <note xml:id="bt-kn04uwja" dur="4" pname="g" oct="5"/>
+                  <chord xml:id="bt-7ybw9hxn" dur="4">
+                    <note xml:id="bt-prxf4z3j" pname="b" oct="4"/>
+                    <note xml:id="bt-z0misxbj" pname="f" oct="5"/>
+                  </chord>
+                  <chord xml:id="bt-04537pmu" dur="4">
+                    <note xml:id="bt-czf9lx45" pname="c" oct="5"/>
+                    <note xml:id="bt-ccet6l9k" pname="e" oct="5"/>
+                  </chord>
+                </layer>
+              </staff>
+              <staff n="2" xml:id="bt-mmhlcpd0">
+                <layer n="1" xml:id="bt-p0fxgfga">
+                  <beam xml:id="bt-yu2qq4v4">
+                    <note xml:id="bt-c2kji6av" dur="8" pname="a" oct="2"/>
+                    <note xml:id="bt-pp64gn0e" dur="8" pname="e" oct="3"/>
+                    <note xml:id="bt-8mtpd1bb" dur="8" pname="g" oct="2"/>
+                    <note xml:id="bt-id7riutw" dur="8" pname="e" oct="3"/>
+                  </beam>
+                  <beam xml:id="bt-wol21vjx">
+                    <note xml:id="bt-8y7c438g" dur="8" pname="f" oct="2"/>
+                    <note xml:id="bt-4pvqfx9y" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-f49gnch4" dur="8" pname="e" oct="2"/>
+                    <note xml:id="bt-d8vhgz4y" dur="8" pname="b" oct="2"/>
+                  </beam>
+                </layer>
+              </staff>
+              <slur xml:id="bt-hu2garh2" startid="#bt-c2kji6av" endid="#bt-sl3iznxn" staff="2"/>
+              <slur xml:id="bt-24j2o73v" startid="#bt-3df1vlf2" endid="#bt-bjkh2edp" staff="1"/>
+              <fing xml:id="bt-ptkjdunf" staff="1" startid="#bt-3df1vlf2" place="above">5</fing>
+              <fing xml:id="bt-359tcwky" staff="1" startid="#bt-kn04uwja" place="above">4</fing>
+              <fing xml:id="bt-whs9ggtm" staff="1" startid="#bt-7ybw9hxn" place="above">1</fing>
+              <fing xml:id="bt-g043n80c" staff="1" startid="#bt-7ybw9hxn" place="above">3</fing>
+              <fing xml:id="bt-0xr8kjxg" staff="1" startid="#bt-04537pmu" place="above">1</fing>
+              <fing xml:id="bt-r0ldsqhy" staff="1" startid="#bt-04537pmu" place="above">2</fing>
+              <fing xml:id="bt-m6oq2f83" staff="2" startid="#bt-c2kji6av" place="above">2</fing>
+              <fing xml:id="bt-ynfdz0mr" staff="2" startid="#bt-8mtpd1bb" place="above">3</fing>
+              <fing xml:id="bt-h4nhmcsw" staff="2" startid="#bt-8y7c438g" place="above">4</fing>
+              <fing xml:id="bt-nkhwjj40" staff="2" startid="#bt-4pvqfx9y" place="above">1</fing>
+              <fing xml:id="bt-4svn5pb3" staff="2" startid="#bt-f49gnch4" place="above">5</fing>
+              <fing xml:id="bt-s26d7511" staff="2" startid="#bt-d8vhgz4y" place="above">2</fing>
+            </measure>
+            <measure n="12" xml:id="bt-4vv8fbj8">
+              <staff n="1" xml:id="bt-ch4ilvxj">
+                <layer n="1" xml:id="bt-r4s12sco">
+                  <beam xml:id="bt-hy2rw0ri">
+                    <note xml:id="bt-3bltltfs" dur="8" pname="d" oct="5"/>
+                    <note xml:id="bt-nc8r01vi" dur="8" pname="f" oct="5"/>
+                    <note xml:id="bt-htgz11db" dur="8" pname="b" oct="4"/>
+                    <note xml:id="bt-mofw2kf8" dur="8" pname="d" oct="5"/>
+                  </beam>
+                  <note xml:id="bt-bjkh2edp" dur="4" pname="c" oct="5"/>
+                  <rest xml:id="bt-afl8w09g" dur="4"/>
+                </layer>
+              </staff>
+              <staff n="2" xml:id="bt-5y2co69d">
+                <layer n="1" xml:id="bt-ycdrcb8e">
+                  <beam xml:id="bt-1wp79fx7">
+                    <note xml:id="bt-xjigfm2w" dur="8" pname="a" oct="2"/>
+                    <note xml:id="bt-sqztn4bx" dur="8" pname="c" oct="3"/>
+                    <note xml:id="bt-zc6bule8" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-nwrmvkmn" dur="8" pname="a" oct="2"/>
+                  </beam>
+                  <beam xml:id="bt-omaeftr7">
+                    <note xml:id="bt-z1y3rk5r" dur="8" pname="g" oct="2"/>
+                    <note xml:id="bt-lwwvjm4p" dur="8" pname="c" oct="3"/>
+                    <note xml:id="bt-9nrjcnhq" dur="8" pname="e" oct="2"/>
+                    <note xml:id="bt-sl3iznxn" dur="8" pname="g" oct="2"/>
+                  </beam>
+                </layer>
+              </staff>
+              <fing xml:id="bt-7bua2jfp" staff="1" startid="#bt-3bltltfs" place="above">1</fing>
+              <fing xml:id="bt-iqc38qot" staff="1" startid="#bt-nc8r01vi" place="above">5</fing>
+              <fing xml:id="bt-0j7ohfsn" staff="1" startid="#bt-htgz11db" place="above">2</fing>
+              <fing xml:id="bt-4v0ot8td" staff="1" startid="#bt-mofw2kf8" place="above">4</fing>
+              <fing xml:id="bt-xxj7uvu0" staff="1" startid="#bt-bjkh2edp" place="above">3</fing>
+              <fing xml:id="bt-6bicrybh" staff="2" startid="#bt-xjigfm2w" place="above">3</fing>
+              <fing xml:id="bt-6uya0oll" staff="2" startid="#bt-sqztn4bx" place="above">1</fing>
+              <fing xml:id="bt-00lq5h1i" staff="2" startid="#bt-lwwvjm4p" place="above">1</fing>
+              <fing xml:id="bt-0w69uxqv" staff="2" startid="#bt-9nrjcnhq" place="above">5</fing>
+              <fing xml:id="bt-808f0p85" staff="2" startid="#bt-sl3iznxn" place="above">3</fing>
+            </measure>
+            <measure n="13" xml:id="bt-htvwb08k">
+              <staff n="1" xml:id="bt-pwfobuck">
+                <layer n="1" xml:id="bt-9pnch5le">
+                  <note xml:id="bt-rcvncic2" dur="4" pname="d" oct="5"/>
+                  <note xml:id="bt-ysd872nh" dur="4" pname="c" oct="5"/>
+                  <note xml:id="bt-g8ax2pgi" dur="4" pname="b" oct="4"/>
+                  <rest xml:id="bt-ofmhn13n" dur="4"/>
+                </layer>
+              </staff>
+              <staff n="2" xml:id="bt-hmn0gxze">
+                <layer n="1" xml:id="bt-mci973q6">
+                  <beam xml:id="bt-nzllwmdm">
+                    <note xml:id="bt-6wwi4z1o" dur="8" pname="a" oct="2"/>
+                    <note xml:id="bt-cglkg1lm" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-xhrnu4lq" dur="8" pname="g" oct="2"/>
+                    <note xml:id="bt-gwlui6r0" dur="8" pname="b" oct="2"/>
+                  </beam>
+                  <beam xml:id="bt-7fgclcb6">
+                    <note xml:id="bt-rdlxkg38" dur="8" pname="f" oct="2"/>
+                    <note xml:id="bt-eqwhldbq" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-vm92mhfk" dur="8" pname="a" oct="2" accid="s"/>
+                    <note xml:id="bt-5orpbp51" dur="8" pname="b" oct="2"/>
+                  </beam>
+                </layer>
+              </staff>
+              <slur xml:id="bt-pdzr36os" startid="#bt-6wwi4z1o" endid="#bt-5orpbp51" staff="2"/>
+              <slur xml:id="bt-epdcr56m" startid="#bt-rcvncic2" endid="#bt-g8ax2pgi" staff="1"/>
+              <fing xml:id="bt-4q45h0cf" staff="1" startid="#bt-rcvncic2" place="above">3</fing>
+              <fing xml:id="bt-t4hb22c4" staff="2" startid="#bt-6wwi4z1o" place="above">2</fing>
+              <dynam xml:id="bt-lx4dlnkl" staff="1" startid="#bt-ysd872nh">p</dynam>
+            </measure>
+            <measure n="14" xml:id="bt-97y4iijc">
+              <staff n="1" xml:id="bt-3xtktk9x">
+                <layer n="1" xml:id="bt-3rweaz2o">
+                  <note xml:id="bt-rtnhdd40" dur="4" pname="f" oct="5"/>
+                  <note xml:id="bt-c9t9uh13" dur="4" pname="e" oct="5"/>
+                  <note xml:id="bt-l6b53ta1" dur="4" pname="d" oct="5"/>
+                  <rest xml:id="bt-xwmwzcfn" dur="4"/>
+                </layer>
+              </staff>
+              <staff n="2" xml:id="bt-8cvp5gaz">
+                <layer n="1" xml:id="bt-2ipouaaf">
+                  <beam xml:id="bt-km7rf96p">
+                    <note xml:id="bt-13mj7aj0" dur="8" pname="f" oct="2"/>
+                    <note xml:id="bt-hyxkwmi5" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-fqskdfkl" dur="8" pname="e" oct="2"/>
+                    <note xml:id="bt-8fz95hil" dur="8" pname="b" oct="2"/>
+                  </beam>
+                  <beam xml:id="bt-x6uey4kz">
+                    <note xml:id="bt-y5f4hq0y" dur="8" pname="d" oct="2"/>
+                    <note xml:id="bt-5d5dlrd9" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-m059ujyv" dur="8" pname="a" oct="2" accid="s"/>
+                    <note xml:id="bt-xevnngu1" dur="8" pname="b" oct="2"/>
+                  </beam>
+                </layer>
+              </staff>
+              <slur xml:id="bt-l093x3de" startid="#bt-13mj7aj0" endid="#bt-xevnngu1" staff="2"/>
+              <slur xml:id="bt-9xxx8da5" startid="#bt-rtnhdd40" endid="#bt-l6b53ta1" staff="1"/>
+              <fing xml:id="bt-2ntha03w" staff="1" startid="#bt-rtnhdd40" place="above">4</fing>
+              <fing xml:id="bt-ym2nx1c6" staff="2" startid="#bt-13mj7aj0" place="above">3</fing>
+            </measure>
+            <measure n="15" xml:id="bt-gcmbsl2q">
+              <staff n="1" xml:id="bt-cxb37id3">
+                <layer n="1" xml:id="bt-up0jjrfy">
+                  <note xml:id="bt-enlkzbxn" dur="4" pname="a" oct="5"/>
+                  <note xml:id="bt-tvzn10ps" dur="4" pname="g" oct="5"/>
+                  <note xml:id="bt-e6fn0v7d" dur="4" pname="f" oct="5"/>
+                  <note xml:id="bt-76iomqpz" dur="4" pname="e" oct="5"/>
+                </layer>
+              </staff>
+              <staff n="2" xml:id="bt-mu6qnt9b">
+                <layer n="1" xml:id="bt-n5n1fcho">
+                  <beam xml:id="bt-qu7741m9">
+                    <note xml:id="bt-g0eg39u4" dur="8" pname="a" oct="2"/>
+                    <note xml:id="bt-gvz9p4lf" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-w2odlmxc" dur="8" pname="g" oct="2"/>
+                    <note xml:id="bt-t0z0pqro" dur="8" pname="b" oct="2"/>
+                  </beam>
+                  <beam xml:id="bt-akqs3zcf">
+                    <note xml:id="bt-sjz5uw3h" dur="8" pname="g" oct="2"/>
+                    <note xml:id="bt-ppj3fube" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-edn9ezxp" dur="8" pname="e" oct="2"/>
+                    <note xml:id="bt-yg5a9dgp" dur="8" pname="b" oct="2"/>
+                  </beam>
+                </layer>
+              </staff>
+              <slur xml:id="bt-h2xnn01a" startid="#bt-g0eg39u4" endid="#bt-zbg7ulpk" staff="2"/>
+              <slur xml:id="bt-z7f5a628" startid="#bt-enlkzbxn" endid="#bt-x2y3cbk2" staff="1"/>
+              <fing xml:id="bt-o8agdlem" staff="1" startid="#bt-enlkzbxn" place="above">5</fing>
+              <fing xml:id="bt-1y8bp7rv" staff="2" startid="#bt-g0eg39u4" place="above">2</fing>
+              <hairpin xml:id="bt-jjbikais" staff="1" form="dim" startid="#bt-enlkzbxn" endid="#bt-76iomqpz"/>
+            </measure>
+            <measure n="16" xml:id="bt-12li54xi">
+              <staff n="1" xml:id="bt-ml675cmn">
+                <layer n="1" xml:id="bt-jg2qc6vx">
+                  <beam xml:id="bt-lned14y7">
+                    <note xml:id="bt-9nad40w9" dur="8" pname="d" oct="5"/>
+                    <note xml:id="bt-clm1excj" dur="8" pname="f" oct="5"/>
+                    <note xml:id="bt-r8hwjy96" dur="8" pname="e" oct="5"/>
+                    <note xml:id="bt-0ke6jk8z" dur="8" pname="g" oct="5"/>
+                  </beam>
+                  <beam xml:id="bt-rfcsmvmk">
+                    <chord xml:id="bt-hb357osw" dur="8">
+                      <note xml:id="bt-h5p26g7p" pname="f" oct="5"/>
+                      <note xml:id="bt-g9xio1qm" pname="a" oct="4"/>
+                    </chord>
+                    <note xml:id="bt-4qckfg7k" dur="8" pname="c" oct="5"/>
+                    <note xml:id="bt-i6zwo7r4" dur="8" pname="b" oct="4"/>
+                    <note xml:id="bt-x2y3cbk2" dur="8" pname="d" oct="5"/>
+                  </beam>
+                </layer>
+              </staff>
+              <staff n="2" xml:id="bt-i1pabmzy">
+                <layer n="1" xml:id="bt-5d2atipd">
+                  <beam xml:id="bt-era6oxhz">
+                    <note xml:id="bt-edxlpliz" dur="8" pname="d" oct="2"/>
+                    <note xml:id="bt-eqgea04q" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-qdpgpsl8" dur="8" pname="e" oct="2"/>
+                    <note xml:id="bt-iz5rmqii" dur="8" pname="e" oct="2" accid="s"/>
+                  </beam>
+                  <note xml:id="bt-5gt9msb2" dur="4" pname="f" oct="2"/>
+                  <note xml:id="bt-zbg7ulpk" dur="4" pname="b" oct="2"/>
+                </layer>
+              </staff>
+              <fing xml:id="bt-lm8ub98g" staff="1" startid="#bt-9nad40w9" place="above">1</fing>
+              <fing xml:id="bt-lycv2xoc" staff="1" startid="#bt-clm1excj" place="above">4</fing>
+              <fing xml:id="bt-h0eci1s2" staff="1" startid="#bt-r8hwjy96" place="above">3</fing>
+              <fing xml:id="bt-1iiwysqa" staff="1" startid="#bt-0ke6jk8z" place="above">5</fing>
+              <fing xml:id="bt-9s9oqbol" staff="1" startid="#bt-hb357osw" place="above">1</fing>
+              <fing xml:id="bt-vref0axx" staff="1" startid="#bt-hb357osw" place="above">4</fing>
+              <fing xml:id="bt-f4v1x02x" staff="1" startid="#bt-4qckfg7k" place="above">2</fing>
+              <fing xml:id="bt-s2ck1yaw" staff="1" startid="#bt-i6zwo7r4" place="above">1</fing>
+              <fing xml:id="bt-pfo4f153" staff="1" startid="#bt-x2y3cbk2" place="above">2</fing>
+              <fing xml:id="bt-lvjw3kss" staff="2" startid="#bt-qdpgpsl8" place="above">4</fing>
+            </measure>
+            <measure n="17" xml:id="bt-6ew8riyu">
+              <staff n="1" xml:id="bt-7t9ryk5z">
+                <layer n="1" xml:id="bt-mfabdhnc">
+                  <chord xml:id="bt-ge4iuuum" dur="4">
+                    <note xml:id="bt-jiwe4jqm" pname="c" oct="5"/>
+                    <note xml:id="bt-si1nktx3" pname="e" oct="5"/>
+                  </chord>
+                  <note xml:id="bt-dsfozxp5" dur="4" pname="d" oct="5"/>
+                  <note xml:id="bt-d7i9ck10" dur="4" pname="c" oct="5"/>
+                  <note xml:id="bt-5qv0wgbc" dur="4" pname="b" oct="4"/>
+                </layer>
+              </staff>
+              <staff n="2" xml:id="bt-ti3zci12">
+                <layer n="1" xml:id="bt-yze95n8k">
+                  <beam xml:id="bt-6xfespfs">
+                    <note xml:id="bt-k8hdigo2" dur="8" pname="e" oct="2"/>
+                    <note xml:id="bt-byxqy835" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-mckc8cp2" dur="8" pname="a" oct="2"/>
+                    <note xml:id="bt-qhmdonjn" dur="8" pname="b" oct="2"/>
+                  </beam>
+                  <beam xml:id="bt-4y7rlka8">
+                    <note xml:id="bt-2hcpqn06" dur="8" pname="a" oct="2"/>
+                    <note xml:id="bt-eco964f3" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-o4jv7um4" dur="8" pname="e" oct="2"/>
+                    <note xml:id="bt-7swz420j" dur="8" pname="g" oct="2"/>
+                  </beam>
+                </layer>
+              </staff>
+              <slur xml:id="bt-9fkpxm6t" startid="#bt-k8hdigo2" endid="#bt-plhmiz54" staff="2"/>
+              <slur xml:id="bt-6clg2wr3" startid="#bt-ge4iuuum" endid="#bt-nipdmsxk" staff="1"/>
+              <fing xml:id="bt-0z64fc7z" staff="1" startid="#bt-ge4iuuum" place="above">1</fing>
+              <fing xml:id="bt-pviq0tca" staff="1" startid="#bt-ge4iuuum" place="above">3</fing>
+              <fing xml:id="bt-5qkqvcm5" staff="1" startid="#bt-dsfozxp5" place="above">2</fing>
+              <fing xml:id="bt-6b0itum8" staff="1" startid="#bt-d7i9ck10" place="above">1</fing>
+              <fing xml:id="bt-lqvultk6" staff="1" startid="#bt-5qv0wgbc" place="above">2</fing>
+              <fing xml:id="bt-s4xzk3tk" staff="2" startid="#bt-k8hdigo2" place="above">5</fing>
+            </measure>
+            <measure n="18" xml:id="bt-jadlj8lx">
+              <staff n="1" xml:id="bt-wt79zs1s">
+                <layer n="1" xml:id="bt-23f7e06u">
+                  <beam xml:id="bt-vmgjj2so">
+                    <note xml:id="bt-ue7qa1kh" dur="8" pname="a" oct="4"/>
+                    <note xml:id="bt-zb9pj0qk" dur="8" pname="c" oct="5"/>
+                    <note xml:id="bt-rx9f1gpg" dur="8" pname="b" oct="4"/>
+                    <note xml:id="bt-d3wfh1x3" dur="8" pname="d" oct="5"/>
+                  </beam>
+                  <note xml:id="bt-yeprfl8j" dur="4" pname="c" oct="5"/>
+                  <note xml:id="bt-nipdmsxk" dur="4" pname="g" oct="4"/>
+                </layer>
+              </staff>
+              <staff n="2" xml:id="bt-h48wl91j">
+                <layer n="1" xml:id="bt-syw22e3j">
+                  <beam xml:id="bt-cigdh3eu">
+                    <note xml:id="bt-g5nw524x" dur="8" pname="a" oct="2"/>
+                    <note xml:id="bt-ruqms0bw" dur="8" pname="f" oct="2"/>
+                    <note xml:id="bt-zzbbkovu" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-pa78qksl" dur="8" pname="g" oct="2"/>
+                  </beam>
+                  <beam xml:id="bt-wbq0spdg">
+                    <note xml:id="bt-oqp5szth" dur="8" pname="f" oct="2"/>
+                    <note xml:id="bt-4sy3i6bs" dur="8" pname="g" oct="2"/>
+                    <note xml:id="bt-4gqj67p3" dur="8" pname="f" oct="2"/>
+                    <note xml:id="bt-plhmiz54" dur="8" pname="e" oct="2"/>
+                  </beam>
+                </layer>
+              </staff>
+              <fing xml:id="bt-mbyt3nta" staff="1" startid="#bt-ue7qa1kh" place="above">1</fing>
+              <fing xml:id="bt-2ge4gn4q" staff="1" startid="#bt-d3wfh1x3" place="above">4</fing>
+              <fing xml:id="bt-quy4x21k" staff="1" startid="#bt-yeprfl8j" place="above">3</fing>
+              <fing xml:id="bt-zz5hx9sh" staff="2" startid="#bt-g5nw524x" place="above">2</fing>
+            </measure>
+            <measure n="19" xml:id="bt-kk5jmf0d">
+              <staff n="1" xml:id="bt-nfpp076y">
+                <layer n="1" xml:id="bt-lcnvlgv5">
+                  <note xml:id="bt-r7975eul" dur="4" pname="a" oct="5"/>
+                  <note xml:id="bt-om19pd0m" dur="4" pname="g" oct="5"/>
+                  <chord xml:id="bt-7o1cdxr4" dur="4">
+                    <note xml:id="bt-j5aew6hk" pname="f" oct="5"/>
+                    <note xml:id="bt-sjf13rra" pname="b" oct="4"/>
+                  </chord>
+                  <chord xml:id="bt-rxbw368c" dur="4">
+                    <note xml:id="bt-ri0225tx" pname="c" oct="5"/>
+                    <note xml:id="bt-gqpm7mjh" pname="e" oct="5"/>
+                  </chord>
+                </layer>
+              </staff>
+              <staff n="2" xml:id="bt-u1cwxu1m">
+                <layer n="1" xml:id="bt-vn1wvly0">
+                  <beam xml:id="bt-u0zk7dgo">
+                    <note xml:id="bt-6kac44xp" dur="8" pname="a" oct="2"/>
+                    <note xml:id="bt-s2s2r3yj" dur="8" pname="e" oct="3"/>
+                    <note xml:id="bt-rif4pf1m" dur="8" pname="g" oct="2"/>
+                    <note xml:id="bt-jpcw1dec" dur="8" pname="e" oct="3"/>
+                  </beam>
+                  <beam xml:id="bt-d3qg3435">
+                    <note xml:id="bt-cmz147px" dur="8" pname="f" oct="2"/>
+                    <note xml:id="bt-kc4kxco3" dur="8" pname="d" oct="3"/>
+                    <note xml:id="bt-lya51lb0" dur="8" pname="e" oct="2"/>
+                    <note xml:id="bt-8d971212" dur="8" pname="b" oct="2"/>
+                  </beam>
+                </layer>
+              </staff>
+              <slur xml:id="bt-m3m1aj30" startid="#bt-6kac44xp" endid="#bt-duqay6c7" staff="2"/>
+              <slur xml:id="bt-0va0t35m" startid="#bt-r7975eul" endid="#bt-3e8e2x2v" staff="1"/>
+              <fing xml:id="bt-3aiuskf6" staff="1" startid="#bt-r7975eul" place="above">5</fing>
+              <fing xml:id="bt-83e5jlh3" staff="1" startid="#bt-om19pd0m" place="above">4</fing>
+              <fing xml:id="bt-3isqpo5e" staff="1" startid="#bt-7o1cdxr4" place="above">1</fing>
+              <fing xml:id="bt-ugi5rqt2" staff="1" startid="#bt-7o1cdxr4" place="above">3</fing>
+              <fing xml:id="bt-tfaw3u39" staff="1" startid="#bt-rxbw368c" place="above">1</fing>
+              <fing xml:id="bt-ur9zyawt" staff="1" startid="#bt-rxbw368c" place="above">2</fing>
+              <fing xml:id="bt-2xltir2j" staff="2" startid="#bt-6kac44xp" place="above">2</fing>
+              <fing xml:id="bt-z36iomdq" staff="2" startid="#bt-rif4pf1m" place="above">3</fing>
+              <fing xml:id="bt-338vgqur" staff="2" startid="#bt-cmz147px" place="above">4</fing>
+              <fing xml:id="bt-roe6ckua" staff="2" startid="#bt-kc4kxco3" place="above">1</fing>
+              <fing xml:id="bt-qzcavtrk" staff="2" startid="#bt-lya51lb0" place="above">5</fing>
+              <fing xml:id="bt-9xw4ava9" staff="2" startid="#bt-8d971212" place="above">2</fing>
+            </measure>
+            <measure n="20" xml:id="bt-cupj2jxc">
+              <staff n="1" xml:id="bt-022my777">
+                <layer n="1" xml:id="bt-b7ym7s25">
+                  <beam xml:id="bt-i1b60l1d">
+                    <note xml:id="bt-um42lwvz" dur="8" pname="d" oct="5"/>
+                    <note xml:id="bt-i5ehii7h" dur="8" pname="f" oct="5"/>
+                    <note xml:id="bt-xrbd3fqr" dur="8" pname="b" oct="4"/>
+                    <note xml:id="bt-flgy7pq3" dur="8" pname="d" oct="5"/>
+                  </beam>
+                  <note xml:id="bt-3e8e2x2v" dur="4" pname="c" oct="5"/>
+                  <rest xml:id="bt-3zix3bvx" dur="4"/>
+                </layer>
+              </staff>
+              <staff n="2" xml:id="bt-mct3gowp">
+                <layer n="1" xml:id="bt-s4bb0wbv">
+                  <beam xml:id="bt-4vrdfw13">
+                    <note xml:id="bt-042vlin6" dur="8" pname="a" oct="2"/>
+                    <note xml:id="bt-xazvovxq" dur="8" pname="c" oct="3"/>
+                    <note xml:id="bt-j6bxp4ta" dur="8" pname="b" oct="2"/>
+                    <note xml:id="bt-7uh0vinv" dur="8" pname="a" oct="2"/>
+                  </beam>
+                  <beam xml:id="bt-gkjaf2p1">
+                    <note xml:id="bt-up9k1lf0" dur="8" pname="g" oct="2"/>
+                    <note xml:id="bt-3zi6i0jk" dur="8" pname="b" oct="2"/>
+                  </beam>
+                  <note xml:id="bt-duqay6c7" dur="4" pname="e" oct="2"/>
+                </layer>
+              </staff>
+              <fing xml:id="bt-dshoo1ss" staff="1" startid="#bt-um42lwvz" place="above">1</fing>
+              <fing xml:id="bt-uk8h0dvs" staff="1" startid="#bt-i5ehii7h" place="above">5</fing>
+              <fing xml:id="bt-b4io3b3m" staff="1" startid="#bt-xrbd3fqr" place="above">2</fing>
+              <fing xml:id="bt-9vtzpfwc" staff="1" startid="#bt-flgy7pq3" place="above">4</fing>
+              <fing xml:id="bt-kxkk0qra" staff="1" startid="#bt-3e8e2x2v" place="above">3</fing>
+              <fing xml:id="bt-15ev2la0" staff="2" startid="#bt-042vlin6" place="above">3</fing>
+              <fing xml:id="bt-v8j9uhji" staff="2" startid="#bt-up9k1lf0" place="above">4</fing>
+              <fing xml:id="bt-6e4rk8zp" staff="2" startid="#bt-3zi6i0jk" place="above">1</fing>
+              <fing xml:id="bt-zm97z9bq" staff="2" startid="#bt-duqay6c7" place="above">5</fing>
+            </measure>
+          </section>
+        </score>
+      </mdiv>
+    </body>
+  </music>
+</mei>

@@ -1,0 +1,122 @@
+---
+title: How battuta thinks
+description: The document is the truth, every edit is a reversible command, and measures must add up — the three ideas behind every behaviour in the editor.
+sidebar:
+  order: 4
+---
+
+import { Aside } from "@astrojs/starlight/components";
+import Figure from "../../components/Figure.astro";
+
+Three ideas explain nearly everything battuta does, including the things it
+refuses to do. Ten minutes here saves an hour of surprise later.
+
+## 1. The document is the truth
+
+battuta does not have an internal drawing that it exports as MEI. It has your
+MEI file, parsed into a tree, and everything on screen is a projection of that
+tree. Saving is a serialisation of the same thing you have been editing.
+
+Consequences you can feel:
+
+- **Nothing is lost in the round trip.** Elements battuta doesn't understand,
+  attributes it has no UI for, comments, processing instructions, the whole
+  `meiHead` — all preserved verbatim and written back out. Files from other
+  tools come back recognisably themselves.
+- **Every element has an `xml:id`**, generated on import if missing. Ids are the
+  currency of the whole editor: the caret is an id, a selection is a set of ids,
+  hit-testing a click means finding the id of the SVG element you hit.
+- **What you save is readable.** Saves are pretty-printed with two-space
+  indentation, and elements with text content stay on one line, so mixed content
+  is untouched. You can diff two saves in git and see the edit.
+
+<Aside type="tip" title="Duplicate ids, and the ⟲id button">
+Some tools emit MEI with repeated `xml:id`s, which breaks id-based editing in
+subtle ways. The **⟲id** button in the header re-mints every id in the document
+and rewrites every reference — `startid`, `endid`, `plist`, all of them — to
+follow. One undo step, and it fixes such a file for good.
+</Aside>
+
+## 2. Every edit is a reversible command
+
+There is no "modify the document" path. Each action builds a command object
+that knows how to apply itself *and* how to revert itself, and the undo stack
+holds those commands.
+
+- An action that touches several places is **one** undo step. Dotting a note
+  that has to steal time from following rests: one step. Wrapping six notes in
+  a sextuplet and writing the freed rests after it: one step. Regenerating every
+  id in the document: one step.
+- Revert is **byte-identical**. This is tested by a property fuzzer that applies
+  random commands and checks that undoing returns the exact original bytes — it
+  is the strongest guarantee in the codebase, not an aspiration.
+- Undo is instant even in large scores, because undoing is a model change plus a
+  tile swap, not a re-render of everything.
+
+## 3. Measures have to add up
+
+In MEI, the events in a voice must sum to the measure's notated duration. That
+rule is not advisory in battuta: it is enforced at the point of every edit.
+
+This is why note entry is an **overwrite** mode rather than an insert mode.
+Writing an eighth where a quarter was fills the leftover with rests; writing a
+half note consumes the events after it. The measure's total never changes, so
+the document is never briefly invalid.
+
+### Why an edit gets refused
+
+When an edit cannot keep the arithmetic true, battuta refuses it and says why in
+a toast. Common ones, and what to do:
+
+| Refusal | Why | What to do |
+| --- | --- | --- |
+| Entry stops at a boundary | A longer note would have to eat across a beam, a tuplet, or the barline | Shorten the note, or clear the obstacle first |
+| Meter change refused, naming a measure | Existing content in that measure no longer fits the new meter | Fix that measure, or change the meter on empty/whole-rest measures |
+| Merge refused | The two durations don't add up to something writable (a half plus an eighth has no single notehead) | Use a tie instead |
+| Tuplet refused | Wrong number of notes, a non-consecutive run, or freed time that can't be written as rests | Select exactly 3 or 6 consecutive equal notes |
+| Paste refused | The fragment's duration doesn't fit the target under the paste policy | Match the shapes, or paste into measures you're willing to replace wholesale |
+| Retrograde skipped | Chord sizes don't mirror, so pitch content can't be reversed onto the rhythm | Reflect a passage whose chord shape is symmetric |
+
+A refusal never leaves a half-applied edit behind. If an operation wraps another
+one — an auto-unbeam before a rhythm change, say — and the inner edit refuses,
+the wrapper rolls back too.
+
+## How the score gets drawn
+
+battuta never draws notation. [Verovio](https://www.verovio.org/) does, in a
+worker thread, and battuta arranges the results.
+
+In **edit view**, each measure is rendered on its own from a synthesized slice:
+the effective clef, key, meter and staff definitions at that point, plus the
+measure's content. Tiles are cached by *(content, context)* — so an edit
+re-renders only the tiles whose key changed, and a key or clef change
+automatically invalidates every tile after it, because their context hash moved.
+That's what keeps a keystroke under a tile-sized amount of work instead of a
+score-sized one.
+
+Two consequences worth knowing:
+
+- Spacing is justified **per measure**, not across the page. Edit view is a
+  working surface, not a proof.
+- Spans that cross a tile edge — slurs, ties, hairpins, pedal — are segmented
+  into per-tile pieces, drawn as outgoing and incoming continuations. It's the
+  same convention as a system break, just more often.
+
+<Figure name="tie-chain" caption="A tie chain crossing the barline. In edit view each measure draws its own half of the curve; page view draws the real thing." />
+
+**Page view** is the ground truth for how the music looks: the same document
+through Verovio's page layout, with the title, real spanning slurs, and measure
+numbers. When something looks odd in edit view, check page view before
+believing it.
+
+## What battuta is not
+
+It is not an engraver, and this is a deliberate boundary rather than a missing
+feature. battuta has no spacing controls, no beam-angle editor, no drag-a-note
+handles, and no page-layout panel. Notation appearance is Verovio's job; if a
+rendering is wrong, the fix is in the MEI or in Verovio's options, never in a
+hand-nudged position.
+
+It is also not a DAW. [Playback](../guide/playback/) exists so you can audition
+what you just edited — and to check that the form you notated actually plays the
+way you meant it.

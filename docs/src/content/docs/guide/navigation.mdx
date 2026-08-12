@@ -1,0 +1,87 @@
+---
+title: Moving around
+description: The caret, arrow-key navigation, rows, zoom — moving through a score the way a cursor moves through text.
+sidebar:
+  order: 1
+  label: Navigation
+---
+
+import KeymapTable from "../../../components/KeymapTable.astro";
+import { Aside } from "@astrojs/starlight/components";
+
+The caret is battuta's answer to "where am I?". It is not a pixel position but a
+place in the document: **measure, staff, voice, event**. The status bar spells it
+out — `[ m 10, s 2, v 1, n 6 ]` — and the blue highlight in the score shows the
+event it sits on.
+
+## Placing the caret
+
+**Click a note, rest or chord.** Clicking a chord puts the caret on the whole
+chord, even if you hit one of its noteheads. Clicking a slur, a barline or a
+staff line lands on the closest event in that measure instead, so you rarely
+have to aim precisely.
+
+## Walking through the music
+
+<KeymapTable ids={["navigation", "rowNavigation"]} />
+
+**<kbd>←</kbd> and <kbd>→</kbd>** step event by event through the caret's voice
+and cross measure boundaries as if the barlines weren't there. They stop at the
+voice's own start and end: a second voice that only exists in measures 5–8 does
+not teleport you to measure 1.
+
+**<kbd>↑</kbd> and <kbd>↓</kbd>** move vertically through the slots in the
+measure — voice 1, voice 2, then the next staff's voices — and when the slots run
+out they continue to the adjacent **row** of the score, entering at its top slot
+going down and its bottom slot coming up, landing on the note nearest the
+caret's horizontal position. That is exactly how a text cursor behaves at the
+end of a line.
+
+**<kbd>Home</kbd> / <kbd>End</kbd>** jump to the first or last event of the
+engraved row you are on. **<kbd>PageUp</kbd> / <kbd>PageDown</kbd>** move to the
+previous or next row, keeping your staff and voice where the landing measure
+has them.
+
+<Aside type="note" title="Rows, not systems">
+In edit view battuta flows measure tiles into rows the way a paragraph flows
+words, so a "row" is however many measures fit your window at the current zoom.
+Resize the window and Home/End cover a different span — the same way rewrapping
+text changes what "end of line" means.
+</Aside>
+
+### The view follows the caret
+
+When navigation or note entry pushes the caret past the edge of the window, the
+score scrolls it back to the middle, smoothly, clearing the sticky header and
+the status bar. Re-layout, zoom changes and background tile renders never scroll
+the view — only an actual caret move does.
+
+If the caret lands in a measure that hasn't been rendered yet (large scores
+render lazily), battuta scrolls to its place, which triggers the render, and the
+caret appears as soon as the tile exists.
+
+## Zoom
+
+<kbd>ctrl</kbd> + <kbd>+</kbd> / <kbd>ctrl</kbd> + <kbd>−</kbd> zoom in and out
+in 25 % steps from 50 % to 250 %; <kbd>ctrl</kbd> + <kbd>0</kbd> returns to
+100 %. The same steps are behind the **zoom** button in the status bar. Your
+zoom level is remembered between sessions, and new documents open at it.
+
+The browser's own page zoom is suppressed on these keys — in battuta they always
+mean the score.
+
+## Clearing state
+
+<kbd>esc</kbd> drops any selection and any block. In note input mode,
+<kbd>esc</kbd> first leaves input mode (press it again to clear a selection).
+
+## Between the two views
+
+The caret is drawn in edit view. Switching to page view keeps the position — it
+is stored in the document, not on screen — so you can proofread a passage, come
+back, and carry on typing where you were.
+
+## Next
+
+- [Selection](../selection/) — extending from the caret into runs and blocks.
+- [Note entry](../note-entry/) — what the letter keys do once input mode is on.

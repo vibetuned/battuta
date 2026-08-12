@@ -1,0 +1,83 @@
+---
+title: Keyboard reference
+description: Every binding in battuta, for QWERTY and AZERTY, generated from the editor's own keymap.
+sidebar:
+  order: 1
+---
+
+import { Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+import KeymapTable from "../../../components/KeymapTable.astro";
+
+Every action, exactly as the editor defines it. This page is generated from
+`apps/editor/src/keymap.ts`, so it cannot drift from the application — and the
+application itself carries the same list under **🌣** in the header.
+
+<Aside type="note" title="Reading the tables">
+*Applies* says when a binding is live: `any time`, `input mode` only, or with a
+particular selection. A binding marked **fixed** is matched by physical key
+position or is a system chord — the editor lists it, but it cannot be rebound.
+</Aside>
+
+<Tabs>
+  <TabItem label="QWERTY">
+    <KeymapTable layout="qwerty" />
+  </TabItem>
+  <TabItem label="AZERTY">
+    <KeymapTable layout="azerty" />
+  </TabItem>
+</Tabs>
+
+## Modifier conventions
+
+| Written | Means |
+| --- | --- |
+| <kbd>shift</kbd> + <kbd>s</kbd> | An uppercase letter binding — hold shift |
+| <kbd>alt</kbd> + <kbd>b</kbd> | Hold alt (option on macOS) |
+| <kbd>⌃s</kbd> | <kbd>ctrl</kbd> + <kbd>s</kbd> (⌘ on macOS) |
+| <kbd>⌥1–5</kbd> | <kbd>alt</kbd> + the digits 1 to 5 |
+| <kbd>⊞+</kbd> | The numeric keypad's <kbd>+</kbd> |
+| <kbd>1–7</kbd> | The digit row *or* the keypad, matched by key position |
+
+## System chords
+
+These are fixed:
+
+| Keys | Action |
+| --- | --- |
+| <kbd>ctrl</kbd> + <kbd>s</kbd> | Save (<kbd>ctrl</kbd> + <kbd>shift</kbd> + <kbd>s</kbd> = save as) |
+| <kbd>ctrl</kbd> + <kbd>o</kbd> | Open |
+| <kbd>ctrl</kbd> + <kbd>z</kbd> | Undo |
+| <kbd>ctrl</kbd> + <kbd>shift</kbd> + <kbd>z</kbd> / <kbd>ctrl</kbd> + <kbd>y</kbd> | Redo |
+| <kbd>ctrl</kbd> + <kbd>c</kbd> / <kbd>ctrl</kbd> + <kbd>v</kbd> | Copy / paste a block |
+| <kbd>ctrl</kbd> + <kbd>+</kbd> / <kbd>ctrl</kbd> + <kbd>−</kbd> / <kbd>ctrl</kbd> + <kbd>0</kbd> | Zoom in / out / reset |
+| <kbd>Insert</kbd> | Toggle note input both ways |
+| <kbd>esc</kbd> | Leave input mode, or clear the selection |
+| <kbd>Delete</kbd> / <kbd>Backspace</kbd> | Turn the caret's event, or the previous one, into rests |
+| <kbd>alt</kbd> + <kbd>←</kbd> / <kbd>→</kbd> | Shorten / lengthen the duration |
+| <kbd>alt</kbd> + <kbd>↑</kbd> / <kbd>↓</kbd> | Transpose a step (add <kbd>shift</kbd> for an octave) |
+
+## Rebinding
+
+Open the shortcut editor with **🌣**. It lists every action by group with its
+current keys.
+
+1. Click a binding.
+2. Press the key you want. Letters keep their case, <kbd>alt</kbd> is recorded,
+   and shift is explicit for symbols.
+3. A duplicate shows an amber warning — battuta lets you do it, but tells you.
+
+*Reset all* restores the defaults. Overrides are stored per layout in the
+browser's local storage, so they survive restarts, and switching layouts switches
+override sets too.
+
+### QWERTY and AZERTY are separate maps
+
+The two layouts have **separate defaults**, because a single merged map
+double-books keys: QWERTY's simile key `'` is AZERTY's unshifted digit-4, which
+collides with the duration row in input mode. Only the punctuation bindings
+differ; letters and the physical-key bindings are identical.
+
+Pick your layout in the shortcut editor. Bindings match on the *character* a key
+produces, so a rebound key follows your layout rather than a physical position —
+except for the bindings marked fixed, which are position-matched on purpose so the
+duration digits and fingering keys work everywhere.

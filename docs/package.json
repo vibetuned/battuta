@@ -1,0 +1,28 @@
+{
+  "name": "@battuta/docs",
+  "version": "0.0.1",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "description": "battuta user guide — Astro Starlight site; notation figures rendered by Verovio, icons rasterised by cairo",
+  "type": "module",
+  "scripts": {
+    "predev": "npm run assets",
+    "dev": "astro dev",
+    "prebuild": "npm run assets",
+    "build": "astro build",
+    "postbuild": "node scripts/check.mjs",
+    "preview": "astro preview",
+    "assets": "npm run figures && npm run keymap",
+    "figures": "node scripts/build-figures.mjs",
+    "keymap": "node scripts/build-keymap.mjs",
+    "check": "node scripts/check.mjs"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.41.7",
+    "astro": "^7.2.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.12",
+    "verovio": "^6.2.0"
+  }
+}
