@@ -1,0 +1,79 @@
+---
+title: Known limits
+description: What battuta deliberately does not do, what is not built yet, and what is coming next.
+sidebar:
+  order: 3
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+An honest list, so you can tell "battuta won't do this" from "battuta can't do this
+yet".
+
+## By design — these will not change
+
+**battuta does not engrave.** There are no spacing controls, no beam-angle
+handles, no dragging of notes or slurs, no page-layout panel. Verovio decides how
+notation looks; battuta decides what the notation *is*. If a rendering looks wrong,
+the fix is in the MEI or in Verovio, never in a nudged position.
+
+**Edit view is not a proof.** Each measure is engraved on its own, so spacing is
+justified per measure rather than across the page, and spans crossing a tile edge
+(slurs, ties, hairpins, pedal) are drawn as broken continuations — the system-break
+convention, occurring more often. Page view is the ground truth.
+
+**battuta is not a DAW.** Playback exists to audition edits and to verify the form.
+
+**Full MEI coverage is not the target.** battuta understands Common Western
+notation as produced by Verovio-compatible tools. Anything else in your file is
+preserved verbatim rather than understood — safe, but not editable in the UI.
+
+## Not built yet
+
+| Missing | Notes |
+| --- | --- |
+| Autosave, session restore | Nothing recovers unsaved work after a crash |
+| Close confirmation | Closing a starred tab or the window discards unsaved edits silently |
+| File watching | External changes to an open file go unnoticed; your next save overwrites them |
+| Splice-at-caret and overlay-as-new-layer paste | Only replace-measures is implemented |
+| Split view | Cross-file work happens through tabs |
+| MusicXML import/export | MEI only |
+| SVG / PDF / print output | Page view renders, but there is no export |
+| Selection playback, metronome, per-staff mute | The page-view player is all-or-nothing |
+| Dynamics affecting playback volume | Notated, not performed |
+| Lyrics, figured bass, percussion maps | Deliberately deferred |
+| Part extraction, transposed parts | Deliberately deferred |
+| Collaborative editing, plugins | Out of scope |
+
+## Rough edges
+
+- **Verovio occasionally draws an exuberant curve** on a slur continuation stub in
+  edit view. Cosmetic, upstream, and absent in page view.
+- **The macOS `.dmg` is unsigned**, so Gatekeeper warns on first open. See
+  [Install](../../install/#download-a-build).
+- **Windows has had no test round.** The bundles are built by CI, but nobody has
+  put them through their paces.
+- **Very exotic repeat structures** fall back to unexpanded playback rather than a
+  guess.
+
+## Coming next
+
+The two research phases in the project's plan, in order:
+
+**Reference layers for transcription.** Import MIDI (and the JSON sidecar a
+transcription pipeline emits) as reference tracks, drawn as translucent
+piano-roll bars behind the notation, aligned to each measure's own pitch axis so a
+transcription error is visible at a glance. Per-track solo, mute and colour, plus
+selection playback against the reference grid.
+
+**OMR correction mode.** Read MEI `<facsimile>`/`<zone>` data (or a sidecar from
+the OMR pipeline), show the source scan strip above each measure, click through
+between scan region and notation, tint elements by model confidence, and jump the
+caret through the flagged ones. Corrections can be written back as annotations so
+they feed the upstream model's training data.
+
+<Aside type="tip" title="Reporting something">
+Bugs and feature requests: [github.com/vibetuned/battuta/issues](https://github.com/vibetuned/battuta/issues).
+A `.mei` file that reproduces the problem is worth ten paragraphs of description —
+and if it's a rendering issue, say whether page view shows it too.
+</Aside>

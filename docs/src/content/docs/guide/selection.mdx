@@ -1,0 +1,87 @@
+---
+title: Selecting music
+description: Event runs, block selections, endpoint pairs — the two selection kinds and what each one lets you do.
+sidebar:
+  order: 2
+  label: Selection
+---
+
+import { Aside } from "@astrojs/starlight/components";
+import Figure from "../../../components/Figure.astro";
+import Shot from "../../../components/Shot.astro";
+
+battuta has two selection shapes, and they are for different jobs.
+
+## Event runs — red
+
+A run is an ordered stretch of events inside one voice.
+
+- **shift-click** from the caret to another note in the same voice.
+- **<kbd>shift</kbd> + <kbd>←</kbd> / <kbd>→</kbd>** extends note by note,
+  across barlines.
+
+Runs are what you want for anything that applies *to notes*: transposing,
+accidentals, articulations, slurs, ties, hairpins, tuplets, pedal.
+
+<Shot name="selection-run" caption="A run in red, shift-clicked along the treble voice." />
+
+## Block selections — green
+
+A block is a rectangle in the grid of **measures × staves** — the spreadsheet
+model, where measures are rows and staves are columns.
+
+**Drag** across the score: as soon as the pointer leaves the measure or staff it
+started in, the drag becomes a block. Release to keep it.
+
+<Shot name="selection-block" caption="A block in green: two measures × both staves, painted by dragging." />
+
+Blocks are what you want for anything that applies *to regions*: copy and paste,
+repeat barlines, voltas, reflection, inserting or deleting measures.
+
+<Figure name="real-block" caption="A two-measure, two-staff block — Schumann, <em>Soldatenmarsch</em>, op. 68. A block can be one measure of one staff, or every measure of every staff, and anything between." />
+
+## One selection, every action
+
+You don't have to remember which shape an action wants. Whichever selection
+exists, battuta derives what the action needs from it:
+
+| You have | An action that works on notes | An action that works on measures |
+| --- | --- | --- |
+| A shift-run | uses the run directly | uses the measures the run spans |
+| A single-staff block | uses the run of events inside it | uses the block directly |
+| A multi-staff block | covers every event in it (transpose, accidentals) | uses the block directly |
+
+So <kbd>r</kbd> toggles repeat barlines around the measures your shift-run
+touches, and <kbd>ctrl</kbd> + <kbd>c</kbd> on a run copies that run's whole
+measure span. Where a span needs to start and end on notes — a slur, a hairpin, a
+tie chain — rests at the edges of the selection are trimmed so the endpoints land
+on real notes.
+
+## Endpoint pairs across staves
+
+A run cannot span two staves, so shift-clicking from one staff to another selects
+an **endpoint pair**: just the two notes you clicked. That is exactly what the
+spans which legitimately cross staves need — a cross-staff slur or hairpin — and
+battuta writes them with both staff numbers.
+
+Actions that genuinely require one voice (tie chains, the grace-note pair) refuse
+an endpoint pair, and say so.
+
+## What a selection enables
+
+| Selection | Then press |
+| --- | --- |
+| A run of notes | <kbd>shift</kbd> + <kbd>s</kbd> slur · <kbd>t</kbd> tie chain · <kbd>p</kbd> hairpin · <kbd>shift</kbd> + <kbd>p</kbd> pedal · <kbd>shift</kbd> + <kbd>t</kbd> tuplet |
+| Two notes, different pitches | <kbd>m</kbd> grace-note cycle |
+| Any notes | <kbd>alt</kbd> + <kbd>↑</kbd> / <kbd>↓</kbd> transpose · <kbd>s</kbd> <kbd>v</kbd> <kbd>n</kbd> accidentals · <kbd>Delete</kbd> to rests |
+| A block of measures | <kbd>ctrl</kbd> + <kbd>c</kbd> copy · <kbd>ctrl</kbd> + <kbd>v</kbd> paste · <kbd>r</kbd> repeat barlines · <kbd>shift</kbd> + <kbd>1</kbd>…<kbd>9</kbd> voltas · <kbd>shift</kbd> + <kbd>r</kbd> reflection · <kbd>+m</kbd> <kbd>−m</kbd> <kbd>⧉m</kbd> |
+
+<Aside type="tip" title="Clear it with escape">
+<kbd>esc</kbd> drops both the run and the block. Clicking a single note also
+clears a block — which is the usual way you notice one was still active.
+</Aside>
+
+## Next
+
+- [Arranging](../arranging/) — what blocks are really for.
+- [Marks and expression](../marks/) — what runs are really for.

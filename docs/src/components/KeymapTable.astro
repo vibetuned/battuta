@@ -1,0 +1,109 @@
+---
+/**
+ * A slice of the editor's keymap, rendered from src/data/keymap.json —
+ * which scripts/build-keymap.mjs generates out of apps/editor/src/keymap.ts.
+ * Nothing here is hand-maintained, so the guide cannot drift from the app.
+ *
+ * <KeymapTable group="marks" />            every action in one group
+ * <KeymapTable ids={["tie","slurDoubleSharp"]} />   a hand-picked subset
+ * <KeymapTable layout="azerty" />          the AZERTY defaults
+ */
+import keymap from "../data/keymap.json";
+
+interface Props {
+  group?: string;
+  ids?: string[];
+  layout?: "qwerty" | "azerty";
+  /** Show the group heading rows (on by default when no ids are given). */
+  headings?: boolean;
+}
+
+const { group, ids, layout = "qwerty", headings } = Astro.props;
+const groups = keymap.layouts[layout];
+
+let rows = groups.flatMap((g) => g.actions.map((a) => ({ ...a, groupTitle: g.title, group: g.group })));
+if (group) rows = rows.filter((r) => r.group === group);
+if (ids) rows = ids.map((id) => rows.find((r) => r.id === id)).filter((r) => r !== undefined);
+
+const showHeadings = headings ?? (!group && !ids);
+let lastGroup = "";
+---
+
+<table class="keymap">
+  <thead>
+    <tr>
+      <th>Keys</th>
+      <th>Action</th>
+      <th>Applies</th>
+    </tr>
+  </thead>
+  <tbody>
+    {
+      rows.map((row) => {
+        const heading = showHeadings && row.groupTitle !== lastGroup ? row.groupTitle : null;
+        lastGroup = row.groupTitle;
+        return (
+          <>
+            {heading && (
+              <tr class="group-row">
+                <th colspan="3">{heading}</th>
+              </tr>
+            )}
+            <tr>
+              <td class="keys">
+                {row.keys.map((k, i) => (
+                  <>
+                    {i > 0 && <span class="sep">or</span>}
+                    <kbd>{k}</kbd>
+                  </>
+                ))}
+              </td>
+              <td>{row.label}</td>
+              <td class="when">
+                {row.when ?? "any time"}
+                {row.locked && <span class="lock" title="fixed binding — listed in the editor but not rebindable">fixed</span>}
+              </td>
+            </tr>
+          </>
+        );
+      })
+    }
+  </tbody>
+</table>
+
+<style>
+  table.keymap {
+    width: 100%;
+    font-size: var(--sl-text-sm);
+  }
+  table.keymap td,
+  table.keymap th {
+    vertical-align: top;
+  }
+  table.keymap .group-row th {
+    background: var(--sl-color-gray-6);
+    font-size: var(--sl-text-xs);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--sl-color-white);
+  }
+  table.keymap .keys {
+    white-space: nowrap;
+  }
+  table.keymap .sep {
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-xs);
+    margin: 0 0.25rem;
+  }
+  table.keymap .when {
+    color: var(--sl-color-gray-3);
+  }
+  table.keymap .lock {
+    display: inline-block;
+    margin-left: 0.4rem;
+    padding: 0 0.35rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.6rem;
+    font-size: var(--sl-text-xs);
+  }
+</style>

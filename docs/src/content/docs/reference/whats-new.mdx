@@ -1,0 +1,93 @@
+---
+title: What's new
+description: User-visible changes since the first release, and where each one is documented.
+sidebar:
+  order: 5
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+A user-facing digest. The full engineering record — every phase, every fix, every
+probed Verovio behaviour — lives in
+[CHANGELOG.md](https://github.com/vibetuned/battuta/blob/main/CHANGELOG.md).
+
+## Since 0.0.1
+
+### Playback
+
+- **A score player in page view** — ▶ / ⏸ / ⏹, with the sounding note highlighted
+  from the same timeline that drives the audio, and the view scrolling to follow.
+  [Playback →](../../guide/playback/)
+- **Playback follows the form**: repeat barlines, volta sets, and one dal-segno or
+  da-capo jump with *fine* and *To Coda*. A mid-score D.C. now stops the first pass
+  at the jump instead of running to the end. [Repeats and form →](../../guide/form/)
+- **Ties, slurs and articulations shape what you hear** — a tie chain sounds as one
+  held attack, staccato shortens, slurred and tenuto notes sound full, unmarked
+  notes detach slightly.
+- **Tempo and progress**: a 0.5×–2× tempo select that applies live, plus a clickable
+  progress bar with an elapsed/total readout.
+
+### Notating the form
+
+- **To Coda** joined the <kbd>o</kbd> cycle, distinguished from the coda sign the way
+  MEI does it — by the mark's text.
+- **Attack intensity** on <kbd>shift</kbd> + <kbd>i</kbd>: sf → sfz → rinf → rfz.
+  [Marks →](../../guide/marks/#dynamics)
+- **3/2** joined the meter list.
+
+### Editing
+
+- **Reflection cycle** on <kbd>shift</kbd> + <kbd>r</kbd>: prime → inversion →
+  retrograde → retrograde inversion, over a block, with the rhythm held fixed.
+  [Arranging →](../../guide/arranging/#serial-forms)
+- **Tie chains got smarter** — tying a note that is already tied extends the chain
+  instead of orphaning the first tie, and untying a link splits it into valid
+  remainders.
+- **Cross-staff slurs and hairpins**: shift-clicking across staves selects an
+  endpoint pair, which is what those spans need.
+  [Selection →](../../guide/selection/#endpoint-pairs-across-staves)
+- **One selection model**: shift-runs and mouse blocks now drive every action, each
+  action taking the granularity it needs. <kbd>r</kbd> toggles repeats from a
+  shift-run; <kbd>ctrl</kbd> + <kbd>c</kbd> copies a run's full measure span.
+- **Add staff below places the caret** on the new staff, ready for entry.
+
+### Getting around
+
+- **The view follows the caret** — keyboard navigation and note entry scroll the
+  caret back into view instead of leaving you hunting for it.
+- **Row navigation**: <kbd>Home</kbd> / <kbd>End</kbd> for the row's start and end,
+  <kbd>PageUp</kbd> / <kbd>PageDown</kbd> for the previous and next row, and
+  <kbd>Insert</kbd> toggling note input both ways.
+  [Navigation →](../../guide/navigation/)
+
+### The application
+
+- **A score title editor** in the header, which page view actually prints.
+- **Toasts** for errors, confirmations and refusals — with a `×` to dismiss, and
+  selectable text so you can copy an error into a report.
+- **A dirty marker** (`*`) on tabs, computed from the undo stack, so undoing back to
+  your last save reads as clean again.
+- **Dialogs remember the last folder**, including the *open file…* button, which
+  used to bypass the native dialog entirely.
+- **Separate QWERTY and AZERTY keymaps** with a layout toggle in the shortcut
+  editor, and **persisted options** — layout and zoom survive restarts.
+  [Keyboard reference →](../keyboard/)
+- **macOS fixes**: MIDI hot-plug now works (CoreMIDI needs a run loop pumped), and
+  the grey Dock icon is gone — macOS 26 re-themes any icon with transparent
+  corners, so the artwork is opaque edge to edge now.
+- **AGPL-3.0-only** license, declared in every manifest.
+
+## 0.0.1 — first release
+
+The first packaged release: Linux `.deb` and `.AppImage`, an app icon, and `.mei`
+file association, on top of a feature-complete v1 editor — tiled Verovio rendering,
+a text-editor caret and selection, reversible commands with byte-identical undo,
+keyboard and MIDI note entry, copy/paste with the duration validator, context
+editing, articulations and ornaments, voices, voltas, tuplets, harmony lanes and a
+rebindable keymap.
+
+<Aside type="note" title="Version numbers">
+battuta is pre-1.0 and moves in feature rounds rather than on a release calendar.
+If something described in this guide isn't in your build, you are probably on the
+0.0.1 bundles — the list above is what came after them.
+</Aside>

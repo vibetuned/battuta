@@ -1,0 +1,92 @@
+---
+title: Files and saving
+description: Opening, saving, tabs, the dirty marker, what battuta writes to disk, and what it does not protect you from yet.
+sidebar:
+  order: 3
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+## Opening
+
+| Action | How |
+| --- | --- |
+| New blank score | **+** in the tab strip — one treble staff, 4/4, four empty measures |
+| Open a file | <kbd>ctrl</kbd> + <kbd>o</kbd>, or **open file…** |
+| Open by double-click | Double-click a `.mei` in your file manager |
+
+The open dialog is the system's own, and it starts in the folder you last opened
+or saved from. `.mei` and `.xml` files are offered.
+
+Each score opens in its own tab, named after the file. The clipboard is shared
+between tabs, which is what makes [cross-file arranging](../arranging/#across-files)
+work.
+
+## Saving
+
+| Action | How |
+| --- | --- |
+| Save | <kbd>ctrl</kbd> + <kbd>s</kbd>, or **save** — writes to the score's own path, silently |
+| Save as | <kbd>ctrl</kbd> + <kbd>shift</kbd> + <kbd>s</kbd> — asks where, and renames the tab |
+
+A score with no path yet (a new one) turns <kbd>ctrl</kbd> + <kbd>s</kbd> into
+save-as. A toast confirms every write.
+
+In a browser instead of the desktop app, saving downloads the file and opening
+uses the browser's file picker; nothing else differs.
+
+### The dirty marker
+
+A tab shows `*` while the document has unsaved changes. It is computed from the
+undo stack rather than from "something happened", so undoing back to the state you
+last saved clears the star — as it should.
+
+<Aside type="danger" title="Unsaved work is not protected yet">
+There is no autosave, no session restore, and **no confirmation when you close a
+tab or the window**. Closing a starred tab discards those edits. Save deliberately,
+and keep an eye on the star.
+
+File watching is also not implemented: if another program rewrites a file you have
+open, battuta will not notice, and your next save overwrites it.
+</Aside>
+
+## What battuta writes
+
+Plain MEI, pretty-printed with two-space indentation, and *everything* your file
+came in with:
+
+- `meiHead` and all metadata
+- elements and attributes battuta has no UI for
+- comments and processing instructions
+- your `xml:id`s — a saved file reloads without needing a single new one
+
+Serialisation is a fixpoint: saving a file battuta saved produces the same bytes.
+Reopening a save produces the same tree. That is what makes the editor safe to put
+in the middle of a pipeline — or in git, where a diff shows exactly the edit you
+made and nothing else.
+
+One compatibility adjustment: comments sitting *before* the root element are moved
+just inside `<mei>`, because Verovio rejects a document with them outside.
+Processing instructions such as `<?xml-model?>` are left where they are.
+
+### Repairing ids
+
+Some tools emit MEI with duplicate `xml:id`s. Because battuta addresses everything
+by id, that causes strange behaviour — an edit that lands on the wrong note, a
+control event that follows the wrong anchor. The **⟲id** button re-mints every id
+in the document and rewrites every reference (`startid`, `endid`, `plist`, …) to
+match. One undo step, and the file is sound afterwards.
+
+## Formats
+
+MEI in, MEI out. MusicXML import and export are planned but not implemented, and
+there is no SVG, PDF or print output yet. Page view shows you the engraved result,
+but getting it onto paper currently means running the saved MEI through another
+Verovio-based tool.
+
+<Aside type="tip" title="MEI is the point, not a detail">
+battuta is deliberately a *single-format* editor: the file you open is the document
+you edit, with no import/export round trip to lose information in. If your material
+is MusicXML, convert it once with a tool that does that well, and keep the MEI as
+the working copy.
+</Aside>

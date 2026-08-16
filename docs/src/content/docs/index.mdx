@@ -1,0 +1,77 @@
+---
+title: battuta
+description: A local-first MEI score editor that edits notation the way a text editor edits text — caret, selection, undo, copy and paste.
+template: splash
+hero:
+  tagline: Edit notation the way you edit text — a caret, a selection, undo that always lands, and an MEI file that stays yours.
+  image:
+    alt: battuta
+    file: ../../assets/logo.svg
+  actions:
+    - text: Install battuta
+      link: install/
+      icon: right-arrow
+    - text: Your first score
+      link: first-score/
+      variant: minimal
+    - text: Every shortcut
+      link: reference/keyboard/
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
+import Figure from "../../components/Figure.astro";
+import Shot from "../../components/Shot.astro";
+
+battuta opens an MEI file, shows it as engraved notation, and lets you move a
+caret through it. Arrow keys walk the notes. <kbd>i</kbd> starts typing music.
+<kbd>ctrl</kbd> + <kbd>z</kbd> takes any of it back — byte for byte, down to
+the last attribute of the file on disk.
+
+It is not an engraver. [Verovio](https://www.verovio.org/) draws every note,
+and the document you opened is the thing you are editing — not a picture of it.
+
+<Shot name="page-view" caption="Page view with the player: Schumann's <em>Melodie</em>, engraved by Verovio, printed title and all." />
+
+<CardGrid>
+  <Card title="Write music from the keyboard">
+    <Figure name="card-entry" />
+    Note input is an overwrite mode with the barline as its guard: what you
+    type always adds up to a legal measure.
+    [Note entry →](guide/note-entry/)
+  </Card>
+  <Card title="Arrange in blocks">
+    <Figure name="card-arrange" />
+    Select a rectangle of measures × staves, copy it, paste it into another
+    staff — or another file. The duration checker vets every paste.
+    [Arranging →](guide/arranging/)
+  </Card>
+  <Card title="Notate the form">
+    <Figure name="card-form" />
+    Repeats, voltas, segno and coda marks — and playback that actually takes
+    the jumps you wrote.
+    [Repeats and form →](guide/form/)
+  </Card>
+  <Card title="Hear the edit">
+    Press play and the score plays with your ties held, your staccatos short
+    and your repeats taken, highlighting the note that is sounding.
+    [Playback →](guide/playback/)
+  </Card>
+</CardGrid>
+
+## Find your way around
+
+<CardGrid>
+  <LinkCard title="Install and launch" href="install/" description="Linux deb and AppImage, macOS app, or straight from source." />
+  <LinkCard title="A tour of the window" href="tour/" description="Header, tabs, status bar, toasts — what every control does." />
+  <LinkCard title="Your first score" href="first-score/" description="Eight minutes: a blank score to a playable phrase." />
+  <LinkCard title="How battuta thinks" href="concepts/" description="Document as truth, tiles, commands, and why edits get refused." />
+  <LinkCard title="Keyboard reference" href="reference/keyboard/" description="Every binding, QWERTY and AZERTY, generated from the app itself." />
+  <LinkCard title="Known limits" href="reference/limits/" description="What battuta deliberately does not do, and what is still coming." />
+</CardGrid>
+
+:::note[This guide matches battuta 0.0.1 and later]
+Everything described here is in the shipped editor. Where a feature landed
+after the 0.0.1 bundles, the page says so — and
+[What's new](reference/whats-new/) lists those changes in one place.
+:::

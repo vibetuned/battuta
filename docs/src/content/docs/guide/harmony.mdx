@@ -1,0 +1,79 @@
+---
+title: Harmony lanes
+description: Typing chord symbols above the staff and Roman numeral analysis below it, with a grammar that only accepts real symbols.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+import Figure from "../../../components/Figure.astro";
+
+battuta has two annotation lanes over the same music, independent of each other:
+
+- **chord symbols** above the staff — `Cmaj7`, `Am7`, `D7/F#`
+- **Roman numeral analysis** below the staff — `I`, `vi`, `V65/V`
+
+Both are real MEI `<harm>` control events anchored to the note you attached them
+to, so they render in both views, travel with copy and paste, and undo like
+anything else.
+
+<Figure name="harmony-chords" caption="The chord-symbol lane sits above the staff." />
+<Figure name="harmony-rna" caption="The Roman-numeral lane sits below it." />
+
+## Typing a symbol
+
+<Steps>
+
+1. Put the caret on the note the symbol belongs to.
+2. Open the **harmony** select in the status bar and pick the lane.
+3. Type. A small editor floats at the caret showing what you have so far,
+   green while the text is a complete symbol, red while it isn't yet.
+4. Press <kbd>Enter</kbd> — the symbol is committed and the caret advances to the
+   next event, ready for the next one.
+
+</Steps>
+
+| Key | In the harmony lane |
+| --- | --- |
+| <kbd>Tab</kbd> | Autocomplete from the suggestions shown beside the buffer |
+| <kbd>Enter</kbd> | Commit and advance to the next event |
+| <kbd>←</kbd> / <kbd>→</kbd> | Commit and move |
+| <kbd>Backspace</kbd> | Delete a character |
+| <kbd>esc</kbd> | Commit and leave the lane |
+
+Landing on an event that already has a symbol loads it for correction.
+Committing an empty buffer deletes the symbol. Every commit is one undo step.
+
+## The grammar is closed
+
+The lane only accepts characters that can extend a valid symbol. That sounds
+restrictive; in practice it means you cannot produce an annotation that is
+half-typed nonsense, and the analysis stays machine-readable.
+
+**Chord symbols** — a root `A`–`G` with optional `b`/`#`, a quality, extensions
+and alterations, and an optional slash bass:
+
+```
+C   Cm   C7   Cmaj7   Cm7   C6   Cm6   C9   Cmaj9   C11   C13
+Cdim   Cdim7   Cm7b5   Cø7   C°7   Caug   C+   Csus4   Csus2
+Cadd9   C7b9   C7#9   C7b5   C7#5   C7alt   C-7   CΔ7   D7/F#
+```
+
+**Roman numerals** — upper or lower case numerals, `°`/`ø`/`+` qualities,
+figured-bass inversions, secondary dominants with a slash, accidental prefixes,
+and the borrowed chords:
+
+```
+I   i   ii   ii7   iii   III+   IV   iv   V   V7   V65   V43   V42
+vi   vii°   vii°7   viiø7   I6   I64   bII   bIII   bVI
+N6   It+6   Fr+6   Ger+6   V65/V   vii°7/ii
+```
+
+<Aside type="tip" title="Typing the special glyphs">
+You don't need them on your keyboard: <kbd>o</kbd> becomes `°` and <kbd>0</kbd>
+becomes `ø` as you type.
+</Aside>
+
+Incomplete text is not silently accepted — if you leave the lane with a buffer
+that isn't a valid symbol, battuta tells you and keeps the buffer so you can
+finish it.

@@ -1,0 +1,130 @@
+---
+title: Rhythm
+description: Changing durations, merging and splitting, tuplets, auto-beaming, grace notes, simile and measure repeats.
+sidebar:
+  order: 4
+---
+
+import KeymapTable from "../../../components/KeymapTable.astro";
+import { Aside } from "@astrojs/starlight/components";
+import Figure from "../../../components/Figure.astro";
+
+Everything on this page obeys the same rule: the measure keeps adding up. That is
+what makes these operations safe to lean on — and what makes them refuse
+occasionally.
+
+## Changing a note's duration
+
+<kbd>alt</kbd> + <kbd>→</kbd> lengthens the event under the caret one step,
+<kbd>alt</kbd> + <kbd>←</kbd> shortens it. Lengthening takes the time from what
+follows; shortening gives it back as rests.
+
+Compare with the duration digits, which only set what the *next* note will be.
+The target here is the same as the dot's: the note you just entered while in
+input mode, otherwise the note under the caret.
+
+## Merge and split
+
+<KeymapTable ids={["merge", "split"]} />
+
+**<kbd>m</kbd> merges** the caret's event with the next one. They have to be
+mergeable: the same pitch (or two rests, or two chords with identical pitches),
+adjacent in the same container, and their sum has to be writable as a single
+note.
+
+<Figure name="merge-before" caption="Before: a quarter tied to an eighth." />
+<Figure name="merge-after" caption="After m: one dotted quarter. The tie between them dissolves." />
+
+A quarter plus an eighth is a dotted quarter, so it merges. A half plus an eighth
+has no single notehead, so it is refused — use a [tie](../marks/#ties) for that.
+
+**<kbd>x</kbd> splits** any note, rest or chord in half, in place: a half note
+becomes two quarters, a dotted half becomes two dotted quarters, ties are
+redistributed across the halves.
+
+<Figure name="split-after" caption="A dotted half split into two dotted quarters." />
+
+Whole-measure rests join in, which is what makes a freshly inserted measure
+workable: <kbd>x</kbd> on a whole-measure rest gives two half-measure rest runs
+(meter-aware — in 6/8 that's two dotted quarters), and merging rests back up to a
+full measure collapses them into a whole-measure rest again.
+
+## Tuplets
+
+Select exactly **3** notes and press <kbd>shift</kbd> + <kbd>t</kbd> for a
+triplet (3:2), or **6** for a sextuplet (6:4).
+
+<Figure name="tuplet" caption="Three quarters become a 3:2 triplet; the quarter of freed time becomes a rest after it." />
+<Figure name="sextuplet" caption="Six eighths as a 6:4 sextuplet." />
+
+The run shrinks to its tuplet duration and the time it frees becomes rests
+immediately after — which is why the measure stays legal without you doing
+anything. Select notes **inside** a tuplet and press the same keys to unwrap it;
+the rests are consumed back and you get the original bytes.
+
+It refuses, with a reason, when: the count isn't 3 or 6, the notes aren't
+consecutive, the durations are mixed in a way whose freed time can't be written
+as rests, or you try to unwrap a tuplet whose rests are gone.
+
+## Auto-beaming
+
+<kbd>alt</kbd> + <kbd>b</kbd> beams the caret's measure — or every measure your
+selection touches, in one press.
+
+<Figure name="beam-before" caption="Before." />
+<Figure name="beam-after" caption="After alt+b: two groups, one per half measure." />
+
+The policy is simple and meter-independent: **no beam spans more than half the
+measure**, the note's onset decides which half it belongs to, and rests or notes
+longer than an eighth break a group. A group of one stays unbeamed. Running it
+again is harmless — existing beams are lifted and regrouped.
+
+### Beams are formatting
+
+Beams are a presentation decision, and rhythm edits dissolve them. Note entry,
+duration changes, merge, split and delete all **un-beam the measure first**, so
+that entry never gets stuck at a beam boundary and no broken beams survive an
+edit. Re-beam with <kbd>alt</kbd> + <kbd>b</kbd> once the rhythm has settled.
+
+The un-beam travels with the edit as one undo step, and if the edit itself is
+refused, the un-beam rolls back too.
+
+## Grace notes
+
+Select **two adjacent notes of different pitches** and press <kbd>m</kbd>:
+the first becomes a grace note, cycling acciaccatura (slashed) → appoggiatura →
+none.
+
+<Figure name="grace" caption="An acciaccatura and an appoggiatura." />
+
+Its written time folds into the main note — like a merge — and is handed back on
+the way out of the cycle. Two notes of the *same* pitch merge instead, as usual.
+Non-adjacent pairs and sums that can't be folded are refused.
+
+## Simile and measure repeats
+
+<KeymapTable group="repeats" ids={["simile", "measureRepeat"]} />
+
+**One beat**: the unshifted key replaces the beat at the caret with a simile
+slash, consuming the events inside that beat exactly the way overwrite entry
+does. Press it again and the slash becomes a beat rest. It refuses to cross the
+barline.
+
+<Figure name="simile" caption="A beat of music, then the simile slash standing in for the repeated beat." />
+
+**Whole measures**: the shifted key cycles the caret measure's voice through
+content → `%` (repeat the previous measure) → `%%` (repeat the previous two,
+claiming the next measure as well) → empty. Your original content comes back
+with undo.
+
+<Figure name="measure-repeat" caption="A written measure, a one-measure repeat, a two-measure repeat." />
+
+<Aside type="note" title="Repeats count as time">
+battuta's duration model knows all three signs: a measure repeat fills its
+measure, and a beat repeat counts as an unresolved beat. So a measure full of
+repeat signs is valid, and playback still walks it.
+</Aside>
+
+## All rhythm bindings
+
+<KeymapTable group="rhythm" />

@@ -1,0 +1,72 @@
+---
+title: Playback
+description: Auditioning an edit — the page-view player, tempo, seeking, and how ties, articulations and repeats shape what you hear.
+sidebar:
+  order: 2
+---
+
+import { Aside } from "@astrojs/starlight/components";
+import Shot from "../../../components/Shot.astro";
+
+Playback in battuta is a checking tool, not a performance engine. It answers two
+questions: *did I write the notes I meant?* and *does the form I notated actually
+play that way?*
+
+## The player
+
+Switch to **page view** — the controls appear next to the view toggle.
+
+<Shot name="player" caption="Playing: pause, stop, the live tempo select, the clickable progress bar and the elapsed/total readout." />
+
+| Control | Does |
+| --- | --- |
+| **▶ / ⏸** | Play or pause from the current position |
+| **⏹** | Stop and clear the highlight |
+| **tempo** | 0.5×, 0.75×, 1×, 1.25×, 1.5×, 2× — applies live, and is remembered |
+| **progress bar** | Click anywhere to seek; the readout shows `elapsed / total` at the chosen tempo |
+
+The note being sounded lights up as it plays, and the view scrolls when the
+playing measure leaves the window. Audio and highlight come from **one** timeline,
+so they cannot drift apart.
+
+<Shot name="player-highlight" caption="The sounding notes highlighted mid-playback in page view." />
+
+Sound is a sampled piano — a subset of the Salamander piano bundled inside the
+application. No network request, no CDN, nothing to configure.
+
+<Aside type="caution" title="Any edit stops playback">
+Editing the document, switching tabs, or switching views stops the player. The
+timeline is computed from the document as it was, so the moment you change the
+document it is stale — battuta stops rather than play something that no longer
+matches what you see.
+</Aside>
+
+## What you hear reflects what you wrote
+
+Playback reads the document, not just the pitches:
+
+- **Ties are held.** A tie chain — including one that crosses barlines and one that
+  spans repeated passes — sounds as a single attack for its full summed length.
+- **Articulations shape the release.** Tenuto and notes under a slur or phrase mark
+  sound their full value, staccato about half, staccatissimo about a third. An
+  explicit articulation beats the slur it sits under.
+- **Unmarked notes detach slightly** (about 90 % of their value), so legato is
+  audible by contrast rather than being the default everywhere.
+- **Accidentals, key signatures and measure accidentals** resolve to real sounding
+  pitch, because Verovio resolves them before the note reaches the sampler.
+
+## Repeats, voltas and jumps
+
+The player takes the form: repeat barlines, volta sets, and one dal-segno or
+da-capo jump with *fine* and *To Coda* respected. Repeated passes highlight the
+notes you actually wrote, not copies of them.
+
+The details of what is and isn't followed are on
+[Repeats and form](../form/#playback-follows-the-form).
+
+## Limits worth knowing
+
+- Playback lives in **page view only**. Edit view has no player.
+- There is no selection-range playback yet, no metronome, no per-staff mute, and
+  no tempo marks from the score — the tempo select is the only tempo.
+- Dynamics and hairpins are notated but not yet performed as volume changes.

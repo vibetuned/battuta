@@ -1,0 +1,130 @@
+---
+title: Your first score
+description: From a blank score to a phrase you can hear, in about eight minutes.
+sidebar:
+  order: 3
+---
+
+import { Steps, Aside } from "@astrojs/starlight/components";
+import Figure from "../../components/Figure.astro";
+
+This walkthrough uses nothing but the keyboard and ends with a phrase you can
+play back and save. If a key doesn't do what the page says, open the shortcut
+editor (**🌣**) — your layout may have different defaults, or you may have
+rebound something.
+
+<Steps>
+
+1. ### Start a blank score
+
+   Launch battuta. It opens `untitled-1`: one treble staff, 4/4, four empty
+   measures. (If you're looking at another score, press **+** in the header for
+   a fresh one.)
+
+2. ### Put the caret in the first measure
+
+   Click the first measure's whole rest. It turns **blue** — that's the caret,
+   and the status bar now reads `[ m 1, s 1, v 1, n 1 ]`: measure 1, staff 1,
+   voice 1, first event.
+
+3. ### Turn on note input
+
+   Press <kbd>i</kbd>. The `INPUT (i)` box in the status bar goes green and
+   starts reporting the duration you're about to write.
+
+4. ### Choose a duration, then type pitches
+
+   Press <kbd>5</kbd> for a quarter note, then <kbd>c</kbd> <kbd>d</kbd>
+   <kbd>e</kbd> <kbd>f</kbd>.
+
+   Each letter writes a note at the caret and steps forward. Octaves are
+   guessed from the neighbouring notes, so a scale stays in one octave instead
+   of leaping about.
+
+   The digits run <kbd>7</kbd> whole, <kbd>6</kbd> half, <kbd>5</kbd> quarter,
+   <kbd>4</kbd> eighth, <kbd>3</kbd> sixteenth, <kbd>2</kbd> thirty-second,
+   <kbd>1</kbd> sixty-fourth.
+
+5. ### Fill the second measure with a mixed rhythm
+
+   Press <kbd>4</kbd> (eighths) and type <kbd>g</kbd> <kbd>a</kbd> <kbd>b</kbd>
+   <kbd>c</kbd>, then <kbd>r</kbd> for a rest, then <kbd>5</kbd> and
+   <kbd>g</kbd>.
+
+   <Figure name="entry-run" caption="Four eighths, a quarter rest, a quarter note — one legal 4/4 measure." />
+
+   Notice what battuta did *not* let happen: the measure never held more or
+   less than four beats. Note input is an overwrite mode — a shorter note fills
+   the rest of the slot with rests, a longer one eats the events after it.
+
+6. ### Add an accidental and a dot
+
+   With the caret still on that last <kbd>g</kbd>, press <kbd>s</kbd> for a
+   sharp. Press <kbd>s</kbd> again to remove it, <kbd>v</kbd> for a flat,
+   <kbd>n</kbd> for a natural.
+
+   Press <kbd>.</kbd> to dot the note. The dot takes its extra time from the
+   rests that follow it, so the measure stays exact.
+
+   <Figure name="dots" caption="Plain, dotted, double-dotted — the dot key toggles through them." />
+
+   <Aside type="caution" title="f is a pitch, not a flat">
+   In note input, <kbd>f</kbd> writes the note F — the flat is <kbd>v</kbd>.
+   Outside input mode, where no pitch letters are wanted, both <kbd>f</kbd> and
+   <kbd>v</kbd> flatten the note under the caret.
+   </Aside>
+
+7. ### Build a chord
+
+   Type a note, then hold shift and press more letters: <kbd>shift</kbd> +
+   <kbd>e</kbd>, <kbd>shift</kbd> + <kbd>g</kbd> stack onto the note you just
+   entered.
+
+   <Figure name="chord" caption="A chord built by adding notes to the one just entered." />
+
+8. ### Leave input mode and beam the measure
+
+   Press <kbd>esc</kbd>. The green box goes dark; letters are back to being
+   commands rather than pitches.
+
+   Put the caret in the measure of eighths and press <kbd>alt</kbd> +
+   <kbd>b</kbd>. Everything shorter than a quarter gets beamed, in groups of
+   half a measure.
+
+   <Figure name="beam-after" caption="Auto-beaming groups by half measure, whatever the meter." />
+
+9. ### Slur a phrase
+
+   Click the first note of a run, then shift-click the last one — the run turns
+   **red**. Press <kbd>shift</kbd> + <kbd>s</kbd>.
+
+   <Figure name="slur" caption="A slur over the selected run. The same selection and key removes it." />
+
+10. ### Hear it
+
+    Switch to **page view** in the header and press **▶**. The note being
+    sounded lights up as it plays; the view scrolls to follow. Any edit stops
+    playback, because the moment the document changes the timeline is stale.
+
+11. ### Save it
+
+    Press <kbd>ctrl</kbd> + <kbd>s</kbd>. A new score has no path yet, so
+    battuta asks where to put it. What lands on disk is plain, indented MEI —
+    open it in a text editor if you like.
+
+</Steps>
+
+## Undo is total
+
+Try something drastic — <kbd>ctrl</kbd> + <kbd>z</kbd> puts it back exactly.
+Not approximately: every command in battuta restores the document byte for
+byte, which is why the star on the tab disappears again when you undo back to
+your last save.
+
+## Where to go next
+
+- [Note entry](../guide/note-entry/) — the whole entry model, including MIDI.
+- [Navigation](../guide/navigation/) — moving the caret like a text cursor.
+- [Selection](../guide/selection/) — runs, blocks, and what each one enables.
+- [How battuta thinks](../concepts/) — worth ten minutes; it explains every
+  refusal you will ever see.

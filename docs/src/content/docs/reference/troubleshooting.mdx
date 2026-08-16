@@ -1,0 +1,123 @@
+---
+title: Troubleshooting
+description: The refusals, surprises and platform quirks you are most likely to hit, and what to do about each.
+sidebar:
+  order: 4
+---
+
+## Editing
+
+**A letter key does nothing / types a note unexpectedly.**
+Check the `INPUT (i)` box in the status bar. In input mode
+<kbd>a</kbd>–<kbd>g</kbd> are pitches, so commands bound to those letters wait
+until you press <kbd>esc</kbd>. The flat is <kbd>v</kbd> in input mode,
+<kbd>f</kbd> or <kbd>v</kbd> outside it.
+
+**A key does something different from what this guide says.**
+Someone rebound it — possibly you. Open **🌣**, check the binding, and use *reset
+all* if you want the defaults back. Also check the layout toggle: QWERTY and AZERTY
+have different punctuation defaults.
+
+**Nothing responds to the keyboard at all.**
+A dropdown or text field probably has focus (a focused select swallows the
+keyboard). Click on the score, or press <kbd>esc</kbd>.
+
+**"entry refused" at a beam, tuplet or barline.**
+A longer note would have to eat across a boundary. Shorten it, or clear the
+obstacle first. Beams are not an obstacle — battuta un-beams the measure for you.
+
+**A meter change is refused, naming a measure.**
+That measure's content no longer fits. Fix it, or set the meter before entering
+notes; whole-measure rests always fit.
+
+**Merge is refused.**
+The two durations don't add up to a single writable note (a half plus an eighth).
+Use a [tie](../../guide/marks/#ties) instead.
+
+**A tuplet is refused.**
+It wants exactly 3 or 6 consecutive notes whose freed time can be written as rests.
+
+**A paste is refused.**
+The toast names the measure and staff: usually a voice whose durations don't sum to
+the target measure, or a fragment that runs off the end of the score. Paste into a
+region of the same shape, or add measures first.
+
+**Retrograde was "skipped".**
+The passage's chord sizes don't mirror, so pitch content can't be reversed onto the
+rhythm. Inversion still works.
+
+**Edits land on the wrong note; control events point at the wrong place.**
+The file probably has duplicate `xml:id`s. Press **⟲id** in the header — one undo
+step, and every id and reference is re-minted consistently.
+
+## Rendering
+
+**A slur or tie looks broken in the middle of the score.**
+Expected in edit view: spans crossing a tile edge are drawn as continuations. Switch
+to **page view** to see the real curve.
+
+**Spacing looks uneven between measures.**
+Also expected in edit view — each measure is justified on its own. Page view
+justifies across the system.
+
+**A measure looks wrong after a clef or key change.**
+Check where the change actually sits: battuta writes clef changes *before the
+barline* of the following measure, which is the engraver's position. If the change
+should be a measure earlier or later, move the caret there and set it again.
+
+**Something looks wrong in both views.**
+That is worth reporting — with the `.mei` file. Rendering is Verovio's, so the fix
+is either in the MEI battuta wrote or upstream.
+
+## Playback
+
+**Playback controls are missing.**
+They only exist in **page view**. Switch views in the header.
+
+**Playback stopped on its own.**
+Any edit, tab switch or view switch stops it: the timeline is computed from the
+document, and an edit makes it stale.
+
+**The audio plays but the notes stop lighting up.**
+Report it — a repeat pass that highlights nothing is a mapping bug, and the sort
+that got fixed once already.
+
+**Repeats aren't taken.**
+Plain repeat barlines and voltas are; one D.S./D.C. jump is. Structures battuta
+can't resolve play straight through, once, by design.
+
+**No sound at all on Linux.**
+The desktop build plays audio through WebKitGTK's GStreamer stack. Make sure your
+distribution's GStreamer base and good plugin sets are installed, and that the
+system mixer isn't muting the app.
+
+## MIDI
+
+**My keyboard isn't detected.**
+Watch the `MIDI` square in the status bar; it goes green with a count when a device
+connects, and it is hot-plug aware. On Linux, MIDI goes through ALSA — the `.deb`
+depends on it; with the AppImage on a minimal system you may need to install it. In
+a browser, only Chromium implements Web MIDI.
+
+**Notes play but nothing is entered.**
+Turn on input mode. battuta hints at this the first time you play a note with input
+off.
+
+## Platform
+
+**macOS: "battuta can't be opened".**
+The disk image is unsigned. Open it from Finder's context menu → *Open*, or
+`xattr -dr com.apple.quarantine /Applications/battuta.app`.
+
+**macOS: the Dock icon looks grey.**
+Fixed in current builds. If you still see it, purge the icon cache:
+`rm -rf "$(getconf DARWIN_USER_CACHE_DIR)/com.apple.iconservices"*` then
+`killall iconservicesagent Dock Finder`.
+
+**Linux: double-clicking a `.mei` opens a text editor.**
+The association is registered by the package; set battuta as the default
+application for the type once in your file manager.
+
+**A dialog opens in the wrong folder.**
+battuta remembers the last folder you opened or saved in, and falls back to your
+home directory if it no longer exists.
