@@ -7,13 +7,8 @@ import { loadSettings, saveSettings, detectLayout } from "./settings";
 import { scorePlayer, type PlayerState } from "./player";
 import { DocumentSession } from "./session";
 
-const FIXTURES = [
-  "synthetic-context-changes.mei",
-  "Bach-JS_Ein_feste_Burg.mei",
-  "Beethoven_Hymn_to_joy.mei",
-  "Bach-JS_BrandenburgConcert_No2_I_BWV1047.mei",
-  "Beethoven_StringQuartet_Op18_No1.mei",
-];
+/** Auto-opened on dev startup (the dev server serves fixtures/ at the root). */
+const DEV_FIXTURE = "synthetic-context-changes.mei";
 
 /** Clipboard shared across all open documents (module scope = app scope). */
 let sharedClipboard: ClipboardFragment | null = null;
@@ -646,7 +641,7 @@ export default function App() {
     if (openedInitial.current) return;
     openedInitial.current = true;
     if (import.meta.env.DEV) {
-      openDoc(FIXTURES[0]!);
+      openDoc(DEV_FIXTURE);
       return;
     }
     // Shell: a score double-clicked in the file manager arrives as a
@@ -2246,16 +2241,6 @@ export default function App() {
             +
           </button>
         </span>
-        {import.meta.env.DEV && (
-          <select value="" onChange={(e) => { e.target.blur(); if (e.target.value) openDoc(e.target.value); }}>
-            <option value="">open…</option>
-            {FIXTURES.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
-        )}
         <input
           ref={fileInputRef}
           type="file"

@@ -652,7 +652,17 @@ try {
   if (!existsSync(stripSvg) || !existsSync(cardLogo)) throw new Error("sources missing");
   execFileSync("rsvg-convert", ["-w", "760", "-b", "none", "-o", ogStrip, stripSvg]);
   execFileSync("rsvg-convert", ["-w", "150", "-h", "150", "-o", ogLogo, cardLogo]);
-  execFileSync("magick", [
+  // ImageMagick 7 ships `magick`; 6 (Ubuntu's package) only `convert`,
+  // with the same CLI for everything used here.
+  const magick = (args) => {
+    try {
+      execFileSync("magick", args);
+    } catch (err) {
+      if (err.code !== "ENOENT") throw err;
+      execFileSync("convert", args);
+    }
+  };
+  magick([
     "-size", "1200x630", "xc:#12161c",
     ogLogo, "-geometry", "+90+85", "-composite",
     "(", ogStrip, "-background", "white", "-alpha", "remove", "-alpha", "off", "-bordercolor", "white", "-border", "16", ")",

@@ -5,8 +5,10 @@ import starlight from "@astrojs/starlight";
 /**
  * The battuta user guide.
  *
- * `base` is empty by default so `npm run dev` serves at the root. For a
- * GitHub Pages project site, build with the repository name as the base:
+ * Deployed by .github/workflows/pages.yml to https://battuta.vibetuned.com
+ * (custom domain = served at the root, so the default base "/" is right).
+ * For a GitHub Pages PROJECT site instead, build with the repository name
+ * as the base:
  *
  *   DOCS_BASE=/battuta npm run build
  *
@@ -15,7 +17,7 @@ import starlight from "@astrojs/starlight";
  * layouts work without touching the pages.
  */
 export default defineConfig({
-  site: "https://vibetuned.github.io",
+  site: "https://battuta.vibetuned.com",
   base: process.env.DOCS_BASE ?? "/",
   integrations: [
     starlight({

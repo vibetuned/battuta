@@ -1,0 +1,61 @@
+# Builds the user guide (Astro) and the web editor (Vite) into ONE static
+# site and deploys it to GitHub Pages, served at https://battuta.vibetuned.com:
+#
+#   /         the docs (docs/dist)
+#   /editor/  the editor, built with --base=/editor/ so its hashed assets
+#             resolve under the subpath (the Tauri bundle keeps the default
+#             base — the flag lives here, not in vite.config.ts)
+#
+# The custom domain is set in the repo's Pages settings (not a CNAME file —
+# workflow deployments read it from settings), with a DNS CNAME record
+# battuta.vibetuned.com -> vibetuned.github.io.
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; a newer push supersedes an in-flight one.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # cairo (rsvg-convert) + ImageMagick rasterise the docs' icons and
+      # social card; without them the figure script skips those with a
+      # warning and the site ships without icons.
+      - name: raster tools for the docs figures
+        run: sudo apt-get update && sudo apt-get install -y librsvg2-bin imagemagick
+      - run: npm ci
+      - run: npm ci --prefix docs
+      - run: npm run build -w @battuta/core
+      - name: build editor for the web (served under /editor/)
+        run: npm run build -w @battuta/editor -- --base=/editor/
+      - name: build docs
+        run: npm run docs:build
+      - name: assemble site (docs at /, editor at /editor/)
+        run: |
+          mkdir -p site/editor
+          cp -r docs/dist/. site/
+          cp -r apps/editor/dist/. site/editor/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4
