@@ -8,7 +8,7 @@ import {
   buildScore, resolveContexts, buildEventIndex, ensureIds, fromDom, serialize, serializeDocument, childElements, findAll, meterCapacity, frac,
   CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand, RegenerateIdsCommand,
   copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, AddVoiceCommand, RemoveVoiceCommand, ToggleRepeatCommand, ToggleVoltaCommand,
-  SetHarmCommand, harmTextAt, SetTitleCommand, fingTextsAt, buildExpansion, SetPitchesCommand, collectPitchEvents, playbackShaping, ReplaceEntryCommand,
+  SetHarmCommand, harmTextAt, SetTitleCommand, SetTempoCommand, fingTextsAt, buildExpansion, SetPitchesCommand, collectPitchEvents, playbackShaping, ReplaceEntryCommand,
   type PitchEvent, type PlaybackShaping, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, TupletCommand, AutoBeamCommand, UnbeamThen, measuresOf, ChangeContextCommand, planContextChange,
   type CoreScore, type MeasureContext, type EventIndex, type Command, type DirtyRegion, type DomLikeElement, type DomLikeNode,
   type BlockSelection, type ClipboardFragment, type PastePlan, type EntrySpec, type MarkKind, type HarmKind, type CoreElement, type CaretPosition, type ContextChangeSpec,
@@ -339,6 +339,15 @@ export class DocumentSession {
   setTitle(text: string): DirtyRegion[] {
     return this.execute(new SetTitleCommand(this.root, text));
   }
+  /** scoreDef @midi.bpm — the score's own tempo (null when unset;
+   * Verovio then plays at its 120 bpm default). */
+  tempo(): number | null {
+    const n = Number(this.score.scoreDef.attrs["midi.bpm"]);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+  setTempo(bpm: number | null): DirtyRegion[] {
+    return this.execute(new SetTempoCommand(bpm));
+  }
   /** Identity of the top undo command — compare against a saved mark to
    * know whether the document changed since the last save. */
   get editMark(): unknown {
@@ -370,6 +379,33 @@ export class DocumentSession {
   }
 
   /**
+   * The score element with the document tempo engraved: a synthesized
+   * <tempo> marking (♩ = bpm) over the first measure, since @midi.bpm on
+   * the scoreDef is playback metadata Verovio never draws. Copy-on-write
+   * along the path to that measure — the document tree is only read.
+   */
+  private scoreElForRendering(): CoreElement {
+    const bpm = this.tempo();
+    if (bpm === null) return this.score.scoreEl;
+    const mark: CoreElement = { tag: "tempo", attrs: { tstamp: "1", place: "above", staff: "1", "midi.bpm": String(bpm) }, children: [`♩ = ${bpm}`] };
+    const inject = (el: CoreElement): CoreElement | null => {
+      if (el.tag === "measure") return { ...el, children: [...el.children, mark] };
+      for (let i = 0; i < el.children.length; i++) {
+        const c = el.children[i];
+        if (typeof c === "string" || c === undefined) continue;
+        const replaced = inject(c);
+        if (replaced) {
+          const children = [...el.children];
+          children[i] = replaced;
+          return { ...el, children };
+        }
+      }
+      return null;
+    };
+    return inject(this.score.scoreEl) ?? this.score.scoreEl;
+  }
+
+  /**
    * Serialize the CURRENT document (edits included) as a standalone MEI file
    * for the page view: initial scoreDef plus the flow (interleaved defs and
    * measures) in order. Header metadata is not carried over (Phase 4).
@@ -385,7 +421,7 @@ export class DocumentSession {
       `<mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.0">`,
       ...(head ? [serialize(head)] : []),
       `<music><body><mdiv>`,
-      serialize(this.score.scoreEl),
+      serialize(this.scoreElForRendering()),
       `</mdiv></body></music>`,
       `</mei>`,
     ].join("\n");

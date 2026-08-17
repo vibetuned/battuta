@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildEventIndex, serialize, CommandStack,
-  TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, findAll, DeleteToRestsCommand, SetTitleCommand,
+  TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, findAll, DeleteToRestsCommand, SetTitleCommand, SetTempoCommand,
   type CommandContext,
 } from "../src/index.js";
 import { scoreFrom, mei, parse } from "./helpers.js";
@@ -210,5 +210,43 @@ describe("SetTitleCommand", () => {
     expect(serialize(root)).toContain("<title/>");
     cmd.revert(ctx);
     expect(serialize(root)).toBe(before);
+  });
+});
+
+describe("SetTempoCommand", () => {
+  it("sets @midi.bpm on the scoreDef and unwinds byte-identically", () => {
+    const { score, ctx } = setup();
+    const before = serialize(score.scoreDef);
+    const cmd = new SetTempoCommand(96);
+    cmd.apply(ctx);
+    expect(score.scoreDef.attrs["midi.bpm"]).toBe("96");
+    cmd.revert(ctx);
+    expect(serialize(score.scoreDef)).toBe(before);
+  });
+
+  it("replaces an existing tempo and restores it on revert", () => {
+    const { score, ctx } = setup();
+    score.scoreDef.attrs["midi.bpm"] = "72";
+    const cmd = new SetTempoCommand(180);
+    cmd.apply(ctx);
+    expect(score.scoreDef.attrs["midi.bpm"]).toBe("180");
+    cmd.revert(ctx);
+    expect(score.scoreDef.attrs["midi.bpm"]).toBe("72");
+  });
+
+  it("null removes the tempo; revert brings it back", () => {
+    const { score, ctx } = setup();
+    score.scoreDef.attrs["midi.bpm"] = "72";
+    const cmd = new SetTempoCommand(null);
+    cmd.apply(ctx);
+    expect(score.scoreDef.attrs["midi.bpm"]).toBeUndefined();
+    cmd.revert(ctx);
+    expect(score.scoreDef.attrs["midi.bpm"]).toBe("72");
+  });
+
+  it("rejects non-positive and non-finite values", () => {
+    expect(() => new SetTempoCommand(0)).toThrow(/positive/);
+    expect(() => new SetTempoCommand(-60)).toThrow(/positive/);
+    expect(() => new SetTempoCommand(NaN)).toThrow(/positive/);
   });
 });

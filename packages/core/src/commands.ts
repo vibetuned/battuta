@@ -367,6 +367,37 @@ export class SetTitleCommand implements Command {
 }
 
 /**
+ * Set the score tempo — @midi.bpm on the initial <scoreDef>. Verovio's
+ * timemap follows the attribute, so playback speed tracks the document
+ * (the app's ×-multiplier stacks on top). Nothing is engraved for it, so
+ * the dirty region is empty, like the title.
+ */
+export class SetTempoCommand implements Command {
+  readonly label: string;
+  private before: string | undefined;
+
+  constructor(private readonly bpm: number | null) {
+    if (bpm !== null && (!Number.isFinite(bpm) || bpm <= 0)) throw new Error(`tempo must be a positive number of beats per minute, got ${bpm}`);
+    this.label = bpm === null ? "tempo removed" : `tempo ${bpm} bpm`;
+  }
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    const attrs = ctx.score.scoreDef.attrs;
+    this.before = attrs["midi.bpm"];
+    if (this.bpm === null) delete attrs["midi.bpm"];
+    else attrs["midi.bpm"] = String(this.bpm);
+    return [];
+  }
+
+  revert(ctx: CommandContext): DirtyRegion[] {
+    const attrs = ctx.score.scoreDef.attrs;
+    if (this.before === undefined) delete attrs["midi.bpm"];
+    else attrs["midi.bpm"] = this.before;
+    return [];
+  }
+}
+
+/**
  * Give EVERY identified element in the score a fresh random id, rewriting
  * all #references (startid/endid/plist/sameas/…) to follow — the repair
  * for documents that accumulated duplicate ids under the old counter

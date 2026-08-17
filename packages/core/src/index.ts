@@ -51,5 +51,5 @@ export { SetPitchesCommand, collectPitchEvents, reflectionForm, arityPalindromic
 export type { PitchEvent, Pitch, ReflectionForm } from "./reflect.js";
 export { buildExpansion } from "./expansion.js";
 export type { ExpansionPlan } from "./expansion.js";
-export { CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand, RegenerateIdsCommand, SetTitleCommand } from "./commands.js";
+export { CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand, RegenerateIdsCommand, SetTitleCommand, SetTempoCommand } from "./commands.js";
 export type { Command, CommandContext, DirtyRegion } from "./commands.js";

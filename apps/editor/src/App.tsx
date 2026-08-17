@@ -498,6 +498,8 @@ export default function App() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   /** Title editor buffer — null while closed (the header shows the button). */
   const [titleOpen, setTitleOpen] = useState<string | null>(null);
+  /** Tempo editor buffer — same open/closed convention as the title. */
+  const [tempoOpen, setTempoOpen] = useState<string | null>(null);
   /** Harmony lane: typed chord symbols / roman numerals at the caret. */
   const [harmLane, setHarmLane] = useState<HarmKind | null>(null);
   // The buffer state renders the floating editor; the REF is what the key
@@ -2284,7 +2286,7 @@ export default function App() {
             </button>
             <select
               data-player-tempo
-              title="playback tempo"
+              title="playback speed (× the score tempo)"
               value={playerTempo}
               onChange={(e) => {
                 const f = Number(e.target.value);
@@ -2354,6 +2356,50 @@ export default function App() {
               } else if (e.key === "Escape") setTitleOpen(null);
             }}
             onBlur={() => setTitleOpen(null)}
+          />
+        )}
+        {tempoOpen === null ? (
+          <button
+            data-tempo-button
+            title="edit the score tempo (page view prints ♩ = bpm; playback follows it)"
+            onClick={() => session && setTempoOpen(String(session.tempo() ?? ""))}
+          >
+            {(() => {
+              const t = session?.tempo();
+              return t ? `♩=${t}` : "tempo";
+            })()}
+          </button>
+        ) : (
+          <input
+            data-tempo-input
+            autoFocus
+            value={tempoOpen}
+            placeholder="bpm (e.g. 120)"
+            inputMode="numeric"
+            style={{ fontSize: 13, width: 90 }}
+            onChange={(e) => setTempoOpen(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && session) {
+                const raw = tempoOpen.trim();
+                if (raw === "") {
+                  session.setTempo(null);
+                  afterCommand(session);
+                  setTempoOpen(null);
+                  setNotice("tempo removed (plays at the 120 bpm default)");
+                  return;
+                }
+                const bpm = Number(raw);
+                if (!Number.isFinite(bpm) || bpm < 10 || bpm > 400) {
+                  setNotice("tempo must be a number between 10 and 400 bpm");
+                  return;
+                }
+                session.setTempo(bpm);
+                afterCommand(session);
+                setTempoOpen(null);
+                setNotice(`tempo: ♩=${bpm}`);
+              } else if (e.key === "Escape") setTempoOpen(null);
+            }}
+            onBlur={() => setTempoOpen(null)}
           />
         )}
         <button title="show/hide performance numbers" data-perf-toggle onClick={() => setShowPerf((p) => !p)} style={{ opacity: showPerf ? 1 : 0.45 }}>
