@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -22,10 +22,13 @@ import {
 import { scoreFrom } from "./helpers.js";
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), "../../../fixtures");
-const choraleXml = readFileSync(join(fixtures, "Bach-JS_Ein_feste_Burg.mei"), "utf8");
+// The corpus lives outside the repo (fixtures/ is local-only); machines
+// without it — CI included — skip the property sweep rather than failing.
+const choralePath = join(fixtures, "Bach-JS_Ein_feste_Burg.mei");
+const choraleXml = existsSync(choralePath) ? readFileSync(choralePath, "utf8") : null;
 
 function freshChorale(): { score: CoreScore; snapshot: () => string } {
-  const { score } = scoreFrom(choraleXml);
+  const { score } = scoreFrom(choraleXml!);
   ensureIds(score.scoreDef);
   for (const m of score.measures) ensureIds(m);
   return { score, snapshot: () => score.measures.map((m) => serialize(m)).join("\n") };
@@ -175,7 +178,7 @@ const cmdArb = fc.record({
   param: fc.nat(),
 });
 
-describe("command properties (fast-check)", () => {
+describe.runIf(choraleXml !== null)("command properties (fast-check)", () => {
   it("random command sequences fully unwound restore the document byte-identically", () => {
     fc.assert(
       fc.property(fc.array(cmdArb, { minLength: 1, maxLength: 12 }), (descriptors) => {

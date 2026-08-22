@@ -1,0 +1,23 @@
+# Unit tests on every push and PR: the core command/engine suite and the
+# editor's virtual-keyboard guard (every keymap action must be reachable
+# from the on-screen panel — adding a shortcut without a button fails here).
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run build -w @battuta/core
+      - run: npm run typecheck -w @battuta/editor
+      - run: npx vitest run --root packages/core
+      - run: npm test -w @battuta/editor

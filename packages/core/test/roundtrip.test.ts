@@ -11,7 +11,7 @@
  *     document needs zero new ids and addresses the same elements.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DOMParser } from "@xmldom/xmldom";
@@ -37,9 +37,11 @@ function parseDocument(xml: string): { root: CoreElement; prologue: CoreElement[
   return { root: fromDom(doc.documentElement), prologue };
 }
 
-const corpus = readdirSync(fixtures).filter((f) => f.endsWith(".mei"));
+// The corpus lives outside the repo (fixtures/ is local-only); machines
+// without it — CI included — skip the sweep rather than failing.
+const corpus = existsSync(fixtures) ? readdirSync(fixtures).filter((f) => f.endsWith(".mei")) : [];
 
-describe("corpus round-trip", () => {
+describe.runIf(corpus.length > 0)("corpus round-trip", () => {
   it.each(corpus)("%s: serialization is a fixpoint and loses no content", (name) => {
     const original = readFileSync(join(fixtures, name), "utf8");
     const p1 = parseDocument(original);

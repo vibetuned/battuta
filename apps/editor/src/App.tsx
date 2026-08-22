@@ -6,6 +6,7 @@ import { ShortcutEditor } from "./ShortcutEditor";
 import { loadSettings, saveSettings, detectLayout } from "./settings";
 import { scorePlayer, type PlayerState } from "./player";
 import { DocumentSession } from "./session";
+import { VirtualKeyboard } from "./VirtualKeyboard";
 
 /** Auto-opened on dev startup (the dev server serves fixtures/ at the root). */
 const DEV_FIXTURE = "synthetic-context-changes.mei";
@@ -491,6 +492,12 @@ export default function App() {
     setKeymap(loadKeymap(l));
   };
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  /** On-screen keyboard drawer — defaults to visible on touch devices. */
+  const [vkOpen, setVkOpen] = useState<boolean>(() => loadSettings().vkeys ?? (typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches));
+  const toggleVk = (open: boolean) => {
+    setVkOpen(open);
+    saveSettings({ vkeys: open });
+  };
   /** Title editor buffer — null while closed (the header shows the button). */
   const [titleOpen, setTitleOpen] = useState<string | null>(null);
   /** Tempo editor buffer — same open/closed convention as the title. */
@@ -2407,6 +2414,9 @@ export default function App() {
         >
           ⟲id
         </button>
+        <button title="on-screen keyboard — piano + every shortcut, for touch devices" data-vkeys-toggle onClick={() => toggleVk(!vkOpen)} style={{ opacity: vkOpen ? 1 : 0.45 }}>
+          🎹
+        </button>
         <button title="shortcuts — view and rebind every key" data-shortcuts-toggle onClick={() => setShortcutsOpen(true)}>
           🌣
         </button>
@@ -2536,6 +2546,7 @@ export default function App() {
           </div>
         )}
       </main>
+      {vkOpen && <VirtualKeyboard keymap={keymap} layout={layout} entryMode={entryMode} onNoteOn={midiNoteOn} onNoteOff={midiNoteOff} onClose={() => toggleVk(false)} />}
       <footer data-statusbar style={{ position: "fixed", left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", gap: 12, background: "#1f2733", color: "#aab", fontSize: 12, lineHeight: "20px", padding: "2px 10px", zIndex: 30 }}>
         <button
           data-input-indicator

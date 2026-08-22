@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { contextHash } from "../src/index.js";
@@ -128,7 +128,9 @@ describe("contextHash", () => {
   });
 });
 
-describe("real corpus", () => {
+// The corpus lives outside the repo (only the synthetic dev fixture is
+// tracked); machines without it — CI included — skip these, not fail.
+describe.runIf(existsSync(join(fixtures, "Bach-JS_Ein_feste_Burg.mei")))("real corpus", () => {
   it("resolves the Bach chorale (incipit in header, mid-score scoreDef)", () => {
     const xml = readFileSync(join(fixtures, "Bach-JS_Ein_feste_Burg.mei"), "utf8");
     const { score, contexts } = scoreFrom(xml);

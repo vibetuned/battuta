@@ -12,6 +12,8 @@ export interface Settings {
   tempo?: number;
   /** Folder of the last opened/saved score — the next dialog starts there. */
   lastDir?: string;
+  /** On-screen keyboard visible (default: shown on coarse pointers). */
+  vkeys?: boolean;
 }
 
 const STORE = "battuta.settings.v1";
