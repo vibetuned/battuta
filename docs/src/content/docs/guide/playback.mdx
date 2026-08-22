@@ -14,16 +14,21 @@ play that way?*
 
 ## The player
 
-Switch to **page view** — the controls appear next to the view toggle.
+Switch to **page view** — the controls appear in the header's second row,
+next to the score's title and tempo.
 
-<Shot name="player" caption="Playing: pause, stop, the live tempo select, the clickable progress bar and the elapsed/total readout." />
+<Shot name="player" caption="Playing: pause, stop, the live speed select, the clickable progress bar and the elapsed/total readout — beside the score's title and ♩= tempo." />
 
 | Control | Does |
 | --- | --- |
 | **▶ / ⏸** | Play or pause from the current position |
 | **⏹** | Stop and clear the highlight |
-| **tempo** | 0.5×, 0.75×, 1×, 1.25×, 1.5×, 2× — applies live, and is remembered |
-| **progress bar** | Click anywhere to seek; the readout shows `elapsed / total` at the chosen tempo |
+| **speed** | 0.5×–2×, multiplying the score's own tempo — applies live, and is remembered |
+| **progress bar** | Click anywhere to seek; the readout shows `elapsed / total` at the chosen speed |
+
+The score's own tempo comes from the **♩=** button beside the title: it sets
+the MEI tempo (`@midi.bpm`), page view prints the marking, and playback runs at
+it (120 bpm when unset). The speed select multiplies on top.
 
 The note being sounded lights up as it plays, and the view scrolls when the
 playing measure leaves the window. Audio and highlight come from **one** timeline,
@@ -64,9 +69,14 @@ notes you actually wrote, not copies of them.
 The details of what is and isn't followed are on
 [Repeats and form](../form/#playback-follows-the-form).
 
+Everything the player performs — the expanded form, merged ties, the
+articulation gates — can be written out as a file: **export playback MIDI** in
+the battuta menu. See [Exporting](../files/#exporting).
+
 ## Limits worth knowing
 
 - Playback lives in **page view only**. Edit view has no player.
-- There is no selection-range playback yet, no metronome, no per-staff mute, and
-  no tempo marks from the score — the tempo select is the only tempo.
+- There is no selection-range playback yet, no metronome, and no per-staff
+  mute. The score tempo is a single **♩=** for the whole piece — mid-score
+  tempo changes are not performed yet.
 - Dynamics and hairpins are notated but not yet performed as volume changes.

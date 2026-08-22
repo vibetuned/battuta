@@ -6,7 +6,79 @@ out to do (plan + exit criteria, moved here from
 README's old Status section). Remaining phases — reference layers, OMR
 correction — stay in [PLANNING.md](PLANNING.md).
 
-## Unreleased
+## 0.0.2 — unreleased (pending the Windows validation round)
+
+- **Import/export for every Verovio-convertible format.** Import:
+  MusicXML (plain and zipped `.mxl`), ABC, Plaine & Easie, Humdrum kern —
+  all routes (file input, native dialog, double-click launch) convert to
+  MEI on open, as a NEW unsaved document so ctrl+s can never overwrite
+  the source with MEI. Export (battuta menu): written-score MIDI, SVG
+  pages, Humdrum, PAE. The converters run Verovio's HUMDRUM-enabled
+  build (+4.6 MB wasm) in a separate worker spawned lazily on first
+  conversion — the render pool never pays for it. A pinning test runs
+  the real toolkit over a sample of every format in the table, so a
+  format promise Verovio can't keep fails CI. Probed: `inputFrom` is
+  sticky on the toolkit and POISONS `loadZipDataBuffer` (the zip's inner
+  LoadData parses the extracted MusicXML as the leaked format) — every
+  worker operation sets its own, with an `.mxl` fixture pinning the fix.
+  `.mxl` crosses Tauri IPC base64-encoded; `export_file` writes any
+  export bytes through the native save dialog.
+- **Playback MIDI export** — the player's SOLVED interpretation as a
+  `.mid`, not Verovio's written-score MIDI: expansion (repeats, voltas,
+  one D.S./D.C. jump), tie chains merged to single held notes, and the
+  articulation/slur gates, generated from the same PlaybackData the
+  player consumes. The SMF uses 500 ticks/quarter at 120 bpm so 1 tick =
+  1 ms — timemap milliseconds transfer without drift (the score tempo is
+  already in them). Tests parse the emitted bytes: one attack per tie
+  chain, staccato at exactly half, gates resolved through the
+  repeat-pass idMap, off-before-on at equal ticks.
+- **Session restore + close confirmation.** The open tabs (full MEI,
+  names, paths, dirty flags, active tab) persist to localStorage —
+  debounced 1 s after every edit, synchronously on beforeunload — and
+  come back on the next start; restored-dirty tabs keep their star via a
+  sentinel saved-mark. Closing the app saves the session; a crash loses
+  at most the debounce. Closing a DIRTY TAB asks first (clean tabs
+  don't). In the shell, a double-clicked file opens alongside the
+  restored tabs; dev restores only when unsaved work is at stake, so the
+  fixture workflow and e2e determinism are untouched.
+- **External-change guard** (shell): a `file_mtime` command records each
+  file's modification time at open/save; plain ctrl+s re-checks first
+  and asks before overwriting a file another program rewrote.
+- **The header, reorganised**: two rows — tabs/views/🎹 on top, the
+  score's own title + tempo (and, in page view, the player) below. File
+  chores and tools moved into ONE menu under the battuta name (open,
+  save, exports, shortcuts, perf numbers, regenerate ids); the +m/−m/⧉m
+  buttons retired (numpad and the on-screen keyboard cover them). Perf
+  numbers are off by default everywhere (was: on in dev).
+- **On-screen keyboard for touch devices** (🎹, auto-shown on coarse
+  pointers): a two-octave piano driving the SAME entry path as Web MIDI
+  (explicit pitch+octave, multi-touch chords, caret advance on release)
+  with an octave rail; sticky ctrl/alt/shift latches with real-keyboard
+  semantics (shift uppercases letters and follows each LAYOUT's shifted
+  punctuation — `,`→`<` QWERTY but `,`→`?` AZERTY); a four-way digit pad
+  (plain = durations, shift = voltas, alt = fingering/finger change);
+  and one button per keymap action, GENERATED from the live keymap so
+  rebinds and new actions appear on their own. Actions that are a
+  modifier away from another key (marcato = shifted accent, tuplet =
+  shifted tie, …) have no button — the latch is the button, and keys
+  RELABEL live under a latch, tinted where remapped. Coverage tests hold
+  the panel against the keymap in both layouts: a keymap action the
+  panel can't reach fails CI, and every synthesized event must
+  keyMatches its binding.
+- **Score tempo** (♩= button beside the title): sets `@midi.bpm` on the
+  scoreDef — an undoable command like the title. Verovio's timemap
+  follows it, so playback speed tracks the document (the × select
+  multiplies on top), and page view engraves a synthesized `♩ = bpm`
+  marking over the first measure (copy-on-write at serialization; the
+  document tree is only read).
+- **Docs + web editor deployed**: battuta.vibetuned.com (Astro guide)
+  with the editor at /editor, one Pages workflow building both; the
+  editor builds with `--base=/editor/` in CI only. New user-guide pages
+  and screenshots for the menu, the on-screen keyboard, imports/exports
+  and the safety net.
+- **CI tests** (`test.yml`): the core suite and the editor's guard
+  tests run on every push/PR; corpus-dependent core tests skip cleanly
+  where the local-only fixtures corpus is absent.
 
 - **Page-view score player** (▶ / ⏸ / ⏹ next to the view toggle):
   Verovio's timemap drives BOTH the audio and a moving note highlight

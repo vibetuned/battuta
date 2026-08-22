@@ -1,0 +1,65 @@
+---
+title: The on-screen keyboard
+description: Editing on tablets and touch devices — a two-octave piano, sticky modifiers, and every shortcut as a touch key.
+sidebar:
+  order: 9
+---
+
+import { Aside } from "@astrojs/starlight/components";
+import Shot from "../../../components/Shot.astro";
+
+Every battuta action is a keystroke — which is a problem on a tablet. The
+on-screen keyboard puts the whole keymap on screen: toggle it with **🎹** in
+the header (touch devices show it automatically), close it with its **×**.
+
+<Shot name="vkeys" caption="Piano, octave rail, modifier latches, the digit pad, and one key per action, grouped like the shortcut editor." />
+
+## The piano
+
+Two octaves, playing into [note entry](../note-entry/) exactly like a MIDI
+keyboard: in input mode a tap enters that pitch **at its written octave**
+(black keys enter sharps), and **holding several keys builds a chord** — with
+multi-touch, played like a real chord. The caret advances when the last
+finger lifts.
+
+The rail on the left steps the visible octaves (▲ / ▼ around the low octave's
+label); a wheel or two-finger scroll over the piano does the same.
+
+## Modifier latches
+
+**ctrl**, **alt** and **shift** are *sticky*: tap one and it applies to the
+next key, then releases — tap again to cancel. They behave like the real
+modifiers, so everything in the [keyboard reference](../../reference/keyboard/)
+holds: latch **shift** and **→** extends the selection, latch **alt** and the
+arrows become shorten/lengthen duration.
+
+While a latch is on, **the keys relabel to what they will now do**, and the
+remapped ones are tinted:
+
+<Shot name="vkeys-shift" caption="Shift latched: voltas on the digit pad, staccatissimo on the staccato key, tuplet on tie." />
+
+## The digit pad
+
+One pad, four meanings — the latches choose:
+
+| Latch | 1–5 | 6–0 |
+| --- | --- | --- |
+| *none* | duration (7 = whole … 1 = 64th, in input mode) | — |
+| **shift** | volta 1–5 toggle (block selection) | volta 6–9 |
+| **alt** | fingering 1–5 (add **shift** too to stack) | finger change → 1–5 |
+
+## Everything else
+
+The remaining groups mirror the keymap itself — the buttons are **generated
+from your live bindings**, so a rebound key or a brand-new action shows up on
+its own, and actions reached by a modifier (marcato = shifted accent,
+measure repeat = shifted simile…) appear when their latch is on rather than
+crowding the panel. The nav cluster is a D-pad (home/left, up/down,
+end/right, paging), and the system group carries save, open, undo/redo,
+copy/paste, zoom and the measure operations.
+
+<Aside type="note" title="Also useful with a mouse">
+Nothing about the panel is touch-only: it doubles as a clickable cheat sheet,
+and the latch relabelling is a quick way to *discover* what shift or alt does
+to a key before pressing it.
+</Aside>

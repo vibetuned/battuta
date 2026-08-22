@@ -11,7 +11,53 @@ A user-facing digest. The full engineering record — every phase, every fix, ev
 probed Verovio behaviour — lives in
 [CHANGELOG.md](https://github.com/vibetuned/battuta/blob/main/CHANGELOG.md).
 
-## Since 0.0.1
+## 0.0.2 — in validation
+
+Feature-complete; the Windows validation round is the last gate before the
+bundles ship.
+
+### The score's own tempo
+
+- **A ♩= tempo button** beside the title sets the score tempo in the MEI
+  (`@midi.bpm`): page view prints the marking, playback runs at it, and the
+  speed select now reads **× the score tempo**.
+  [Playback →](../../guide/playback/)
+
+### Touch: the on-screen keyboard
+
+- **A virtual keyboard** for tablets (🎹, automatic on touch screens): a
+  two-octave piano with **multi-touch chords** and an octave rail, sticky
+  ctrl/alt/shift latches, a four-way digit pad, and one key per action —
+  generated from your live keymap, so rebinds and new actions appear on their
+  own. Keys **relabel live** under a latch to show what they will do.
+  [The on-screen keyboard →](../../guide/virtual-keyboard/)
+
+### Import & export
+
+- **Import everything Verovio reads**: MusicXML (plain and `.mxl`), ABC,
+  Plaine & Easie and Humdrum kern all open — converted to MEI on open, as a
+  new unsaved document so your source is never overwritten.
+- **Export playback MIDI**: battuta's *performed* form — repeats and jumps
+  expanded, tie chains merged, staccato/legato gates — as a `.mid`.
+- **Export written-score MIDI, SVG pages, Humdrum kern and Plaine & Easie**
+  from the battuta menu. [Files →](../../guide/files/#formats)
+
+### Safety
+
+- **Session restore**: the open tabs persist after every edit and come back on
+  the next start — a crash or window close loses at most a second of work.
+- **Close confirmation** on dirty tabs; clean ones close silently.
+- **External-change guard** (desktop): saving a file another program modified
+  asks before overwriting. [Files →](../../guide/files/#saving)
+
+### The header, reorganised
+
+- **Two rows**: tabs and views on top; the score's title, tempo and (in page
+  view) the player below. File chores, exports and tools moved into **one menu
+  under the battuta name**; the measure buttons retired in favour of numpad
+  <kbd>+</kbd> <kbd>−</kbd> <kbd>*</kbd> and the on-screen keyboard.
+  [Tour →](../../tour/#the-header)
+- **Performance numbers are off by default** everywhere.
 
 ### Playback
 

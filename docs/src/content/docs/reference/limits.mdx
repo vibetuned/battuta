@@ -32,18 +32,21 @@ preserved verbatim rather than understood — safe, but not editable in the UI.
 
 | Missing | Notes |
 | --- | --- |
-| Autosave, session restore | Nothing recovers unsaved work after a crash |
-| Close confirmation | Closing a starred tab or the window discards unsaved edits silently |
-| File watching | External changes to an open file go unnoticed; your next save overwrites them |
+| MusicXML **export** | Verovio converts *from* MusicXML, not to it. [Import](../../guide/files/#importing) works — MusicXML, `.mxl`, ABC, Plaine & Easie and Humdrum all open |
+| PDF / print output | [SVG pages export](../../guide/files/#exporting) exists; PDF does not (the SVGs print well from a browser) |
+| Live file watching | External changes are detected **when you save** (the desktop app alerts before overwriting) — not the moment they happen |
 | Splice-at-caret and overlay-as-new-layer paste | Only replace-measures is implemented |
 | Split view | Cross-file work happens through tabs |
-| MusicXML import/export | MEI only |
-| SVG / PDF / print output | Page view renders, but there is no export |
 | Selection playback, metronome, per-staff mute | The page-view player is all-or-nothing |
 | Dynamics affecting playback volume | Notated, not performed |
 | Lyrics, figured bass, percussion maps | Deliberately deferred |
 | Part extraction, transposed parts | Deliberately deferred |
 | Collaborative editing, plugins | Out of scope |
+
+Formerly on this list, now built: session restore and crash recovery, dirty-tab
+close confirmation, the external-change guard at save, import of every
+Verovio-readable format, and MIDI/SVG/Humdrum/Plaine & Easie export — see
+[Files](../../guide/files/).
 
 ## Rough edges
 

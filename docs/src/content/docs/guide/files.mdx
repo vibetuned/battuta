@@ -1,6 +1,6 @@
 ---
 title: Files and saving
-description: Opening, saving, tabs, the dirty marker, what battuta writes to disk, and what it does not protect you from yet.
+description: Opening, saving, tabs, the dirty marker, session restore, import and export formats, and what battuta writes to disk.
 sidebar:
   order: 3
 ---
@@ -12,11 +12,12 @@ import { Aside } from "@astrojs/starlight/components";
 | Action | How |
 | --- | --- |
 | New blank score | **+** in the tab strip — one treble staff, 4/4, four empty measures |
-| Open a file | <kbd>ctrl</kbd> + <kbd>o</kbd>, or **open file…** |
-| Open by double-click | Double-click a `.mei` in your file manager |
+| Open a file | <kbd>ctrl</kbd> + <kbd>o</kbd>, or **open file…** in the battuta menu |
+| Open by double-click | Double-click a `.mei` (or any supported text format) in your file manager |
 
 The open dialog is the system's own, and it starts in the folder you last opened
-or saved from. `.mei` and `.xml` files are offered.
+or saved from. It offers every format battuta can read — MEI plus the
+[import formats](#importing) below, which convert to MEI as they open.
 
 Each score opens in its own tab, named after the file. The clipboard is shared
 between tabs, which is what makes [cross-file arranging](../arranging/#across-files)
@@ -26,7 +27,7 @@ work.
 
 | Action | How |
 | --- | --- |
-| Save | <kbd>ctrl</kbd> + <kbd>s</kbd>, or **save** — writes to the score's own path, silently |
+| Save | <kbd>ctrl</kbd> + <kbd>s</kbd>, or **save** in the battuta menu — writes to the score's own path, silently |
 | Save as | <kbd>ctrl</kbd> + <kbd>shift</kbd> + <kbd>s</kbd> — asks where, and renames the tab |
 
 A score with no path yet (a new one) turns <kbd>ctrl</kbd> + <kbd>s</kbd> into
@@ -41,13 +42,33 @@ A tab shows `*` while the document has unsaved changes. It is computed from the
 undo stack rather than from "something happened", so undoing back to the state you
 last saved clears the star — as it should.
 
-<Aside type="danger" title="Unsaved work is not protected yet">
-There is no autosave, no session restore, and **no confirmation when you close a
-tab or the window**. Closing a starred tab discards those edits. Save deliberately,
-and keep an eye on the star.
+### Session restore
 
-File watching is also not implemented: if another program rewrites a file you have
-open, battuta will not notice, and your next save overwrites it.
+The open tabs — documents, names, paths, dirty stars, which tab was active —
+persist continuously (a moment after every edit, and once more as the window
+closes). **Closing the app or crashing loses at most the last second of
+work**: the next start brings the whole session back, restored-dirty tabs
+keeping their star until you actually save.
+
+### Close confirmation
+
+Closing a **starred tab** asks before discarding its edits; clean tabs close
+silently. Closing the **window** never asks — the session is saved and will be
+restored instead.
+
+### External changes
+
+In the desktop app, battuta records each file's modification time when it opens
+or saves it. If another program has rewritten the file since, <kbd>ctrl</kbd> +
+<kbd>s</kbd> alerts you before overwriting the external changes — save-as keeps
+both versions.
+
+<Aside type="note" title="Where the safety net thins">
+Session restore lives in the app's local storage: clearing the browser's site
+data (web version) or the webview's storage clears it too. And closing an
+individual dirty tab after confirming really does discard that work — the
+session store protects against window closes and crashes, not deliberate
+closes.
 </Aside>
 
 ## What battuta writes
@@ -73,20 +94,50 @@ Processing instructions such as `<?xml-model?>` are left where they are.
 
 Some tools emit MEI with duplicate `xml:id`s. Because battuta addresses everything
 by id, that causes strange behaviour — an edit that lands on the wrong note, a
-control event that follows the wrong anchor. The **⟲id** button re-mints every id
+control event that follows the wrong anchor. The battuta menu's **regenerate ids** re-mints every id
 in the document and rewrites every reference (`startid`, `endid`, `plist`, …) to
 match. One undo step, and the file is sound afterwards.
 
 ## Formats
 
-MEI in, MEI out. MusicXML import and export are planned but not implemented, and
-there is no SVG, PDF or print output yet. Page view shows you the engraved result,
-but getting it onto paper currently means running the saved MEI through another
-Verovio-based tool.
+MEI is the working format — what you edit, what save writes. Around it,
+everything Verovio can convert is available on the way in and out.
+
+### Importing
+
+Opening any of these converts it to MEI as it opens:
+
+| Format | Extensions |
+| --- | --- |
+| MusicXML | `.musicxml`, `.xml` (told apart from MEI by content) |
+| Compressed MusicXML | `.mxl` |
+| ABC | `.abc` |
+| Plaine & Easie | `.pae` |
+| Humdrum kern | `.krn`, `.kern` |
+
+An imported score opens as a **new, unsaved document** — deliberately, so a
+plain <kbd>ctrl</kbd> + <kbd>s</kbd> can never overwrite your `.musicxml` or
+`.krn` source with MEI. Save gives it its own `.mei` path. The first import
+loads the converter in the background (a few extra seconds, once per session).
+
+### Exporting
+
+The battuta menu exports the open score:
+
+| Export | What you get |
+| --- | --- |
+| **playback MIDI** (`.mid`) | battuta's *performed* form: repeats, voltas and one D.S./D.C. jump expanded, tie chains as single held notes, staccato/legato gates — exactly what the [player](../playback/) plays |
+| **MIDI (written score)** (`.mid`) | Verovio's MIDI of the notation as written |
+| **SVG (pages)** (`.svg`) | The page-view engraving, one file per page |
+| **Humdrum kern** (`.krn`) | For the Humdrum toolchain |
+| **Plaine & Easie** (`.pae`) | Incipit code |
+
+There is no MusicXML **export** — Verovio converts *from* MusicXML but not to
+it — and no PDF yet (the SVG pages print well from a browser).
 
 <Aside type="tip" title="MEI is the point, not a detail">
-battuta is deliberately a *single-format* editor: the file you open is the document
-you edit, with no import/export round trip to lose information in. If your material
-is MusicXML, convert it once with a tool that does that well, and keep the MEI as
-the working copy.
+battuta remains a *single-format* editor at heart: imports convert **once, on
+open**, and from then on the MEI is the document — no repeated round trips to
+lose information in. Keep the `.mei` as the working copy and treat the exports
+as outputs.
 </Aside>

@@ -20,7 +20,7 @@ import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const docsRoot = join(here, "..");
@@ -45,7 +45,8 @@ const server = await createServer({
 });
 await server.listen();
 
-const browser = await chromium.launch({ executablePath: "/usr/bin/google-chrome", headless: true });
+const systemChrome = "/usr/bin/google-chrome";
+const browser = await chromium.launch({ ...(existsSync(systemChrome) ? { executablePath: systemChrome } : {}), headless: true });
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: SCALE });
   page.on("pageerror", (e) => console.error("[pageerror]", e.message));
@@ -88,10 +89,8 @@ try {
     throw new Error(`clickEvent(${id}) never landed`);
   };
 
-  // Clean shots: hide the dev-only perf numbers and the fixtures select
-  // (users of the packaged app see neither), and drop tab animations.
-  await page.locator("[data-perf-toggle]").click();
-  await page.addStyleTag({ content: "header > select { display: none !important; }" });
+  // Perf numbers are off by default and the header carries no dev-only
+  // controls any more — the window is shot as users see it.
 
   // ---- open the Melodie excerpt ----------------------------------------
   await page.setInputFiles('input[type="file"]', join(docsRoot, "excerpts/schumann-melodie.mei"));
@@ -110,9 +109,38 @@ try {
   // header, with a dirty star: make a real edit (fermata), undone after
   await page.keyboard.press("h");
   await page.waitForFunction(() => document.querySelector(".tab.active").textContent.includes("*"), null, { timeout: 5000 });
-  await shot("header", "The header: the tab strip (the active tab carries the unsaved-changes star), new-tab button, open, view toggle, measure buttons, save, title, and the id-repair and shortcut-editor buttons.", await boxOf("header", 6));
+  await shot("header", "The two-row header: the battuta menu button, the tab strip (the active tab carries the unsaved-changes star), the view toggle and the on-screen keyboard toggle; below them, the score's title and tempo.", await boxOf("header", 6));
   await page.keyboard.press("Control+z");
   await page.waitForFunction(() => !document.querySelector(".tab.active").textContent.includes("*"), null, { timeout: 5000 });
+
+  // the battuta menu: open/save, exports, tools
+  await page.locator("[data-menu-toggle]").click();
+  await page.waitForSelector("[data-app-menu]");
+  {
+    const menu = await boxOf("[data-app-menu]", 10);
+    const brand = await boxOf("[data-menu-toggle]", 10);
+    const x = Math.min(menu.x, brand.x);
+    const y = Math.min(menu.y, brand.y);
+    await shot("menu", "The battuta menu: open (any supported format), save, the exports — playback MIDI, written-score MIDI, SVG pages, Humdrum, Plaine & Easie — and the shortcut editor, performance numbers and id repair.", {
+      x,
+      y,
+      width: Math.max(menu.x + menu.width, brand.x + brand.width) - x,
+      height: Math.max(menu.y + menu.height, brand.y + brand.height) - y,
+    });
+  }
+  await page.locator("[data-menu-backdrop]").click();
+  await page.waitForFunction(() => !document.querySelector("[data-app-menu]"), null, { timeout: 5000 });
+
+  // the on-screen keyboard: plain, then with shift latched (live relabel)
+  await page.locator("[data-vkeys-toggle]").click();
+  await page.waitForSelector("[data-vkeys]");
+  await shot("vkeys", "The on-screen keyboard: two piano octaves with the octave rail, the ctrl/alt/shift latches, the digit pad, and one key per shortcut, grouped like the shortcut editor.", await boxOf("[data-vkeys]", 4));
+  await page.locator('[data-vk-mod="shift"]').click();
+  await page.waitForFunction(() => [...document.querySelectorAll('[data-vk-key="digitPad"]')].some((b) => b.textContent.includes("volta")), null, { timeout: 5000 });
+  await shot("vkeys-shift", "Shift latched: the keys relabel live to what they will do — the digit pad turns into voltas, staccato reads staccatissimo, tie reads tuplet — and the remapped keys are tinted.", await boxOf("[data-vkeys]", 4));
+  await page.locator('[data-vk-mod="shift"]').click();
+  await page.locator("[data-vk-close]").click();
+  await page.waitForFunction(() => !document.querySelector("[data-vkeys]"), null, { timeout: 5000 });
 
   await shot("statusbar", "The status bar: the INPUT indicator and caret readout on the left; staves, voices, harmony, clef, key, meter, zoom and MIDI on the right.", await boxOf("[data-statusbar]", 0));
 
@@ -183,7 +211,8 @@ try {
   await page.locator("[data-notice-dismiss]").click();
   await page.waitForFunction(() => document.querySelector("[data-notice]").textContent === "", null, { timeout: 5000 });
 
-  // shortcut editor
+  // shortcut editor (lives in the battuta menu now)
+  await page.locator("[data-menu-toggle]").click();
   await page.locator("[data-shortcuts-toggle]").click();
   await page.waitForSelector("[data-shortcuts]");
   await shot("shortcut-editor", "The shortcut editor: every action grouped with its current keys, the QWERTY/AZERTY layout toggle, and rebinding by clicking a key and pressing a new one.", await boxOf("[data-shortcuts] > div", 0));

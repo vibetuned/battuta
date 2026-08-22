@@ -9,9 +9,27 @@
     },
     {
       "name": "header",
-      "alt": "The header: the tab strip (the active tab carries the unsaved-changes star), new-tab button, open, view toggle, measure buttons, save, title, and the id-repair and shortcut-editor buttons.",
+      "alt": "The two-row header: the battuta menu button, the tab strip (the active tab carries the unsaved-changes star), the view toggle and the on-screen keyboard toggle; below them, the score's title and tempo.",
       "width": 1276,
-      "height": 59
+      "height": 86
+    },
+    {
+      "name": "menu",
+      "alt": "The battuta menu: open (any supported format), save, the exports — playback MIDI, written-score MIDI, SVG pages, Humdrum, Plaine & Easie — and the shortcut editor, performance numbers and id repair.",
+      "width": 252,
+      "height": 356
+    },
+    {
+      "name": "vkeys",
+      "alt": "The on-screen keyboard: two piano octaves with the octave rail, the ctrl/alt/shift latches, the digit pad, and one key per shortcut, grouped like the shortcut editor.",
+      "width": 1280,
+      "height": 135
+    },
+    {
+      "name": "vkeys-shift",
+      "alt": "Shift latched: the keys relabel live to what they will do — the digit pad turns into voltas, staccato reads staccatissimo, tie reads tuplet — and the remapped keys are tinted.",
+      "width": 1280,
+      "height": 135
     },
     {
       "name": "statusbar",
@@ -46,8 +64,8 @@
     {
       "name": "toast",
       "alt": "A toast in the bottom-right corner confirming a copy; the × dismisses it early and the text can be selected.",
-      "width": 259,
-      "height": 51
+      "width": 261,
+      "height": 49
     },
     {
       "name": "shortcut-editor",
@@ -65,7 +83,7 @@
       "name": "player",
       "alt": "The player while playing: pause and stop, the live tempo select, the clickable progress bar and the elapsed/total readout.",
       "width": 1276,
-      "height": 59
+      "height": 88
     },
     {
       "name": "player-highlight",

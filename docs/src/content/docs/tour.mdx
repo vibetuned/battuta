@@ -10,8 +10,8 @@ import Figure from "../../components/Figure.astro";
 import Shot from "../../components/Shot.astro";
 
 battuta has three bands: a **header** pinned at the top, the **score** in the
-middle, and a **status bar** fixed at the bottom. Nothing is hidden in menus —
-if a control exists, it is on screen.
+middle, and a **status bar** fixed at the bottom. Editing controls are on
+screen; file chores and tools live in one menu under the app name.
 
 <Shot name="window" caption="The whole window with Schumann's <em>Melodie</em> open: header, score tiles flowed into rows, status bar." />
 
@@ -19,22 +19,34 @@ if a control exists, it is on screen.
 
 <Shot name="header" caption="The active tab carries the unsaved-changes star; the <strong>title</strong> button has relabelled itself to the score's title." />
 
+The first row:
+
 | Control | What it does |
 | --- | --- |
-| **tabs** | One per open score. A trailing <code>*</code> means unsaved changes; <code>×</code> closes the tab. Undoing back to the saved state clears the star. |
+| **battuta ▾** | The app menu — see below. |
+| **tabs** | One per open score. A trailing <code>*</code> means unsaved changes; <code>×</code> closes the tab (a starred tab asks first). Undoing back to the saved state clears the star. |
 | **+** | A fresh blank score: one treble staff, 4/4, four empty measures, named `untitled-1`, `-2`, … |
-| **open file…** | The system open dialog, starting in the folder you last used. |
 | **page view** / **edit view** | Switches between the two renderings — see [The two views](#the-two-views). |
-| **+m −m ⧉m** | Insert, delete, duplicate measures at the caret or over the selected block. Same as numpad <kbd>+</kbd> <kbd>−</kbd> <kbd>*</kbd>. |
-| **save** | Saves to the score's own path, or opens save-as if it has none. |
-| **title** | Inline editor for the score title; the button relabels itself to the current title. Page view prints it. |
-| **⏱** | Shows or hides the performance numbers (render timings, per-tile milliseconds). Off by default. |
-| **⟲id** | Regenerates every `xml:id` in the document and rewrites all references to follow — the repair for files that accumulated duplicate ids. One undo step. |
-| **🌣** | The shortcut editor: every action, its keys, and the rebinding UI. |
+| **🎹** | The [on-screen keyboard](../guide/virtual-keyboard/) for tablets and touch devices. Shown automatically on touch screens. |
 
-In page view the header also grows the player: **▶ / ⏸**, **⏹**, a tempo
-select, a clickable progress bar and a `mm:ss / mm:ss` readout. See
-[Playback](../guide/playback/).
+The second row belongs to the score itself: the **title** and **tempo**
+buttons are inline editors (each relabels itself to the current value — page
+view prints both), and in page view the row grows the player: **▶ / ⏸**,
+**⏹**, a playback-speed select, a clickable progress bar and a
+`mm:ss / mm:ss` readout. See [Playback](../guide/playback/).
+
+### The battuta menu
+
+<Shot name="menu" caption="Everything that is not editing: files, exports, tools." />
+
+| Entry | What it does |
+| --- | --- |
+| **open file…** | The system open dialog, starting in the folder you last used. Any [supported format](../guide/files/#formats) converts on open. |
+| **save** | Saves to the score's own path, or opens save-as if it has none. |
+| **export …** | Playback MIDI, written-score MIDI, SVG pages, Humdrum kern, Plaine & Easie — see [Exporting](../guide/files/#exporting). |
+| **shortcuts** | The shortcut editor: every action, its keys, and the rebinding UI. |
+| **performance numbers** | Shows or hides the render timings (per-tile milliseconds, pool stats). Off by default. |
+| **regenerate ids** | Re-mints every `xml:id` in the document and rewrites all references to follow — the repair for files that accumulated duplicate ids. One undo step. |
 
 ## The score area
 

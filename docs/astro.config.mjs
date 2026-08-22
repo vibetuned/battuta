@@ -64,6 +64,7 @@ export default defineConfig({
             { slug: "guide/harmony" },
             { slug: "guide/structure" },
             { slug: "guide/form" },
+            { slug: "guide/virtual-keyboard" },
           ],
         },
         {
