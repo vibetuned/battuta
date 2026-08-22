@@ -7,6 +7,14 @@ import { loadSettings, saveSettings, detectLayout } from "./settings";
 import { scorePlayer, type PlayerState } from "./player";
 import { DocumentSession } from "./session";
 import { VirtualKeyboard } from "./VirtualKeyboard";
+import { converter } from "./converter";
+import { detectImport, IMPORT_FORMATS, EXPORT_FORMATS, OPEN_EXTENSIONS, type ExportFormat } from "./formats";
+import { playbackToMidi } from "./midiExport";
+import { saveStoredSession, loadStoredSession, clearStoredSession, type StoredSession } from "./sessionStore";
+
+/** savedMarks sentinel for restored-dirty docs: never equals an editMark,
+ * so the tab shows its star until the user actually saves. */
+const RESTORED_DIRTY: unknown = { restoredDirty: true };
 
 /** Auto-opened on dev startup (the dev server serves fixtures/ at the root). */
 const DEV_FIXTURE = "synthetic-context-changes.mei";
@@ -24,7 +32,8 @@ interface OpenDoc {
 
 /** Tauri v2 global invoke (withGlobalTauri), or null in the browser. */
 /** Tab name from a native path: both separators (Windows), any case. */
-const docNameFromPath = (path: string): string => path.split(/[\\/]/).pop()?.replace(/\.(mei|xml)$/i, "") || "score";
+const OPEN_EXT_RE = new RegExp(`\\.(${OPEN_EXTENSIONS.join("|")})$`, "i");
+const docNameFromPath = (path: string): string => path.split(/[\\/]/).pop()?.replace(OPEN_EXT_RE, "") || "score";
 
 /** Folder of a native path (either separator); remembered for dialogs. */
 const rememberDir = (path: string): void => {
@@ -150,6 +159,9 @@ const CLEF_LABELS: Record<string, string> = { G2: "\u{1D11E} treble", F4: "\u{1D
 /** Status-bar entry indicator: "1/8 ♪ (4)" = duration, glyph, digit key. */
 const DUR_GLYPHS: Record<string, string> = { breve: "\u{1D15C}", "1": "\u{1D15D}", "2": "\u{1D15E}", "4": "\u2669", "8": "\u266A", "16": "\u{1D161}", "32": "\u{1D162}", "64": "\u{1D163}", "128": "\u{1D164}" };
 const DUR_KEYS: Record<string, string> = { "1": "7", "2": "6", "4": "5", "8": "4", "16": "3", "32": "2", "64": "1" };
+
+/** App-menu entry (the dropdown under the battuta name). */
+const MENU_ITEM: React.CSSProperties = { textAlign: "left", background: "none", border: "none", padding: "7px 10px", fontSize: 13, cursor: "pointer", borderRadius: 4, fontFamily: "inherit", color: "#223", whiteSpace: "nowrap" };
 const durIndicator = (dur: string, dots: number): string => {
   const dot = dots ? "." : "";
   const key = DUR_KEYS[dur];
@@ -482,8 +494,9 @@ export default function App() {
     const t = setTimeout(() => setError(null), 10000);
     return () => clearTimeout(t);
   }, [error]);
-  /** ⏱ toggle: render timings, measure counts, pool stats (DEV default). */
-  const [showPerf, setShowPerf] = useState<boolean>(import.meta.env.DEV);
+  /** ⏱ toggle: render timings, measure counts, pool stats (off by default;
+   * flip it in the battuta menu). */
+  const [showPerf, setShowPerf] = useState(false);
   const [layout, setLayoutState] = useState<Layout>(() => loadSettings().layout ?? detectLayout());
   const [keymap, setKeymap] = useState<Keymap>(() => loadKeymap(layout));
   const setLayout = (l: Layout) => {
@@ -492,6 +505,8 @@ export default function App() {
     setKeymap(loadKeymap(l));
   };
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  /** App menu under the battuta name (open/save/tools). */
+  const [menuOpen, setMenuOpen] = useState(false);
   /** On-screen keyboard drawer — defaults to visible on touch devices. */
   const [vkOpen, setVkOpen] = useState<boolean>(() => loadSettings().vkeys ?? (typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches));
   const toggleVk = (open: boolean) => {
@@ -590,6 +605,20 @@ export default function App() {
     scorePlayer.stop();
   }, []);
 
+  /** Disk mtime per open path, recorded at open/save — the save path
+   * compares against it so an EXTERNAL change is alerted before it
+   * would be overwritten (shell only; browsers have no file identity). */
+  const diskMtimes = useRef(new Map<string, number>());
+  const recordMtime = useCallback((path: string) => {
+    const invoke = tauriInvoke();
+    if (!invoke) return;
+    invoke("file_mtime", { path })
+      .then((m) => {
+        if (typeof m === "number") diskMtimes.current.set(path, m);
+      })
+      .catch(() => undefined);
+  }, []);
+
   /** Open a document from raw MEI text (fixtures and disk files alike). */
   const openXml = useCallback(
     (name: string, xml: string, path?: string) => {
@@ -599,6 +628,7 @@ export default function App() {
         if (import.meta.env.DEV || "__TAURI__" in window) (window as unknown as Record<string, unknown>).__SESSION__ = s;
         const doc: OpenDoc = { id: nextDocId++, name, session: s, ...(path ? { path } : {}) };
         savedMarks.current.set(doc.id, s.editMark);
+        if (path) recordMtime(path);
         setDocs((ds) => [...ds, doc]);
         setActiveId(doc.id);
         resetDocUiState();
@@ -607,7 +637,7 @@ export default function App() {
         setError(String(e));
       }
     },
-    [resetDocUiState],
+    [resetDocUiState, recordMtime],
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -643,31 +673,64 @@ export default function App() {
 
   // Open the default document on startup (ref-guarded: StrictMode runs
   // mount effects twice, and two fetches would open two tabs).
+  /** Bring back the persisted tabs (crash/close recovery). */
+  const restoreSession = useCallback(
+    (s: StoredSession): boolean => {
+      try {
+        const created: OpenDoc[] = [];
+        for (const sd of s.docs) {
+          const sess = new DocumentSession(sd.xml);
+          const id = nextDocId++;
+          created.push({ id, name: sd.name, session: sess, ...(sd.path ? { path: sd.path } : {}) });
+          savedMarks.current.set(id, sd.dirty ? RESTORED_DIRTY : sess.editMark);
+        }
+        if (created.length === 0) return false;
+        setDocs(created);
+        const act = created[Math.min(Math.max(0, s.active), created.length - 1)]!;
+        setActiveId(act.id);
+        if (import.meta.env.DEV || "__TAURI__" in window) (window as unknown as Record<string, unknown>).__SESSION__ = act.session;
+        setVersion(act.session.version);
+        setNotice(`session restored (${created.length} document${created.length > 1 ? "s" : ""})`);
+        return true;
+      } catch (e) {
+        setError(`session restore failed: ${e instanceof Error ? e.message : e}`);
+        clearStoredSession(); // a poisoned blob must not block every start
+        return false;
+      }
+    },
+    [],
+  );
+
   const openedInitial = useRef(false);
   useEffect(() => {
     if (openedInitial.current) return;
     openedInitial.current = true;
+    // Crash/close recovery first. DEV restores only when unsaved work is
+    // at stake (the fixture is the dev workflow; e2e contexts are fresh).
+    const stored = loadStoredSession();
+    const restored = stored !== null && stored.docs.length > 0 && (!import.meta.env.DEV || stored.docs.some((d) => d.dirty)) ? restoreSession(stored) : false;
     if (import.meta.env.DEV) {
-      openDoc(DEV_FIXTURE);
+      if (!restored) openDoc(DEV_FIXTURE);
       return;
     }
     // Shell: a score double-clicked in the file manager arrives as a
     // launch argument; pull it (a Rust-side emit would race this mount).
     const invoke = tauriInvoke();
     if (!invoke) {
-      newDoc();
+      if (!restored) newDoc();
       return;
     }
     invoke("initial_score")
       .then((r) => {
         const pair = r as [string, string] | null;
-        if (!pair) newDoc();
-        else {
+        if (pair) {
           rememberDir(pair[0]);
-          openXml(docNameFromPath(pair[0]), pair[1], pair[0]);
-        }
+          importText(pair[0], pair[1], pair[0]); // alongside restored tabs
+        } else if (!restored) newDoc();
       })
-      .catch(() => newDoc());
+      .catch(() => {
+        if (!restored) newDoc();
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -684,7 +747,42 @@ export default function App() {
     }
   };
 
+  // --- crash/close recovery: persist the open tabs, debounced after
+  // every change, and once more synchronously on beforeunload (covers
+  // the app window closing; a hard crash loses at most the debounce).
+  const buildStoredSession = useCallback((): StoredSession | null => {
+    if (docs.length === 0) return null;
+    return {
+      docs: docs.map((d) => ({
+        name: d.name,
+        ...(d.path ? { path: d.path } : {}),
+        xml: d.session.saveDocument(),
+        dirty: d.session.editMark !== (savedMarks.current.get(d.id) ?? null),
+      })),
+      active: Math.max(0, docs.findIndex((d) => d.id === activeId)),
+    };
+  }, [docs, activeId]);
+  const buildStoredRef = useRef(buildStoredSession);
+  buildStoredRef.current = buildStoredSession;
+  const persistSession = useCallback(() => {
+    const s = buildStoredRef.current();
+    if (s) saveStoredSession(s);
+    else clearStoredSession();
+  }, []);
+  useEffect(() => {
+    const t = setTimeout(persistSession, 1000);
+    return () => clearTimeout(t);
+  }, [docs, activeId, version, persistSession]);
+  useEffect(() => {
+    window.addEventListener("beforeunload", persistSession);
+    return () => window.removeEventListener("beforeunload", persistSession);
+  }, [persistSession]);
+
   const closeDoc = (id: number) => {
+    // A dirty tab asks before its work is discarded (the session store
+    // keeps CLOSED-APP work, not individually closed tabs).
+    const doc = docs.find((d) => d.id === id);
+    if (doc && doc.session.editMark !== (savedMarks.current.get(id) ?? null) && !window.confirm(`"${doc.name}" has unsaved changes — close it anyway?`)) return;
     const remaining = docs.filter((d) => d.id !== id);
     setDocs(remaining);
     zoomByDoc.current.delete(id);
@@ -980,6 +1078,51 @@ export default function App() {
     [session],
   );
 
+  /**
+   * Open any supported TEXT format: MEI directly (keeps its path), the
+   * rest converted to MEI through the lazy Verovio worker. Converted
+   * documents carry NO path — a plain ctrl+s must never overwrite the
+   * .musicxml/.abc/.krn source with MEI.
+   */
+  const importText = useCallback(
+    (filename: string, contents: string, path?: string) => {
+      const fmt = detectImport(filename, contents);
+      if (fmt === null) {
+        setNotice(`unsupported file type: ${filename}`);
+        return;
+      }
+      if (fmt === "mei") {
+        openXml(docNameFromPath(filename), contents, path);
+        return;
+      }
+      const label = IMPORT_FORMATS.find((x) => x.id === fmt)?.label ?? fmt;
+      setNotice(`converting ${label}…`);
+      converter
+        .toMEI(fmt, contents)
+        .then((mei) => {
+          openXml(docNameFromPath(filename), mei);
+          setNotice(`imported ${filename} (${label} → MEI)`);
+        })
+        .catch((e) => setError(`import failed: ${e instanceof Error ? e.message : e}`));
+    },
+    [openXml],
+  );
+
+  /** Compressed MusicXML (.mxl) is a zip — it arrives as bytes. */
+  const importBinary = useCallback(
+    (filename: string, bytes: ArrayBuffer) => {
+      setNotice("converting compressed MusicXML…");
+      converter
+        .toMEI("mxl", bytes)
+        .then((mei) => {
+          openXml(docNameFromPath(filename), mei);
+          setNotice(`imported ${filename} (compressed MusicXML → MEI)`);
+        })
+        .catch((e) => setError(`import failed: ${e instanceof Error ? e.message : e}`));
+    },
+    [openXml],
+  );
+
   /** ctrl+o: native dialog in the shell, the hidden file input in browsers. */
   const openScore = useCallback(() => {
     const invoke = tauriInvoke();
@@ -991,12 +1134,16 @@ export default function App() {
       .then((r) => {
         const pair = r as [string, string] | null;
         if (!pair) return; // cancelled
-        const [path, xml] = pair;
+        const [path, contents] = pair;
         rememberDir(path);
-        openXml(docNameFromPath(path), xml, path);
+        // The shell base64-encodes .mxl (zip) contents — see open_score.
+        if (path.toLowerCase().endsWith(".mxl")) {
+          const bin = Uint8Array.from(atob(contents), (c) => c.charCodeAt(0));
+          importBinary(path, bin.buffer);
+        } else importText(path, contents, path);
       })
       .catch((e) => setNotice(`open failed: ${e}`));
-  }, [openXml]);
+  }, [importText, importBinary]);
 
   /** ctrl+s / ctrl+shift+s: silent save to the known path, else save-as
    * dialog (shell); browsers keep the download. */
@@ -1021,12 +1168,27 @@ export default function App() {
         return;
       }
       if (!saveAs && active.path) {
-        invoke("save_score", { path: active.path, contents: xml })
-          .then(() => {
-            markSaved();
-            setNotice(`saved ${active.path}`);
+        const path = active.path;
+        const write = () =>
+          invoke("save_score", { path, contents: xml })
+            .then(() => {
+              markSaved();
+              recordMtime(path);
+              setNotice(`saved ${path}`);
+            })
+            .catch((e) => setNotice(`save failed: ${e}`));
+        // External-change guard: the file may have been edited by another
+        // program since it was opened/last saved — alert before clobbering.
+        invoke("file_mtime", { path })
+          .then((m) => {
+            const known = diskMtimes.current.get(path);
+            if (typeof m === "number" && known !== undefined && m !== known && !window.confirm(`"${path}" changed on disk since it was opened here.\n\nOverwrite the external changes?`)) {
+              setNotice("save cancelled — the file changed on disk (save-as keeps both)");
+              return;
+            }
+            void write();
           })
-          .catch((e) => setNotice(`save failed: ${e}`));
+          .catch(() => void write()); // mtime unavailable: save normally
         return;
       }
       invoke("save_score_as", { contents: xml, suggested: `${active.name}.mei`, dir: loadSettings().lastDir ?? null })
@@ -1034,6 +1196,7 @@ export default function App() {
           const path = r as string | null;
           if (!path) return; // cancelled
           rememberDir(path);
+          recordMtime(path);
           const name = docNameFromPath(path);
           markSaved();
           setDocs((ds) => ds.map((d) => (d.id === active.id ? { ...d, path, name } : d)));
@@ -1041,9 +1204,77 @@ export default function App() {
         })
         .catch((e) => setNotice(`save failed: ${e}`));
     },
-    [session, active],
+    [session, active, recordMtime],
   );
   const saveDoc = () => saveActive(false);
+
+  /** Write an export: download in browsers, native save dialog in the shell. */
+  const saveExport = useCallback((filename: string, data: string | Uint8Array, mime: string): Promise<void> => {
+    const invoke = tauriInvoke();
+    if (!invoke) {
+      const blob = new Blob([data as BlobPart], { type: mime });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      return Promise.resolve();
+    }
+    const bytes = typeof data === "string" ? Array.from(new TextEncoder().encode(data)) : Array.from(data);
+    return invoke("export_file", { bytes, suggested: filename, dir: loadSettings().lastDir ?? null }).then((r) => {
+      const path = r as string | null;
+      if (path) rememberDir(path);
+    });
+  }, []);
+
+  /** Export the active score in a Verovio-backed format (battuta menu). */
+  const exportAs = useCallback(
+    (id: ExportFormat["id"]) => {
+      if (!session || !active || !pool) return;
+      const f = EXPORT_FORMATS.find((x) => x.id === id)!;
+      const run = async () => {
+        if (id === "svg") {
+          // The page-view engraving, one file per page (1-based indices).
+          const svgs: string[] = [];
+          const count = await pool.renderDocumentPages(session.serializeForPageView(), (i, svg) => {
+            svgs[i - 1] = svg;
+          });
+          for (let i = 0; i < count; i++) await saveExport(count > 1 ? `${active.name}-p${i + 1}.svg` : `${active.name}.svg`, svgs[i]!, f.mime);
+          setNotice(`exported ${count} SVG page${count > 1 ? "s" : ""}`);
+          return;
+        }
+        const out = await converter.fromMEI(id, session.serializeForPageView());
+        // The worker returns MIDI as base64 (a standard .mid file's bytes).
+        const payload = f.binary ? Uint8Array.from(atob(out), (c) => c.charCodeAt(0)) : out;
+        await saveExport(`${active.name}.${f.ext}`, payload, f.mime);
+        setNotice(`exported ${active.name}.${f.ext}`);
+      };
+      setNotice(`exporting ${f.label}…`);
+      run().catch((e) => setError(`export failed: ${e instanceof Error ? e.message : e}`));
+    },
+    [session, active, pool, saveExport],
+  );
+
+  /**
+   * battuta's playback as MIDI — the SOLVED form the player performs
+   * (repeats/voltas/jump expanded, ties merged, articulation gates),
+   * not Verovio's written-score MIDI.
+   */
+  const exportPlaybackMidi = useCallback(() => {
+    if (!session || !active || !pool) return;
+    setNotice("exporting playback MIDI…");
+    const { xml, expand } = session.serializeForPlayback();
+    pool
+      .documentTimemap(xml, expand)
+      .then((data) => {
+        if (data.error) throw new Error(data.error);
+        if (data.events.length === 0) throw new Error("nothing to play");
+        data.shaping = session.playbackShaping();
+        return saveExport(`${active.name}-playback.mid`, playbackToMidi(data), "audio/midi");
+      })
+      .then(() => setNotice(`exported ${active.name}-playback.mid`))
+      .catch((e) => setError(`export failed: ${e instanceof Error ? e.message : e}`));
+  }, [session, active, pool, saveExport]);
 
   /** ctrl+± and the loupe buttons step through the fixed zoom levels. */
   const zoomStep = useCallback(
@@ -2225,8 +2456,108 @@ export default function App() {
 
   return (
     <div className={showPerf ? undefined : "no-perf"} style={{ fontFamily: "system-ui, sans-serif", padding: 12, paddingBottom: 36 }}>
-      <header style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap", position: "sticky", top: 0, zIndex: 35, background: "#fff", margin: "-12px -12px 4px", padding: "12px 12px 6px", borderBottom: "1px solid #e3e7ec" }}>
-        <strong>battuta</strong>
+      <header style={{ display: "flex", flexDirection: "column", gap: 6, position: "sticky", top: 0, zIndex: 35, background: "#fff", margin: "-12px -12px 4px", padding: "12px 12px 6px", borderBottom: "1px solid #e3e7ec" }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+        <span style={{ position: "relative" }}>
+          <button data-menu-toggle onClick={() => setMenuOpen((o) => !o)} style={{ fontWeight: 700, fontSize: 14, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
+            battuta ▾
+          </button>
+          {menuOpen && (
+            <>
+              {/* Transparent backdrop: any click outside closes the menu. */}
+              <div data-menu-backdrop onClick={() => setMenuOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 38 }} />
+              <div data-app-menu style={{ position: "absolute", left: 0, top: "calc(100% + 6px)", zIndex: 40, background: "#fff", border: "1px solid #d6dde5", borderRadius: 6, boxShadow: "0 6px 24px rgba(0,0,0,.15)", padding: 4, display: "flex", flexDirection: "column", minWidth: 210 }}>
+                {/* Routes through openScore: the NATIVE dialog in the shell
+                    (with the remembered folder); browsers get the hidden
+                    file input via openScore's fallback. */}
+                <button
+                  style={MENU_ITEM}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    openScore();
+                  }}
+                >
+                  open file…
+                </button>
+                <button
+                  style={MENU_ITEM}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    saveDoc();
+                  }}
+                >
+                  save
+                </button>
+                <button
+                  data-export="playback-midi"
+                  title="the player's interpretation: repeats, voltas and D.S./D.C. expanded, ties merged, staccato/legato gates applied"
+                  style={MENU_ITEM}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    exportPlaybackMidi();
+                  }}
+                >
+                  export playback MIDI (.mid)
+                </button>
+                {/* Verovio-backed exports; imports ride "open file…" (any
+                    supported extension converts on open). */}
+                {EXPORT_FORMATS.map((f) => (
+                  <button
+                    key={f.id}
+                    data-export={f.id}
+                    style={MENU_ITEM}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      exportAs(f.id);
+                    }}
+                  >
+                    export {f.label} (.{f.ext})
+                  </button>
+                ))}
+                <button
+                  data-shortcuts-toggle
+                  style={MENU_ITEM}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setShortcutsOpen(true);
+                  }}
+                >
+                  🌣 shortcuts — view and rebind
+                </button>
+                <button
+                  data-perf-toggle
+                  title="show/hide performance numbers"
+                  style={MENU_ITEM}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setShowPerf((p) => !p);
+                  }}
+                >
+                  ⏱ performance numbers {showPerf ? "✓" : ""}
+                </button>
+                <button
+                  data-regen-ids
+                  title="regenerate all xml:ids — repairs documents that accumulated duplicated ids"
+                  style={MENU_ITEM}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    if (!session) return;
+                    const n = session.regenerateIds();
+                    setCaret(null);
+                    setSelection([]);
+                    setBlock(null);
+                    anchor.current = null;
+                    lastEntered.current = null;
+                    afterCommand(session);
+                    setNotice(`${n} ids regenerated (references follow; ctrl+z restores)`);
+                  }}
+                >
+                  ⟲ regenerate ids
+                </button>
+              </div>
+            </>
+          )}
+        </span>
         <span className="tabs">
           {docs.map((d) => (
             <button key={d.id} className={d.id === activeId ? "tab active" : "tab"} onClick={() => switchDoc(d.id)}>
@@ -2251,75 +2582,35 @@ export default function App() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".mei,.xml"
+          accept={OPEN_EXTENSIONS.map((e) => `.${e}`).join(",")}
           style={{ display: "none" }}
           onChange={(e) => {
             const f = e.target.files?.[0];
             e.target.value = ""; // allow re-opening the same file
             if (!f) return;
-            f.text()
-              .then((xml) => openXml(f.name.replace(/\.(mei|xml)$/, ""), xml))
-              .catch((err) => setError(String(err)));
+            if (detectImport(f.name) === "mxl") {
+              f.arrayBuffer()
+                .then((b) => importBinary(f.name, b))
+                .catch((err) => setError(String(err)));
+            } else {
+              f.text()
+                .then((text) => importText(f.name, text))
+                .catch((err) => setError(String(err)));
+            }
           }}
         />
-        {/* Routes through openScore: the NATIVE dialog in the shell (with
-            the remembered folder) — the raw file input was WebKit's own
-            chooser, which always started at Home. Browsers still get the
-            input via openScore's fallback. */}
-        <button onClick={openScore}>open file…</button>
         <button onClick={() => setView(view === "tiles" ? "pages" : "tiles")}>{view === "tiles" ? "page view" : "edit view"}</button>
-        {view === "pages" && (
-          <>
-            <button data-player-toggle title={playerState === "playing" ? "pause" : "play (repeats, voltas and one D.S./D.C. jump follow the form)"} onClick={onPlayPause} disabled={playerState === "loading"}>
-              {playerState === "playing" ? "⏸" : playerState === "loading" ? "…" : "▶"}
-            </button>
-            <button data-player-stop title="stop" onClick={() => scorePlayer.stop()} disabled={playerState === "idle"}>
-              ⏹
-            </button>
-            <select
-              data-player-tempo
-              title="playback speed (× the score tempo)"
-              value={playerTempo}
-              onChange={(e) => {
-                const f = Number(e.target.value);
-                e.target.blur();
-                setPlayerTempo(f);
-                saveSettings({ tempo: f });
-                scorePlayer.setTempo(f);
-              }}
-              style={{ fontSize: 12 }}
-            >
-              {TEMPO_STEPS.map((f) => (
-                <option key={f} value={f}>
-                  {f}×
-                </option>
-              ))}
-            </select>
-            {playerState !== "idle" && playerState !== "loading" && (
-              <>
-                <span
-                  data-player-progress
-                  title="seek"
-                  onClick={(e) => {
-                    const r = e.currentTarget.getBoundingClientRect();
-                    scorePlayer.seek((e.clientX - r.left) / r.width);
-                  }}
-                  style={{ width: 140, height: 8, background: "#dde3ea", borderRadius: 4, display: "inline-block", cursor: "pointer", position: "relative", alignSelf: "center", overflow: "hidden" }}
-                >
-                  <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${playerTotal ? Math.min(100, (playerPos / playerTotal) * 100) : 0}%`, background: "#4a7dbd", pointerEvents: "none" }} />
-                </span>
-                <span data-player-time style={{ fontSize: 12, color: "#567", fontVariantNumeric: "tabular-nums" }}>
-                  {fmtTime(playerPos)} / {fmtTime(playerTotal)}
-                </span>
-              </>
-            )}
-          </>
-        )}
-
-        <button onClick={() => structural("insert")}>+m</button>
-        <button onClick={() => structural("delete")}>−m</button>
-        <button onClick={() => structural("duplicate")}>⧉m</button>
-        <button onClick={saveDoc}>save</button>
+        <button title="on-screen keyboard — piano + every shortcut, for touch devices" data-vkeys-toggle onClick={() => toggleVk(!vkOpen)} style={{ opacity: vkOpen ? 1 : 0.45 }}>
+          🎹
+        </button>
+        <span style={{ color: "#666", fontSize: 13 }} data-status>
+          {showPerf ? status : ""}
+        </span>
+      </div>
+      {/* Second header row: the score's own metadata (title, tempo) and,
+          in page view, the player — playback speed sits next to the score
+          tempo it multiplies. */}
+      <div data-doc-header style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
         {titleOpen === null ? (
           <button
             data-title-button
@@ -2394,35 +2685,54 @@ export default function App() {
             onBlur={() => setTempoOpen(null)}
           />
         )}
-        <button title="show/hide performance numbers" data-perf-toggle onClick={() => setShowPerf((p) => !p)} style={{ opacity: showPerf ? 1 : 0.45 }}>
-          ⏱
-        </button>
-        <button
-          title="regenerate all xml:ids — repairs documents that accumulated duplicated ids"
-          data-regen-ids
-          onClick={() => {
-            if (!session) return;
-            const n = session.regenerateIds();
-            setCaret(null);
-            setSelection([]);
-            setBlock(null);
-            anchor.current = null;
-            lastEntered.current = null;
-            afterCommand(session);
-            setNotice(`${n} ids regenerated (references follow; ctrl+z restores)`);
-          }}
-        >
-          ⟲id
-        </button>
-        <button title="on-screen keyboard — piano + every shortcut, for touch devices" data-vkeys-toggle onClick={() => toggleVk(!vkOpen)} style={{ opacity: vkOpen ? 1 : 0.45 }}>
-          🎹
-        </button>
-        <button title="shortcuts — view and rebind every key" data-shortcuts-toggle onClick={() => setShortcutsOpen(true)}>
-          🌣
-        </button>
-        <span style={{ color: "#666", fontSize: 13 }} data-status>
-          {showPerf ? status : ""}
-        </span>
+        {view === "pages" && (
+          <>
+            <button data-player-toggle title={playerState === "playing" ? "pause" : "play (repeats, voltas and one D.S./D.C. jump follow the form)"} onClick={onPlayPause} disabled={playerState === "loading"}>
+              {playerState === "playing" ? "⏸" : playerState === "loading" ? "…" : "▶"}
+            </button>
+            <button data-player-stop title="stop" onClick={() => scorePlayer.stop()} disabled={playerState === "idle"}>
+              ⏹
+            </button>
+            <select
+              data-player-tempo
+              title="playback speed (× the score tempo)"
+              value={playerTempo}
+              onChange={(e) => {
+                const f = Number(e.target.value);
+                e.target.blur();
+                setPlayerTempo(f);
+                saveSettings({ tempo: f });
+                scorePlayer.setTempo(f);
+              }}
+              style={{ fontSize: 12 }}
+            >
+              {TEMPO_STEPS.map((f) => (
+                <option key={f} value={f}>
+                  {f}×
+                </option>
+              ))}
+            </select>
+            {playerState !== "idle" && playerState !== "loading" && (
+              <>
+                <span
+                  data-player-progress
+                  title="seek"
+                  onClick={(e) => {
+                    const r = e.currentTarget.getBoundingClientRect();
+                    scorePlayer.seek((e.clientX - r.left) / r.width);
+                  }}
+                  style={{ width: 140, height: 8, background: "#dde3ea", borderRadius: 4, display: "inline-block", cursor: "pointer", position: "relative", alignSelf: "center", overflow: "hidden" }}
+                >
+                  <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${playerTotal ? Math.min(100, (playerPos / playerTotal) * 100) : 0}%`, background: "#4a7dbd", pointerEvents: "none" }} />
+                </span>
+                <span data-player-time style={{ fontSize: 12, color: "#567", fontVariantNumeric: "tabular-nums" }}>
+                  {fmtTime(playerPos)} / {fmtTime(playerTotal)}
+                </span>
+              </>
+            )}
+          </>
+        )}
+      </div>
       </header>
       {/* Toasts, bottom-right above the status bar. The notice element stays
           in the DOM (hidden when empty) — the e2e suites read [data-notice].

@@ -181,7 +181,7 @@ const s1 = await staffCenter(1, 0);
 await page.mouse.click(s1.x, s1.y);
 await page.waitForFunction(() => document.querySelector("main").dataset.caret !== "", null, { timeout: 5000 });
 const measureCount = await page.evaluate(() => window.__SESSION__.score.measures.length);
-await page.locator("button", { hasText: "+m" }).click();
+await page.keyboard.press("NumpadAdd");
 await page.waitForFunction((n) => window.__SESSION__.score.measures.length === n + 1, measureCount, { timeout: 10000 });
 check("insert adds a measure", true);
 // Regression: the inserted measure must actually RENDER (it was stuck as a
@@ -230,7 +230,8 @@ await page.keyboard.press("Control+z");
 await page.waitForFunction((n) => window.__SESSION__.score.measures.length === n, nBefore, { timeout: 10000 });
 
 // --- 6. save + reopen through core and Verovio ---
-const [download] = await Promise.all([page.waitForEvent("download"), page.locator("button", { hasText: "save" }).click()]);
+await page.locator("[data-menu-toggle]").click();
+const [download] = await Promise.all([page.waitForEvent("download"), page.locator('[data-app-menu] button', { hasText: "save" }).click()]);
 const savedPath = `${scratch}/phase3-saved.mei`;
 await download.saveAs(savedPath);
 const savedXml = readFileSync(savedPath, "utf8");

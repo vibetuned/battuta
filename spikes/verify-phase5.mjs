@@ -69,17 +69,19 @@ check("clicking again re-enters input mode", true);
 await page.keyboard.press("Escape");
 
 // --- 1b. the ⏱ toggle hides/shows every performance number ---
-check("perf numbers show by default in dev", await page.evaluate(() => document.querySelector("[data-status]").textContent.includes("measures")));
-await page.locator("[data-perf-toggle]").click();
-await page.waitForFunction(() => document.querySelector("[data-status]").textContent === "", null, { timeout: 5000 });
-check("⏱ hides the status numbers", true);
-check("…and the per-tile render timings", await page.evaluate(() => {
+check("perf numbers are OFF by default", await page.evaluate(() => document.querySelector("[data-status]").textContent === ""));
+check("…including the per-tile render timings", await page.evaluate(() => {
   const ms = document.querySelector(".tile .ms");
   return ms && getComputedStyle(ms).display === "none";
 }));
+await page.locator("[data-menu-toggle]").click();
 await page.locator("[data-perf-toggle]").click();
 await page.waitForFunction(() => document.querySelector("[data-status]").textContent.includes("measures"), null, { timeout: 5000 });
-check("⏱ brings them back", await page.evaluate(() => getComputedStyle(document.querySelector(".tile .ms")).display !== "none"));
+check("⏱ shows the status numbers", await page.evaluate(() => getComputedStyle(document.querySelector(".tile .ms")).display !== "none"));
+await page.locator("[data-menu-toggle]").click();
+await page.locator("[data-perf-toggle]").click();
+await page.waitForFunction(() => document.querySelector("[data-status]").textContent === "", null, { timeout: 5000 });
+check("⏱ hides them again", true);
 
 // --- 1c. caret indicator + loupe zoom ---
 check("without a caret the position indicator is blank", await page.evaluate(() => document.querySelector("[data-caret-indicator]").textContent.includes("—")) || true);
@@ -855,6 +857,7 @@ check("harmony round unwinds cleanly", await page.evaluate(() =>
     const walk = (el) => el.attrs?.["xml:id"] ?? walk(el.children.find((c) => typeof c !== "string"));
     return window.__SESSION__.score.measures[0].attrs["xml:id"];
   });
+  await page.locator("[data-menu-toggle]").click();
   await page.locator("[data-regen-ids]").click();
   await page.waitForFunction(() => document.querySelector("[data-notice]").textContent.includes("ids regenerated"), null, { timeout: 10000 });
   check("⟲id regenerates and reports", true);
@@ -885,6 +888,7 @@ check("harmony round unwinds cleanly", await page.evaluate(() =>
 // --- 7l. shortcut editor (🌣): list, rebind, reroute, reset ---
 {
   await page.evaluate(() => localStorage.removeItem("battuta.keymap.v1.qwerty"));
+  await page.locator("[data-menu-toggle]").click();
   await page.locator("[data-shortcuts-toggle]").click();
   await page.waitForFunction(() => document.querySelector("[data-shortcuts]"), null, { timeout: 5000 });
   check("🌣 opens the shortcut editor", true);
@@ -914,6 +918,7 @@ check("harmony round unwinds cleanly", await page.evaluate(() =>
   await page.waitForFunction(() => document.querySelector("[data-notice]").textContent.includes("tie refused"), null, { timeout: 5000 });
   check("the new key reaches the tie action", true);
   // reset restores defaults
+  await page.locator("[data-menu-toggle]").click();
   await page.locator("[data-shortcuts-toggle]").click();
   await page.waitForFunction(() => document.querySelector("[data-shortcuts]"), null, { timeout: 5000 });
   await page.locator("[data-shortcuts-reset]").click();
@@ -1023,6 +1028,7 @@ check("harmony round unwinds cleanly", await page.evaluate(() =>
   await page.keyboard.press("Alt+Digit2"); // cleanup: fingering off
 
   // keyboard layouts: qwerty and azerty carry separate defaults
+  await page.locator("[data-menu-toggle]").click();
   await page.locator("[data-shortcuts-toggle]").click();
   await page.waitForFunction(() => document.querySelector("[data-shortcuts]"), null, { timeout: 5000 });
   check("the default layout binds qwerty simile '", await page.evaluate(() => document.querySelector('[data-shortcut-bind="simile"]')?.textContent.trim() === "'"));

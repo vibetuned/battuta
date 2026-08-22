@@ -98,7 +98,7 @@ await page.locator('.tile[data-index="0"] g[class~="note"] use').first().click({
 await page.selectOption('select[title*="meter"]', "3/4");
 await page.waitForFunction(() => document.querySelector("[data-notice]").textContent.includes("refused"), null, { timeout: 5000 });
 check("meter change refuses when content no longer fits", true);
-await page.locator("button", { hasText: "+m" }).click(); // caret lands in the new empty measure
+await page.keyboard.press("NumpadAdd"); // caret lands in the new empty measure
 await page.waitForFunction(() => window.__SESSION__.score.measures.length === 11, null, { timeout: 10000 });
 await page.selectOption('select[title*="meter"]', "3/4");
 await page.waitForFunction(() => {

@@ -34,10 +34,30 @@ fn starting_dir(dir: Option<String>) -> Option<std::path::PathBuf> {
 }
 
 /// Native open dialog: returns (path, contents) or None when cancelled.
+/// Extensions the open dialog offers — MEI plus every Verovio-importable
+/// format (kept in sync with formats.ts by the frontend's import table).
+const OPEN_EXTENSIONS: &[&str] = &["mei", "xml", "musicxml", "mxl", "abc", "pae", "krn", "kern"];
+
+/// Minimal base64 (no external crate): .mxl is a zip, and Tauri's IPC
+/// carries strings — the frontend decodes with atob.
+fn to_base64(bytes: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
+        out.push(T[(n >> 18) as usize & 63] as char);
+        out.push(T[(n >> 12) as usize & 63] as char);
+        out.push(if chunk.len() > 1 { T[(n >> 6) as usize & 63] as char } else { '=' });
+        out.push(if chunk.len() > 2 { T[n as usize & 63] as char } else { '=' });
+    }
+    out
+}
+
 #[tauri::command]
 async fn open_score(dir: Option<String>) -> Result<Option<(String, String)>, String> {
     let mut dialog = rfd::AsyncFileDialog::new()
-        .add_filter("MEI scores", &["mei", "xml"])
+        .add_filter("scores", OPEN_EXTENSIONS)
         .set_title("Open score");
     if let Some(d) = starting_dir(dir) {
         dialog = dialog.set_directory(d);
@@ -47,8 +67,42 @@ async fn open_score(dir: Option<String>) -> Result<Option<(String, String)>, Str
         return Ok(None);
     };
     let path = file.path().to_path_buf();
-    let contents = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    // .mxl is a zip: base64 it (the frontend detects by extension).
+    let contents = if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("mxl")) {
+        to_base64(&std::fs::read(&path).map_err(|e| e.to_string())?)
+    } else {
+        std::fs::read_to_string(&path).map_err(|e| e.to_string())?
+    };
     Ok(Some((path.to_string_lossy().into_owned(), contents)))
+}
+
+/// Export save dialog: any format the frontend produces, as raw bytes.
+#[tauri::command]
+async fn export_file(bytes: Vec<u8>, suggested: String, dir: Option<String>) -> Result<Option<String>, String> {
+    let ext = suggested.rsplit('.').next().unwrap_or("").to_owned();
+    let mut dialog = rfd::AsyncFileDialog::new()
+        .add_filter(ext.clone(), &[ext])
+        .set_file_name(&suggested)
+        .set_title("Export");
+    if let Some(d) = starting_dir(dir) {
+        dialog = dialog.set_directory(d);
+    }
+    let Some(file) = dialog.save_file().await
+    else {
+        return Ok(None);
+    };
+    let path = file.path().to_path_buf();
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+/// Modification time (ms since epoch) of a file, for the external-change
+/// guard: save compares this against the value recorded at open/save and
+/// alerts before overwriting edits made by another program.
+#[tauri::command]
+fn file_mtime(path: String) -> Option<i64> {
+    let m = std::fs::metadata(&path).ok()?.modified().ok()?;
+    Some(m.duration_since(std::time::UNIX_EPOCH).ok()?.as_millis() as i64)
 }
 
 /// Silent save to a known path (ctrl+s on an already-saved score).
@@ -168,7 +222,9 @@ struct InitialFile(std::sync::Mutex<Option<String>>);
 
 fn is_score_path(p: &str) -> bool {
     let l = p.to_lowercase();
-    l.ends_with(".mei") || l.ends_with(".xml")
+    // Text formats only: initial_score reads to string (.mxl is a zip,
+    // and a double-clicked .mxl is rare enough to route via open).
+    ["mei", "xml", "musicxml", "abc", "pae", "krn", "kern"].iter().any(|e| l.ends_with(&format!(".{e}")))
 }
 
 #[tauri::command]
@@ -201,7 +257,7 @@ fn main() {
             spawn_midi(app.app_handle().clone());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![bench_echo, bench_report, js_log, open_score, save_score, save_score_as, initial_score])
+        .invoke_handler(tauri::generate_handler![bench_echo, bench_report, js_log, open_score, save_score, save_score_as, export_file, file_mtime, initial_score])
         .on_page_load(|webview, _| {
             eprintln!("[shell] page loaded: {}", webview.url().map(|u| u.to_string()).unwrap_or_default());
             // Headless shell self-test: exercise the save command end to end.
