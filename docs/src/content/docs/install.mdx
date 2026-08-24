@@ -18,7 +18,15 @@ Bundles are attached to each [GitHub release](https://github.com/vibetuned/battu
 <Tabs>
   <TabItem label="Linux" icon="linux">
 
-Two bundles, both 64-bit x86:
+On Debian/Ubuntu, the apt repository keeps you updated with the system:
+
+```sh
+sudo curl -fsSL https://battuta.vibetuned.com/apt/battuta.asc -o /etc/apt/keyrings/battuta.asc
+echo "deb [signed-by=/etc/apt/keyrings/battuta.asc] https://battuta.vibetuned.com/apt stable main" | sudo tee /etc/apt/sources.list.d/battuta.list
+sudo apt update && sudo apt install battuta
+```
+
+Or grab a bundle directly — two flavours, both 64-bit x86:
 
 - **`battuta_<version>_amd64.deb`** — the small one (~6 MB); it uses the
   WebKitGTK already on your system.
@@ -39,15 +47,18 @@ bar never finds your keyboard, install your distribution's ALSA runtime.
   </TabItem>
   <TabItem label="macOS" icon="apple">
 
-Download the `.dmg`, open it, drag battuta to Applications.
-
-The disk image is **not signed with an Apple Developer ID**, so Gatekeeper
-warns you the first time. Open it from Finder's context menu → *Open* to get
-the "open anyway" choice, or clear the quarantine flag yourself:
+With [Homebrew](https://brew.sh):
 
 ```sh
-xattr -dr com.apple.quarantine /Applications/battuta.app
+brew install --cask vibetuned/tap/battuta
 ```
+
+Or download the `.dmg`, open it, drag battuta to Applications. One universal
+binary covers Apple Silicon and Intel.
+
+From **0.0.2** the app is signed with Vibetuned's Apple Developer ID and
+notarized — no Gatekeeper hoops. (The old 0.0.1 image was unsigned; if you're
+stuck on it, use Finder's context menu → *Open* the first time.)
 
 Verified on Apple Silicon: the app launches, `.mei` files open by
 double-click, and MIDI keyboards hot-plug through CoreMIDI.
