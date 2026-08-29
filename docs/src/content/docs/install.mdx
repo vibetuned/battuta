@@ -69,6 +69,10 @@ double-click, and MIDI keyboards hot-plug through CoreMIDI.
 Download the NSIS installer (`battuta_<version>_x64-setup.exe`). It
 bootstraps Microsoft's WebView2 runtime if the machine doesn't have it.
 
+The installer is **not Authenticode-signed yet**, so SmartScreen warns about
+an unknown publisher the first time: choose *More info* → *Run anyway*.
+(Free code signing for open-source projects is in the works.)
+
 <Aside type="caution" title="Untested platform">
 Windows bundles come out of the same release build as the others, but battuta
 has not had a test round on Windows yet. Expect rough edges — and please
