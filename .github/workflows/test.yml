@@ -16,8 +16,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # npm ci runs @battuta/core's prepare, which builds the dist the
+      # editor's typecheck and tests resolve against.
       - run: npm ci
-      - run: npm run build -w @battuta/core
       - run: npm run typecheck -w @battuta/editor
       - run: npx vitest run --root packages/core
       - run: npm test -w @battuta/editor

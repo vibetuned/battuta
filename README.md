@@ -115,9 +115,10 @@ Two options:
   `rustup target add aarch64-apple-darwin x86_64-apple-darwin` for one
   binary covering both CPU families).
 - **Locally on Windows**: install Visual Studio Build Tools (C++
-  workload), rustup (MSVC toolchain), and Node, then `npm ci` and
-  `cd apps/editor && npx tauri build`. Verified on Windows 11 with
-  VS 2022 and the Windows 11 SDK.
+  workload), rustup (MSVC toolchain), and Node, then `npm ci`,
+  `cd apps/editor`, `npx tauri build` (separate commands — `&&` is not
+  valid in Windows PowerShell 5). Verified on Windows 11 with VS 2022
+  and the Windows 11 SDK.
 
 Platform notes: tauri.conf.json lists every platform's bundle targets
 and Tauri silently drops the ones the host cannot build, so a plain

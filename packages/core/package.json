@@ -11,12 +11,15 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "prepare": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
+  "//": "prepare is LOAD-BEARING: every consumer resolves @battuta/core via dist/, and npm install/ci runs prepare in workspaces — it is what makes a fresh clone's dev/test/build work without a manual core build (the editor's prebuild re-runs it before builds so edits to core are picked up).",
   "devDependencies": {
     "@xmldom/xmldom": "^0.9.0",
     "fast-check": "^4.9.0",
+    "typescript": "^5.6.0",
     "vitest": "^2.1.0"
   }
 }

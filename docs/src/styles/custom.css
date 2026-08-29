@@ -1,8 +1,20 @@
 /* battuta guide — a quiet slate palette close to the editor's own chrome,
    plus the keycap styling the guide leans on heavily. */
 
+/* Musical Unicode fallback: macOS ships no font for the SMP Musical
+   Symbols block (𝅝 𝅗𝅥 𝄆 𝄇 𝄐 𝄪 in the keymap tables and guide prose).
+   Same subset the editor bundles; unicode-range keeps it out of text.
+   (Absolute URL: correct at the deployed root; a DOCS_BASE build only
+   loses the fallback.) */
+@font-face {
+  font-family: "Noto Music";
+  src: url("/fonts/NotoMusic-Regular.woff2") format("woff2");
+  unicode-range: U+25CC, U+2669-266F, U+1D100-1D1EA;
+  font-display: block;
+}
+
 :root {
-  --sl-font: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --sl-font: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Noto Music", sans-serif;
   --sl-color-accent-low: #16253a;
   --sl-color-accent: #3d7fbf;
   --sl-color-accent-high: #cfe2f5;

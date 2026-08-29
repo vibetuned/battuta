@@ -1,0 +1,10 @@
+NotoMusic-Regular.woff2 — the "music" unicode-range subset of Noto Music,
+as served by Google Fonts (fonts.google.com/noto/specimen/Noto+Music).
+
+Copyright 2012 Google Inc. All Rights Reserved.
+Licensed under the SIL Open Font License, Version 1.1:
+https://openfontlicense.org
+
+Bundled so the SMP Musical Symbols block (U+1D100–1D1EA: note-value
+glyphs, repeat signs, fermata, double sharp …) renders in the UI on
+macOS, which ships no system font covering it.

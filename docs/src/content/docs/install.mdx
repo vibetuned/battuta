@@ -166,17 +166,22 @@ No shell-specific setup is needed — PowerShell, cmd and Git Bash all work.
   </TabItem>
 </Tabs>
 
-Then, from the repository root:
+Then, from the repository root (one command per line — `&&` is not valid in
+Windows PowerShell 5):
 
 ```sh
 npm install
-cd apps/editor && npx tauri build
+cd apps/editor
+npx tauri build
 ```
 
 `tauri build` builds the frontend first, and that in turn builds
 `@battuta/core`, so there is no separate frontend step to remember. The
 bundles land in `apps/editor/src-tauri/target/release/bundle/`: a `.deb` and
 an `.AppImage` on Linux, a `.dmg` on macOS, an NSIS `-setup.exe` on Windows.
+(A universal macOS build writes to
+`target/universal-apple-darwin/release/bundle/` instead — per-target builds
+get their own directory.)
 The binary prints at startup whether it is serving embedded assets or talking
 to the dev server, so you always know which one you launched.
 

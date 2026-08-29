@@ -8,6 +8,10 @@ import { scorePlayer, type PlayerState } from "./player";
 import { DocumentSession } from "./session";
 import { VirtualKeyboard } from "./VirtualKeyboard";
 import { converter } from "./converter";
+// Musical Unicode (𝅝 𝅗𝅥 𝅘𝅥𝅯 𝄆 𝄇 𝄐 𝄪 …) has NO macOS system font — the UI
+// glyphs rendered as tofu there. Bundled Noto Music (35KB, OFL) fills
+// exactly those blocks via @font-face unicode-range below.
+import notoMusicUrl from "./assets/fonts/NotoMusic-Regular.woff2?url";
 import { detectImport, IMPORT_FORMATS, EXPORT_FORMATS, OPEN_EXTENSIONS, type ExportFormat } from "./formats";
 import { playbackToMidi } from "./midiExport";
 import { saveStoredSession, loadStoredSession, clearStoredSession, type StoredSession } from "./sessionStore";
@@ -2245,10 +2249,20 @@ export default function App() {
       .then((access) => {
         if (closed) return;
         const attach = () => {
+          // Some drivers (seen on Windows) register the same device as TWO
+          // input ports; attaching both fires every note twice. First port
+          // per name wins; duplicates are detached, not just unlisted.
           const names: string[] = [];
+          const seen = new Set<string>();
           for (const input of access.inputs.values()) {
+            const name = input.name || "device";
+            if (seen.has(name)) {
+              input.onmidimessage = null;
+              continue;
+            }
+            seen.add(name);
             input.onmidimessage = onMessage;
-            names.push(input.name || "device");
+            names.push(name);
           }
           setMidiDevices(names);
         };
@@ -2455,7 +2469,7 @@ export default function App() {
   }
 
   return (
-    <div className={showPerf ? undefined : "no-perf"} style={{ fontFamily: "system-ui, sans-serif", padding: 12, paddingBottom: 36 }}>
+    <div className={showPerf ? undefined : "no-perf"} style={{ fontFamily: `system-ui, "Noto Music", sans-serif`, padding: 12, paddingBottom: 36 }}>
       <header style={{ display: "flex", flexDirection: "column", gap: 6, position: "sticky", top: 0, zIndex: 35, background: "#fff", margin: "-12px -12px 4px", padding: "12px 12px 6px", borderBottom: "1px solid #e3e7ec" }}>
       <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
         <span style={{ position: "relative" }}>
@@ -2797,6 +2811,18 @@ export default function App() {
         </div>
       )}
       <style>{`
+        /* Musical Unicode fallback: macOS has no system font for the SMP
+           Musical Symbols block, so 𝅝 𝅗𝅥 𝅘𝅥𝅯 𝄆 𝄇 𝄐 𝄪 rendered as tofu. The
+           unicode-range keeps this face out of ordinary text, and form
+           controls must INHERIT the stack (buttons default to a system
+           font that skips the fallback chain). */
+        @font-face {
+          font-family: "Noto Music";
+          src: url("${notoMusicUrl}") format("woff2");
+          unicode-range: U+25CC, U+2669-266F, U+1D100-1D1EA;
+          font-display: block;
+        }
+        button, select, input { font-family: inherit; }
         /* Block-selection drags must never paint the native text-selection
            overlay — WebKitGTK needs the prefixed form AND it applied to the
            SVG content itself, not just the container. */

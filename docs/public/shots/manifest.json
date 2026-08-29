@@ -11,7 +11,7 @@
       "name": "header",
       "alt": "The two-row header: the battuta menu button, the tab strip (the active tab carries the unsaved-changes star), the view toggle and the on-screen keyboard toggle; below them, the score's title and tempo.",
       "width": 1276,
-      "height": 86
+      "height": 87
     },
     {
       "name": "menu",
@@ -41,12 +41,12 @@
       "name": "statusbar-input",
       "alt": "Input mode on: the indicator turns green and reads the duration about to be written — here a quarter note on the 5 key — beside the caret readout.",
       "width": 1280,
-      "height": 24
+      "height": 28
     },
     {
       "name": "zoom-panel",
       "alt": "The zoom panel over its status-bar button: minus, plus and reset, from 50% to 250% in 25% steps.",
-      "width": 190,
+      "width": 193,
       "height": 68
     },
     {
@@ -64,7 +64,7 @@
     {
       "name": "toast",
       "alt": "A toast in the bottom-right corner confirming a copy; the × dismisses it early and the text can be selected.",
-      "width": 261,
+      "width": 262,
       "height": 49
     },
     {
@@ -83,7 +83,7 @@
       "name": "player",
       "alt": "The player while playing: pause and stop, the live tempo select, the clickable progress bar and the elapsed/total readout.",
       "width": 1276,
-      "height": 88
+      "height": 89
     },
     {
       "name": "player-highlight",

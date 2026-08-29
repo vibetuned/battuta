@@ -153,13 +153,30 @@ fn spawn_midi(app: tauri::AppHandle) {
             let names = (|| -> Option<Vec<String>> {
                 let mut probe = midir::MidiInput::new("battuta-probe").ok()?;
                 probe.ignore(midir::Ignore::None);
-                Some(probe.ports().iter().filter_map(|p| probe.port_name(p).ok()).collect())
+                // Some drivers (seen on Windows) register the same device
+                // as TWO ports; connecting both would deliver every note
+                // twice — dedupe by name here and when connecting below.
+                let mut seen = std::collections::HashSet::new();
+                Some(
+                    probe
+                        .ports()
+                        .iter()
+                        .filter_map(|p| probe.port_name(p).ok())
+                        .filter(|n| seen.insert(n.clone()))
+                        .collect(),
+                )
             })()
             .unwrap_or_default();
             if names != last_names {
                 connections.clear(); // drop = disconnect
                 if let Ok(probe) = midir::MidiInput::new("battuta-probe") {
+                    let mut connected = std::collections::HashSet::new();
                     for port in probe.ports() {
+                        // duplicate-named port: same device, skip (see above)
+                        let Ok(port_name) = probe.port_name(&port) else { continue };
+                        if !connected.insert(port_name) {
+                            continue;
+                        }
                         let Ok(mut input) = midir::MidiInput::new("battuta") else { continue };
                         input.ignore(midir::Ignore::None);
                         let app2 = app.clone();

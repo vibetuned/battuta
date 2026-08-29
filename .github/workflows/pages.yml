@@ -45,9 +45,10 @@ jobs:
       # warning and the site ships without icons.
       - name: raster tools for the docs figures
         run: sudo apt-get update && sudo apt-get install -y librsvg2-bin imagemagick
+      # npm ci runs @battuta/core's prepare; the editor build's prebuild
+      # rebuilds it — no explicit core-build step needed.
       - run: npm ci
       - run: npm ci --prefix docs
-      - run: npm run build -w @battuta/core
       - name: build editor for the web (served under /editor/)
         run: npm run build -w @battuta/editor -- --base=/editor/
       - name: build docs
