@@ -23,7 +23,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["deb", "appimage"],
+    "targets": ["deb", "appimage", "app", "dmg", "nsis"],
     "category": "Music",
     "license": "AGPL-3.0-only",
     "licenseFile": "../../../LICENSE",

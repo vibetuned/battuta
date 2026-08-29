@@ -1,6 +1,6 @@
 node_modules/
 dist/
-fixtures/
+/fixtures/
 spikes/out/
 spikes/native-bench/bench
 apps/editor/src-tauri/target
