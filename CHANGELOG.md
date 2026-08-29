@@ -6,8 +6,38 @@ out to do (plan + exit criteria, moved here from
 README's old Status section). Remaining phases — reference layers, OMR
 correction — stay in [PLANNING.md](PLANNING.md).
 
-## 0.0.2 — unreleased (pending the Windows validation round)
+## 0.0.2 — 2026-08-30
 
+Validated on Linux, macOS and Windows before tagging; the first release
+signed on macOS and carried by package managers (Homebrew tap, apt repo,
+winget pending its initial manifest).
+
+- **Distribution pipeline.** release.yml signs + notarizes the macOS
+  universal build (Developer ID via tauri-action; unset secrets leave a
+  fork's build unsigned rather than failing). Publishing a release now
+  fans out on its own: a cask pushed to vibetuned/homebrew-tap, a
+  GPG-signed apt repository rebuilt into the Pages site at /apt (a
+  Launchpad PPA would rebuild from source on their builders — a binary
+  repo serves the CI-built deb instead), and a winget version-bump PR
+  (first manifest submitted by hand; the job skips until it exists).
+- **macOS tofu fix**: the SMP Musical Symbols block (𝅝 𝅗𝅥 𝄆 𝄇 𝄐 𝄪) has NO
+  macOS system font, so UI glyphs rendered as black squares — and form
+  controls don't inherit font-family, so buttons missed any fallback. A
+  35KB Noto Music subset ships in the app (@font-face gated by
+  unicode-range, `button/select/input { font-family: inherit }`) and in
+  the docs site, which shows the same glyphs in its keymap tables.
+- **Windows MIDI dedupe**: a driver that registers the same device as
+  two input ports delivered every note twice. Both paths dedupe by port
+  name now — Web MIDI's attach (first port wins, duplicates actively
+  DETACHED so a rebroadcast can't leave a stale handler) and the shell's
+  midir bridge (device list and connections).
+- **Build chain**: @battuta/core gained a `prepare` script, so npm
+  install/ci builds its dist — a fresh clone's dev/test/typecheck work
+  with no manual core build (previously only `tauri build` was covered,
+  and the docs had dropped the last mention of the manual step). The
+  editor's prebuild uses the workspace idiom, typescript is declared in
+  core, and the workflows' explicit core-build steps are gone (npm ci's
+  prepare covers them; core no longer compiles twice per CI leg).
 - **Import/export for every Verovio-convertible format.** Import:
   MusicXML (plain and zipped `.mxl`), ABC, Plaine & Easie, Humdrum kern —
   all routes (file input, native dialog, double-click launch) convert to
@@ -79,7 +109,6 @@ correction — stay in [PLANNING.md](PLANNING.md).
 - **CI tests** (`test.yml`): the core suite and the editor's guard
   tests run on every push/PR; corpus-dependent core tests skip cleanly
   where the local-only fixtures corpus is absent.
-
 - **Page-view score player** (▶ / ⏸ / ⏹ next to the view toggle):
   Verovio's timemap drives BOTH the audio and a moving note highlight
   from one timeline, so they cannot drift. Sound is Tone.js's Sampler

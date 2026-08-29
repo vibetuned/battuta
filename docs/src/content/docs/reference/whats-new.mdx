@@ -11,10 +11,10 @@ A user-facing digest. The full engineering record — every phase, every fix, ev
 probed Verovio behaviour — lives in
 [CHANGELOG.md](https://github.com/vibetuned/battuta/blob/main/CHANGELOG.md).
 
-## 0.0.2
+## 0.0.2 — 2026-08-30
 
-Feature-complete, and now validated on all three platforms — the Windows
-round was the last gate, and the bundles are ready to ship.
+Validated on all three platforms, and the first release with signed macOS
+builds and one-command installs (Homebrew, apt).
 
 ### The score's own tempo
 
@@ -57,6 +57,16 @@ round was the last gate, and the bundles are ready to ship.
   `brew install --cask vibetuned/tap/battuta`.
 - **A signed apt repository** at `battuta.vibetuned.com/apt` for
   Debian/Ubuntu. [Install →](../../install/)
+
+### Fixes from the validation round
+
+- **macOS: musical glyphs no longer render as black squares.** macOS ships
+  no font for the Musical Symbols Unicode block, so the duration and mark
+  glyphs (𝅝 𝅗𝅥 𝄆 𝄇 𝄐 𝄪) were tofu — battuta (and this guide) now bundle a
+  small Noto Music subset that fills exactly those characters.
+- **Windows: no more doubled MIDI input.** A driver that registers the same
+  device as two ports made every note arrive twice; ports are now
+  deduplicated by device name on both MIDI paths.
 
 ### The header, reorganised
 
@@ -142,6 +152,6 @@ rebindable keymap.
 
 <Aside type="note" title="Version numbers">
 battuta is pre-1.0 and moves in feature rounds rather than on a release calendar.
-If something described in this guide isn't in your build, you are probably on the
-0.0.1 bundles — the list above is what came after them.
+The guide describes 0.0.2, the current release. If something here is missing from
+your build, update — 0.0.1 predates everything on this page.
 </Aside>
