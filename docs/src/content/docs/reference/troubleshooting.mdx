@@ -114,7 +114,11 @@ Fixed in current builds. If you still see it, purge the icon cache:
 `rm -rf "$(getconf DARWIN_USER_CACHE_DIR)/com.apple.iconservices"*` then
 `killall iconservicesagent Dock Finder`.
 
-**Linux: double-clicking a `.mei` opens a text editor.**
+**Windows: SmartScreen warns about an unknown publisher.**
+The installer is not Authenticode-signed yet. Choose *More info* → *Run
+anyway*. Code signing for the project is in the works.
+
+**Windows or Linux: double-clicking a `.mei` opens a text editor.**
 The association is registered by the package; set battuta as the default
 application for the type once in your file manager.
 

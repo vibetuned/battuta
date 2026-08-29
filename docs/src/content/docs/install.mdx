@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-import { Tabs, TabItem, Steps, Aside } from "@astrojs/starlight/components";
+import { Tabs, TabItem, Steps } from "@astrojs/starlight/components";
 
 battuta is a desktop application. It reads and writes MEI files on your own
 disk, needs no account, and makes no network requests — nothing you open
@@ -73,11 +73,7 @@ The installer is **not Authenticode-signed yet**, so SmartScreen warns about
 an unknown publisher the first time: choose *More info* → *Run anyway*.
 (Free code signing for open-source projects is in the works.)
 
-<Aside type="caution" title="Untested platform">
-Windows bundles come out of the same release build as the others, but battuta
-has not had a test round on Windows yet. Expect rough edges — and please
-[report them](https://github.com/vibetuned/battuta/issues).
-</Aside>
+Verified on Windows 11: the installer completes and the editor runs.
 
   </TabItem>
 </Tabs>
@@ -86,7 +82,8 @@ has not had a test round on Windows yet. Expect rough edges — and please
 
 The Linux packages register `*.mei` as `application/x-mei+xml` and hand the
 clicked file to battuta, so double-clicking a score in your file manager opens
-it in a new tab. macOS does the same through the app bundle. If a file manager
+it in a new tab. macOS does the same through the app bundle, and the Windows
+installer registers the same association in the registry. If a file manager
 still opens `.mei` in a text editor, set battuta as the default application for
 the type once — the association is registered, the preference is yours.
 
@@ -120,25 +117,68 @@ Web MIDI needs Chromium).
 
 ### Building the desktop shell
 
-The desktop app is [Tauri 2](https://tauri.app/). Building it needs Rust plus
-the platform's webview and audio headers — on Debian/Ubuntu:
+The desktop app is [Tauri 2](https://tauri.app/), so building it needs
+[Rust](https://rustup.rs/) alongside Node, plus your platform's webview
+toolchain. Tauri cannot cross-compile — a Windows installer has to be built
+on Windows, a macOS bundle on macOS.
+
+<Tabs>
+  <TabItem label="Linux" icon="linux">
+
+On Debian/Ubuntu:
 
 ```sh
 sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libasound2-dev \
   librsvg2-dev build-essential curl wget file libssl-dev
 ```
 
-Then:
+  </TabItem>
+  <TabItem label="macOS" icon="apple">
+
+The Xcode command line tools supply the toolchain:
 
 ```sh
-npm run build -w @battuta/core
-npm run build -w @battuta/editor
+xcode-select --install
+```
+
+For a universal binary, add both targets and build with
+`npx tauri build --target universal-apple-darwin`:
+
+```sh
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+```
+
+  </TabItem>
+  <TabItem label="Windows" icon="seti:windows">
+
+Rust must be the **MSVC** toolchain — `rustup`'s default on Windows
+(`x86_64-pc-windows-msvc`). Two more pieces:
+
+- **Visual Studio Build Tools** with the *Desktop development with C++*
+  workload, which supplies `link.exe` and the Windows SDK. A full Visual
+  Studio Community install with that workload works equally well.
+- **The WebView2 runtime**, already present on Windows 11 and current
+  Windows 10. (The shipped installer bootstraps it; a source build expects
+  it to be there.)
+
+No shell-specific setup is needed — PowerShell, cmd and Git Bash all work.
+
+  </TabItem>
+</Tabs>
+
+Then, from the repository root:
+
+```sh
+npm install
 cd apps/editor && npx tauri build
 ```
 
-The bundles land in `apps/editor/src-tauri/target/release/bundle/`. The binary
-prints at startup whether it is serving embedded assets or talking to the dev
-server, so you always know which one you launched.
+`tauri build` builds the frontend first, and that in turn builds
+`@battuta/core`, so there is no separate frontend step to remember. The
+bundles land in `apps/editor/src-tauri/target/release/bundle/`: a `.deb` and
+an `.AppImage` on Linux, a `.dmg` on macOS, an NSIS `-setup.exe` on Windows.
+The binary prints at startup whether it is serving embedded assets or talking
+to the dev server, so you always know which one you launched.
 
 ## What's next
 

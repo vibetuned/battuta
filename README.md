@@ -20,8 +20,9 @@ tiled Verovio rendering, text-editor caret and selection, reversible
 commands with byte-identical undo, note entry (keyboard + MIDI),
 copy/paste with the duration validator, context editing, articulations
 and ornaments, voices, voltas, tuplets, harmony lanes, a rebindable
-keymap — and packaged for Linux (deb + AppImage, app icon, `.mei` file
-association).
+keymap — and packaged for Linux (deb + AppImage), macOS (signed and
+notarized universal dmg) and Windows (NSIS installer), each carrying the
+app icon and registering the `.mei` file association.
 
 Phases 0–5 are done; the full record, phase by phase, lives in
 [CHANGELOG.md](CHANGELOG.md). Next up: reference layers for
@@ -109,22 +110,25 @@ Two options:
   `.dmg`, a Windows NSIS `-setup.exe`, and the Linux deb/AppImage, and
   attaches all of them to a draft GitHub release.
 - **Locally on a Mac**: install Xcode command-line tools, rustup, and
-  Node, then `npm ci && npm run build -w @battuta/core` and
-  `cd apps/editor && npx tauri build --bundles app,dmg` (add
+  Node, then `npm ci` and `cd apps/editor && npx tauri build` (add
   `--target universal-apple-darwin` after
   `rustup target add aarch64-apple-darwin x86_64-apple-darwin` for one
   binary covering both CPU families).
 - **Locally on Windows**: install Visual Studio Build Tools (C++
-  workload), rustup (MSVC toolchain), and Node, then the same two npm
-  commands and `npx tauri build --bundles nsis`.
+  workload), rustup (MSVC toolchain), and Node, then `npm ci` and
+  `cd apps/editor && npx tauri build`. Verified on Windows 11 with
+  VS 2022 and the Windows 11 SDK.
 
-Platform notes: `--bundles` on the command line overrides the
-Linux-only `deb,appimage` list in tauri.conf.json. MIDI needs no extra
-work — `midir` uses CoreMIDI/WinMM natively (on macOS the poll thread
-pumps a CFRunLoop: CoreMIDI only reports hot-plug through it). The
-`.mei` association comes from `fileAssociations` (Info.plist on macOS,
-installer registry on Windows); on macOS the opened file arrives as an
-`Opened` run-loop event rather than argv, which the shell also handles.
+Platform notes: tauri.conf.json lists every platform's bundle targets
+and Tauri silently drops the ones the host cannot build, so a plain
+`tauri build` produces the right artifact everywhere; `--bundles` still
+overrides it, which is what release.yml passes per matrix leg. MIDI
+needs no extra work — `midir` uses CoreMIDI/WinMM natively (on macOS
+the poll thread pumps a CFRunLoop: CoreMIDI only reports hot-plug
+through it). The `.mei` association comes from `fileAssociations`
+(Info.plist on macOS, installer registry on Windows); on macOS the
+opened file arrives as an `Opened` run-loop event rather than argv,
+which the shell also handles.
 Unsigned builds trip Gatekeeper — the dmg shows a warning before the
 drag-to-Applications window opens (right-click → Open the first time,
 or pay for a Developer ID + notarization; `tauri-action` picks up the
