@@ -33,7 +33,7 @@ export const defaultKeymap = (layout: Layout): Record<string, KeyBinding> => {
   const az = layout === "azerty";
   return {
     inputMode: { keys: ["i"], label: "toggle note input (also Insert)", group: "entry" },
-    rest: { keys: ["r"], label: "enter a rest", group: "entry", when: "input mode" },
+    rest: { keys: ["r"], label: "enter a rest (also numpad 0)", group: "entry", when: "input mode" },
     durations: { keys: ["1–7"], label: "duration (7=whole … 1=64th)", group: "entry", when: "input mode · physical digit row/numpad", locked: true },
     pitches: { keys: ["a–g"], label: "enter pitch", group: "entry", when: "input mode · shift+A–G adds chord notes", locked: true },
     // AZERTY has no unshifted "." — ":" is; the bare "." stays for the numpad.
@@ -58,6 +58,9 @@ export const defaultKeymap = (layout: Layout): Record<string, KeyBinding> => {
     simile: { keys: az ? ["ù"] : ["'"], label: "simile slash (one beat)", group: "repeats" },
     measureRepeat: { keys: az ? ["%"] : ['"'], label: "measure repeat % → %%", group: "repeats" },
     repeatBarlines: { keys: ["r"], label: "repeat barlines 𝄆 𝄇", group: "repeats", when: "block selection" },
+    staffGroup: { keys: ["G"], label: "staff group cycle: none → brace → bracket", group: "repeats", when: "block selection spanning staves" },
+    lyrics: { keys: ["l"], label: "lyrics lane: type at the caret, space/enter advances, - hyphenates", group: "entry" },
+    contextBar: { keys: ["F6"], label: "focus the context bar (←/→ selects · ↑/↓ change · esc back)", group: "system" },
     voltas: { keys: ["⇧1–9"], label: "volta number toggle", group: "repeats", when: "block selection · physical digits", locked: true },
     merge: { keys: ["m"], label: "merge with next · grace cycle (2 pitches)", group: "rhythm" },
     split: { keys: ["x"], label: "split in half", group: "rhythm" },

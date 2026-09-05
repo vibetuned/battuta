@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, isHarmText, harmSuggestions, HARM_CHARS, reflectionForm, REFLECTION_CYCLE, REFLECTION_LABELS, type ReflectionForm, type PitchEvent, type HarmKind, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
 import { RenderPool, type TileResult } from "./render/renderPool";
 import { loadKeymap, saveKeymapOverride, clearKeymapOverrides, keyMatches, type Keymap, type Layout } from "./keymap";
@@ -43,6 +43,18 @@ const docNameFromPath = (path: string): string => path.split(/[\\/]/).pop()?.rep
 const rememberDir = (path: string): void => {
   const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   if (cut > 0) saveSettings({ lastDir: path.slice(0, cut) });
+};
+
+/** OK/Cancel confirm that is actually VISIBLE in the shell: wry's own
+ * window.confirm silently returns false there, so the shell asks through
+ * a native dialog; browsers keep the built-in modal. */
+const confirmDialog = (message: string, title = "battuta"): Promise<boolean> => {
+  const invoke = tauriInvoke();
+  if (!invoke) return Promise.resolve(window.confirm(message));
+  return invoke("confirm_dialog", { title, message }).then(
+    (r) => r === true,
+    () => window.confirm(message), // dialog unavailable: last-ditch fallback
+  );
 };
 
 const tauriInvoke = (): ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null => {
@@ -522,7 +534,7 @@ export default function App() {
   /** Tempo editor buffer — same open/closed convention as the title. */
   const [tempoOpen, setTempoOpen] = useState<string | null>(null);
   /** Harmony lane: typed chord symbols / roman numerals at the caret. */
-  const [harmLane, setHarmLane] = useState<HarmKind | null>(null);
+  const [harmLane, setHarmLane] = useState<HarmKind | "lyrics" | null>(null);
   // The buffer state renders the floating editor; the REF is what the key
   // handler reads and writes. The window listener re-attaches only after
   // effects re-run, so a closure read races fast key sequences (Tab then
@@ -532,6 +544,46 @@ export default function App() {
   const setHarmBuffer = useCallback((v: string | ((prev: string) => string)) => {
     harmBufRef.current = typeof v === "function" ? v(harmBufRef.current) : v;
     _setHarmBuffer(harmBufRef.current);
+  }, []);
+
+  /** Keyboard navigation of the context bar (F6): while true, a select's
+   * onChange must NOT blur — the roving focus stays in the bar. */
+  const barNav = useRef(false);
+  const onBarKey = useCallback((e: ReactKeyboardEvent<HTMLElement>) => {
+    const t = e.target as HTMLElement;
+    if (t.tagName !== "SELECT") return;
+    const bar = e.currentTarget;
+    const sels = [...bar.querySelectorAll<HTMLSelectElement>("select.sbsel")].filter((x) => !x.disabled);
+    const i = sels.indexOf(t as HTMLSelectElement);
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      sels[(i + (e.key === "ArrowRight" ? 1 : -1) + sels.length) % sels.length]?.focus();
+    } else if ((e.key === "ArrowUp" || e.key === "ArrowDown") && t.dataset["cycle"] !== undefined) {
+      // Value-holding selects (clef/key/meter): cycle and APPLY — each
+      // step is an undoable command, so live stepping is safe.
+      e.preventDefault();
+      const sel = t as HTMLSelectElement;
+      const opts = [...sel.options].filter((o) => o.value !== "");
+      if (opts.length === 0) return;
+      const cur = opts.findIndex((o) => o.value === sel.value);
+      const next = opts[(cur + (e.key === "ArrowDown" ? 1 : -1) + opts.length) % opts.length]!;
+      barNav.current = true;
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(sel, next.value);
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+      barNav.current = false;
+      requestAnimationFrame(() => sel.focus()); // an apply re-render must not eject the focus
+    } else if ((e.key === "ArrowUp" || e.key === "ArrowDown") && "showPicker" in t) {
+      // Action selects (staves/voices/harmony): open the native picker.
+      e.preventDefault();
+      try {
+        (t as HTMLSelectElement).showPicker();
+      } catch {
+        /* needs a user gesture or unsupported: native keys still work */
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      t.blur();
+    }
   }, []);
 
   /** Chord accidental picker: which note of the chord gets the accidental. */
@@ -782,11 +834,7 @@ export default function App() {
     return () => window.removeEventListener("beforeunload", persistSession);
   }, [persistSession]);
 
-  const closeDoc = (id: number) => {
-    // A dirty tab asks before its work is discarded (the session store
-    // keeps CLOSED-APP work, not individually closed tabs).
-    const doc = docs.find((d) => d.id === id);
-    if (doc && doc.session.editMark !== (savedMarks.current.get(id) ?? null) && !window.confirm(`"${doc.name}" has unsaved changes — close it anyway?`)) return;
+  const reallyCloseDoc = (id: number) => {
     const remaining = docs.filter((d) => d.id !== id);
     setDocs(remaining);
     zoomByDoc.current.delete(id);
@@ -800,6 +848,20 @@ export default function App() {
         setVersion(next.session.version);
       }
     }
+  };
+
+  const closeDoc = (id: number) => {
+    // A dirty tab asks before its work is discarded (the session store
+    // keeps CLOSED-APP work, not individually closed tabs). The ask goes
+    // through confirmDialog — a native dialog in the shell.
+    const doc = docs.find((d) => d.id === id);
+    if (doc && doc.session.editMark !== (savedMarks.current.get(id) ?? null)) {
+      void confirmDialog(`"${doc.name}" has unsaved changes — close it anyway?`).then((ok) => {
+        if (ok) reallyCloseDoc(id);
+      });
+      return;
+    }
+    reallyCloseDoc(id);
   };
 
   const caretId = session && caret ? session.index.eventIdAt(caret) : undefined;
@@ -1064,7 +1126,7 @@ export default function App() {
   // the caret moves (click, arrows, commit-advance).
   useEffect(() => {
     if (!harmLane || !session || !caretId) return;
-    setHarmBuffer(session.harmAt(caretId, harmLane));
+    setHarmBuffer(harmLane === "lyrics" ? (session.sylAt(caretId)?.text ?? "") : session.harmAt(caretId, harmLane));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [harmLane, caretId, session, version]);
 
@@ -1186,8 +1248,11 @@ export default function App() {
         invoke("file_mtime", { path })
           .then((m) => {
             const known = diskMtimes.current.get(path);
-            if (typeof m === "number" && known !== undefined && m !== known && !window.confirm(`"${path}" changed on disk since it was opened here.\n\nOverwrite the external changes?`)) {
-              setNotice("save cancelled — the file changed on disk (save-as keeps both)");
+            if (typeof m === "number" && known !== undefined && m !== known) {
+              void confirmDialog(`"${path}" changed on disk since it was opened here.\n\nOverwrite the external changes?`).then((ok) => {
+                if (ok) void write();
+                else setNotice("save cancelled — the file changed on disk (save-as keeps both)");
+              });
               return;
             }
             void write();
@@ -1371,10 +1436,23 @@ export default function App() {
           setNotice(`paste refused: ${plan.reason}`);
           return;
         }
-        if (plan.warnings.length && !window.confirm(`Paste with differences?\n\n${plan.warnings.join("\n")}`)) return;
-        session.pasteReplace(sharedClipboard, target.measureIndex, target.staffN);
-        afterCommand(session);
-        setNotice(plan.warnings.length ? `pasted (${plan.warnings.join("; ")})` : "pasted");
+        const clip = sharedClipboard;
+        const doPaste = () => {
+          session.pasteReplace(clip, target.measureIndex, target.staffN);
+          afterCommand(session);
+          setNotice(plan.warnings.length ? `pasted (${plan.warnings.join("; ")})` : "pasted");
+        };
+        if (plan.warnings.length) {
+          void confirmDialog(`Paste with differences?\n\n${plan.warnings.join("\n")}`).then((ok) => ok && doPaste());
+          return;
+        }
+        doPaste();
+        return;
+      }
+      if (hit("contextBar")) {
+        e.preventDefault();
+        const first = document.querySelector<HTMLSelectElement>("[data-statusbar] select.sbsel:not(:disabled)");
+        first?.focus();
         return;
       }
       // Numpad +/−/* mirror the +m/−m/⧉m buttons (physical codes: layout-proof).
@@ -1388,7 +1466,9 @@ export default function App() {
       // --- note input mode: letters enter, digits set duration ---
       // The Insert key toggles input mode in both directions (i only
       // enters; inside the mode "i" stays available to future bindings).
-      if (e.key === "Insert" && !mod) {
+      // NumLock off makes numpad-0 arrive as key "Insert" (code Numpad0):
+      // in input mode that key means REST (handled below), not mode toggle.
+      if (e.key === "Insert" && !mod && !(entryMode && e.code === "Numpad0")) {
         e.preventDefault();
         setEntryMode(!entryMode);
         setNotice(entryMode ? null : "note input: a–g pitch · shift+A–G chord · 1–7 duration · esc exit · all keys under 🌣");
@@ -1419,6 +1499,83 @@ export default function App() {
             setNotice(`accidental refused: ${err instanceof Error ? err.message : err}`);
           }
         }
+        return;
+      }
+      if (harmLane === "lyrics") {
+        // The lyrics lane owns the keyboard, MuseScore-style: type the
+        // syllable, space/enter commits and advances to the NEXT NOTE
+        // (rests skipped), "-" commits with a continuation hyphen, and
+        // word position (i/m/t) follows from the previous note's state.
+        e.preventDefault();
+        if (!caret || !caretId) {
+          if (e.key === "Escape") setHarmLane(null);
+          return;
+        }
+        const buf = harmBufRef.current;
+        const step = (from: CaretPosition, dir: 1 | -1): CaretPosition | null => (dir === 1 ? caretRight(session.index, session.score, from) : caretLeft(session.index, session.score, from));
+        const noteAt = (pos: CaretPosition): string | null => {
+          const id = session.index.eventIdAt(pos);
+          const t = id ? session.index.byId.get(id)?.tag : undefined;
+          return t === "note" || t === "chord" ? id! : null;
+        };
+        const nearestNote = (dir: 1 | -1): { pos: CaretPosition; id: string } | null => {
+          for (let pos = step(caret, dir); pos; pos = step(pos, dir)) {
+            const id = noteAt(pos);
+            if (id) return { pos, id };
+          }
+          return null;
+        };
+        const commitSyl = (hyphen: boolean): boolean => {
+          const ref = session.index.byId.get(caretId);
+          if (!ref || (ref.tag !== "note" && ref.tag !== "chord")) {
+            setNotice("lyrics attach to notes — move the caret to one");
+            return buf === ""; // an empty buffer on a rest is fine to leave
+          }
+          const existing = session.sylAt(caretId);
+          if (buf === (existing?.text ?? "") && (existing?.con === "d") === hyphen) return true; // unchanged
+          // continuing a word? the previous note's syllable says so
+          const midWord = (() => {
+            const prev = nearestNote(-1);
+            return prev ? session.sylAt(prev.id)?.con === "d" : false;
+          })();
+          const value = buf === "" ? { text: "" } : hyphen ? { text: buf, con: "d", ...(midWord ? { wordpos: "m" } : { wordpos: "i" }) } : midWord ? { text: buf, wordpos: "t" } : { text: buf };
+          try {
+            session.setSyl(caretId, value);
+            afterCommand(session);
+            setNotice(null);
+            return true;
+          } catch (err) {
+            setNotice(`lyric refused: ${err instanceof Error ? err.message : err}`);
+            return false;
+          }
+        };
+        if (e.key === "Escape") {
+          if (commitSyl(false)) setHarmLane(null);
+          return;
+        }
+        if (e.key === " " || e.key === "Enter" || e.key === "-") {
+          if (!commitSyl(e.key === "-")) return;
+          const next = nearestNote(1);
+          if (next) {
+            lastEntered.current = null;
+            setCaret(next.pos);
+          } else setNotice("last note — esc leaves the lyrics lane");
+          return;
+        }
+        if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+          if (!commitSyl(false)) return;
+          const next = step(caret, e.key === "ArrowRight" ? 1 : -1);
+          if (next) {
+            lastEntered.current = null;
+            setCaret(next);
+          }
+          return;
+        }
+        if (e.key === "Backspace") {
+          setHarmBuffer((b) => b.slice(0, -1));
+          return;
+        }
+        if (e.key.length === 1 && !mod && !e.altKey) setHarmBuffer((b) => b + e.key);
         return;
       }
       if (harmLane) {
@@ -1478,6 +1635,12 @@ export default function App() {
           }
           if (HARM_CHARS[harmLane].test(ch)) setHarmBuffer((b) => b + ch);
         }
+        return;
+      }
+      if (hit("lyrics") && !mod && !e.altKey && !entryMode && caretId) {
+        e.preventDefault();
+        setHarmLane("lyrics");
+        setNotice("lyrics: type at the caret · space/enter advances · - hyphenates · esc leaves");
         return;
       }
       if (hit("slurDoubleSharp") && !mod) {
@@ -1657,6 +1820,19 @@ export default function App() {
         return;
       }
       if (e.shiftKey && !mod && !e.altKey && !entryMode && bsel) {
+        // shift+G on a block spanning staves: group symbol cycle
+        // none -> brace -> bracket (bar-through follows the symbol).
+        if (keyMatches(keymap["staffGroup"], e) && bsel.staffTo > bsel.staffFrom) {
+          e.preventDefault();
+          try {
+            const state = session.cycleStaffGroup(bsel.staffFrom, bsel.staffTo);
+            afterCommand(session);
+            setNotice(`staves ${bsel.staffFrom}–${bsel.staffTo}: ${state === "none" ? "ungrouped" : `grouped with a ${state}`} (page view draws the symbol)`);
+          } catch (err) {
+            setNotice(`staff group refused: ${err instanceof Error ? err.message : err}`);
+          }
+          return;
+        }
         // shift+1..9 toggles that volta number on the block's bracket —
         // mixes like [1, 2][3] build up number by number; removing the
         // last number removes the bracket. Barlines renormalize across
@@ -1827,6 +2003,7 @@ export default function App() {
         if (digit && DUR[digit]) {
           e.preventDefault();
           setEntryDur(DUR[digit]!);
+          setEntryDots(0); // a fresh duration starts plain: dot it deliberately
           return;
         }
         if (/^[a-g]$/.test(e.key) && !e.altKey) {
@@ -1846,7 +2023,9 @@ export default function App() {
           }
           return;
         }
-        if (hit("rest")) {
+        // Numpad 0 = rest: the numpad digits already set durations, so 0
+        // completes the row (alt+numpad-0 stays the finger-change key).
+        if (hit("rest") || (e.code === "Numpad0" && !e.shiftKey && !e.altKey && !mod)) {
           e.preventDefault();
           enterAtCaret({ kind: "rest" });
           return;
@@ -2875,15 +3054,15 @@ export default function App() {
         {session && pool && view === "pages" && <PageView key={`${activeId}-${version}`} session={session} pool={pool} />}
         {caretRect && view === "tiles" && <div className="caret" style={caretRect} />}
         {harmLane && caretRect && view === "tiles" && (
-          <div data-harm-input data-valid={harmBuffer === "" || isHarmText(harmLane, harmBuffer) ? "1" : "0"} style={{ position: "absolute", left: caretRect.left, top: harmLane === "rna" ? caretRect.top + caretRect.height + 6 : caretRect.top - 30, background: "#233", borderRadius: 4, fontSize: 13, zIndex: 40, padding: "2px 8px", whiteSpace: "nowrap", boxShadow: "0 2px 8px rgba(0,0,0,.35)", color: harmBuffer === "" || isHarmText(harmLane, harmBuffer) ? "#8f8" : "#f88" }}>
-            {harmLane === "rna" ? "RN " : "♩ "}
+          <div data-harm-input data-valid={harmLane === "lyrics" || harmBuffer === "" || isHarmText(harmLane, harmBuffer) ? "1" : "0"} style={{ position: "absolute", left: caretRect.left, top: harmLane === "rna" || harmLane === "lyrics" ? caretRect.top + caretRect.height + 6 : caretRect.top - 30, background: "#233", borderRadius: 4, fontSize: 13, zIndex: 40, padding: "2px 8px", whiteSpace: "nowrap", boxShadow: "0 2px 8px rgba(0,0,0,.35)", color: harmLane === "lyrics" || harmBuffer === "" || isHarmText(harmLane, harmBuffer) ? "#8f8" : "#f88" }}>
+            {harmLane === "rna" ? "RN " : harmLane === "lyrics" ? "♪ " : "♩ "}
             <strong>{harmBuffer || "…"}</strong>
-            <span style={{ color: "#89a", marginLeft: 8 }}>{harmSuggestions(harmLane, harmBuffer).join("  ")}</span>
+            {harmLane !== "lyrics" && <span style={{ color: "#89a", marginLeft: 8 }}>{harmSuggestions(harmLane, harmBuffer).join("  ")}</span>}
           </div>
         )}
       </main>
       {vkOpen && <VirtualKeyboard keymap={keymap} layout={layout} entryMode={entryMode} onNoteOn={midiNoteOn} onNoteOff={midiNoteOff} onClose={() => toggleVk(false)} />}
-      <footer data-statusbar style={{ position: "fixed", left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", gap: 12, background: "#1f2733", color: "#aab", fontSize: 12, lineHeight: "20px", padding: "2px 10px", zIndex: 30 }}>
+      <footer data-statusbar onKeyDown={onBarKey} style={{ position: "fixed", left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", gap: 12, background: "#1f2733", color: "#aab", fontSize: 12, lineHeight: "20px", padding: "2px 10px", zIndex: 30 }}>
         <button
           data-input-indicator
           title="note input mode (i)"
@@ -2996,23 +3175,28 @@ export default function App() {
         </select>
         <select
           value=""
-          title="harmony lanes (chord symbols above, roman numerals below)"
+          title="harmony + lyrics lanes (chords above, numerals and lyrics below)"
           className="sbsel" style={STATUSBAR_SELECT}
           disabled={!session || !caret}
           onChange={(e) => {
-            const kind = e.target.value as HarmKind | "";
+            const kind = e.target.value as HarmKind | "lyrics" | "";
             e.target.blur();
             if (!kind) return;
             setEntryMode(false);
             setHarmLane(kind);
-            setNotice(`${kind === "rna" ? "roman numerals" : "chord symbols"}: type at the caret · enter commits + advances · tab completes · esc leaves`);
+            setNotice(
+              kind === "lyrics"
+                ? "lyrics: type at the caret · space/enter advances · - hyphenates · esc leaves"
+                : `${kind === "rna" ? "roman numerals" : "chord symbols"}: type at the caret · enter commits + advances · tab completes · esc leaves`,
+            );
           }}
         >
-          <option value="">{harmLane ? (harmLane === "rna" ? "♩ numerals" : "♩ chords") : "harmony"}</option>
+          <option value="">{harmLane ? (harmLane === "rna" ? "♩ numerals" : harmLane === "lyrics" ? "♪ lyrics" : "♩ chords") : "harmony"}</option>
           <option value="chord">chord symbols (above)</option>
           <option value="rna">roman numerals (below)</option>
+          <option value="lyrics">lyrics (verse 1, l)</option>
         </select>
-        <select value={shownClef} title="clef at caret (staff-local)" className="sbsel" style={STATUSBAR_SELECT} disabled={!session} onChange={(e) => { e.target.blur(); applyContext("clef", e.target.value); }}>
+        <select value={shownClef} data-cycle title="clef at caret (staff-local)" className="sbsel" style={STATUSBAR_SELECT} disabled={!session} onChange={(e) => { if (!barNav.current) e.target.blur(); applyContext("clef", e.target.value); }}>
           {shownClef && !CLEFS[shownClef] && <option value={shownClef}>{shownClef}</option>}
           {!shownClef && <option value="">clef</option>}
           {Object.keys(CLEFS).map((k) => (
@@ -3021,7 +3205,7 @@ export default function App() {
             </option>
           ))}
         </select>
-        <select value={shownKeysig} title="key signature at caret (score-wide)" className="sbsel" style={STATUSBAR_SELECT} disabled={!session} onChange={(e) => { e.target.blur(); applyContext("key", e.target.value); }}>
+        <select value={shownKeysig} data-cycle title="key signature at caret (score-wide)" className="sbsel" style={STATUSBAR_SELECT} disabled={!session} onChange={(e) => { if (!barNav.current) e.target.blur(); applyContext("key", e.target.value); }}>
           {!shownKeysig && <option value="">key</option>}
           {["7f", "6f", "5f", "4f", "3f", "2f", "1f", "0", "1s", "2s", "3s", "4s", "5s", "6s", "7s"].map((k) => (
             <option key={k} value={k}>
@@ -3029,10 +3213,10 @@ export default function App() {
             </option>
           ))}
         </select>
-        <select value={shownMeter} title="meter at caret (score-wide; refuses if content no longer fits)" className="sbsel" style={STATUSBAR_SELECT} disabled={!session} onChange={(e) => { e.target.blur(); applyContext("meter", e.target.value); }}>
-          {shownMeter && !["4/4", "3/4", "2/4", "2/2", "3/2", "6/8", "9/8", "12/8", "5/4", "7/8", "5/8", "3/8"].includes(shownMeter) && <option value={shownMeter}>{shownMeter}</option>}
+        <select value={shownMeter} data-cycle title="meter at caret (score-wide; refuses if content no longer fits)" className="sbsel" style={STATUSBAR_SELECT} disabled={!session} onChange={(e) => { if (!barNav.current) e.target.blur(); applyContext("meter", e.target.value); }}>
+          {shownMeter && !["4/4", "3/4", "2/4", "2/2", "3/2", "6/4", "6/8", "9/8", "12/8", "5/4", "7/8", "5/8", "3/8"].includes(shownMeter) && <option value={shownMeter}>{shownMeter}</option>}
           {!shownMeter && <option value="">meter</option>}
-          {["4/4", "3/4", "2/4", "2/2", "3/2", "6/8", "9/8", "12/8", "5/4", "7/8", "5/8", "3/8"].map((m) => (
+          {["4/4", "3/4", "2/4", "2/2", "3/2", "6/4", "6/8", "9/8", "12/8", "5/4", "7/8", "5/8", "3/8"].map((m) => (
             <option key={m}>{m}</option>
           ))}
         </select>

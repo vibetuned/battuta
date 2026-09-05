@@ -8,7 +8,7 @@ import {
   buildScore, resolveContexts, buildEventIndex, ensureIds, fromDom, serialize, serializeDocument, childElements, findAll, meterCapacity, frac,
   CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand, RegenerateIdsCommand,
   copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, AddVoiceCommand, RemoveVoiceCommand, ToggleRepeatCommand, ToggleVoltaCommand,
-  SetHarmCommand, harmTextAt, SetTitleCommand, SetTempoCommand, fingTextsAt, buildExpansion, SetPitchesCommand, collectPitchEvents, playbackShaping, ReplaceEntryCommand,
+  SetHarmCommand, harmTextAt, SetSylCommand, sylAt, type SylValue, CycleStaffGroupCommand, type StaffGroupState, SetTitleCommand, SetTempoCommand, fingTextsAt, buildExpansion, SetPitchesCommand, collectPitchEvents, playbackShaping, ReplaceEntryCommand,
   type PitchEvent, type PlaybackShaping, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, TupletCommand, AutoBeamCommand, UnbeamThen, measuresOf, ChangeContextCommand, planContextChange,
   type CoreScore, type MeasureContext, type EventIndex, type Command, type DirtyRegion, type DomLikeElement, type DomLikeNode,
   type BlockSelection, type ClipboardFragment, type PastePlan, type EntrySpec, type MarkKind, type HarmKind, type CoreElement, type CaretPosition, type ContextChangeSpec,
@@ -228,8 +228,10 @@ export class DocumentSession {
 
   /**
    * Halve or double the written duration in place (direction +1 = longer,
-   * -1 = shorter), dots preserved — same consume/release mechanics as the
-   * dot toggle. Returns the resulting duration for entry-state sync.
+   * -1 = shorter) — same consume/release mechanics as the dot toggle. The
+   * DOT IS CLEARED: a new base value starts plain, and carrying the dot
+   * over surprised users (re-dot with the dot key if wanted). Returns the
+   * resulting duration for entry-state sync.
    */
   changeDurationStep(targetId: string, direction: 1 | -1): { dur: string; dots: number } {
     const ref = this.index.byId.get(targetId);
@@ -244,9 +246,8 @@ export class DocumentSession {
     if (at < 0) throw new Error(`unknown duration ${el.attrs["dur"]}`);
     const next = order[at - direction];
     if (!next) throw new Error(direction > 0 ? "already the longest duration" : "already the shortest duration");
-    const dots = Number(el.attrs["dots"] ?? 0);
-    this.execute(new UnbeamThen(new ChangeDurationCommand(targetId, next, dots, this.capacityAt(targetId)), measuresOf(this.score, this.index, [targetId])));
-    return { dur: next, dots };
+    this.execute(new UnbeamThen(new ChangeDurationCommand(targetId, next, 0, this.capacityAt(targetId)), measuresOf(this.score, this.index, [targetId])));
+    return { dur: next, dots: 0 };
   }
 
   /** Change/add clef, key signature, or meter at a measure (validated). */
@@ -296,6 +297,21 @@ export class DocumentSession {
     const ref = this.index.byId.get(targetId);
     const measure = ref && this.score.measures[ref.measureIndex];
     return measure ? harmTextAt(measure, targetId, kind) : "";
+  }
+  /** Verse-1 syllable at the event (chords anchor on their first note). */
+  sylAt(targetId: string): SylValue | null {
+    const ref = this.index.byId.get(targetId);
+    const measure = ref && this.score.measures[ref.measureIndex];
+    return measure ? sylAt(measure, targetId) : null;
+  }
+  setSyl(targetId: string, value: SylValue): DirtyRegion[] {
+    return this.execute(new SetSylCommand(targetId, value));
+  }
+  /** Cycle the staff-group symbol over a range: none → brace → bracket. */
+  cycleStaffGroup(staffFrom: number, staffTo: number): StaffGroupState {
+    const cmd = new CycleStaffGroupCommand(staffFrom, staffTo);
+    this.execute(cmd);
+    return cmd.result;
   }
 
   /** Rhythm edit: unbeams its measure first, like entry. */

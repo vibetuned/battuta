@@ -6,6 +6,7 @@ sidebar:
 ---
 
 import Shot from "../../../components/Shot.astro";
+import KeymapTable from "../../../components/KeymapTable.astro";
 
 The status bar is battuta's control panel: state on the left, context on the
 right. Every select shows **the value in force at the caret** and applies its
@@ -35,6 +36,17 @@ The readout is `1/8 ♪ (4)`:
 `[ m 10, s 2, v 1, n 6 ]` — measure, staff, voice, and the index of the event
 under the caret, all counted from 1. `[ — ]` means there is no caret; click a note
 to place one.
+
+## Driving the bar from the keyboard
+
+<KeymapTable ids={["contextBar"]} />
+
+<kbd>F6</kbd> focuses the bar; <kbd>←</kbd>/<kbd>→</kbd> move between the
+selects. On the value selects (clef, key, meter) <kbd>↑</kbd>/<kbd>↓</kbd>
+cycle the value and apply it immediately — every step is one undoable
+command, so browsing keys by ear is safe. On the action selects (staves,
+voices, harmony) they open the menu instead. <kbd>esc</kbd> returns to the
+score.
 
 ## Right: context and tools
 

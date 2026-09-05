@@ -50,6 +50,18 @@ operations:
 
 <Figure name="staves" caption="Two staves, treble over bass." />
 
+### Grouping staves
+
+<KeymapTable ids={["staffGroup"]} />
+
+Select a block spanning the staves to group (drag a rectangle, or shift-click
+across them) and press <kbd>shift</kbd> + <kbd>G</kbd>: the group symbol
+cycles **none → brace → bracket → none**, with barlines drawn through the
+group while a symbol is on. The staves must be adjacent, and a range that
+would cut across an existing group is refused. Page view draws the brace or
+bracket at every system start; the grouping is a `<staffGrp>` in the MEI, so
+it survives round-trips like everything else.
+
 ## Voices
 
 Voices are per staff and per measure. The **voices** select shows the caret's

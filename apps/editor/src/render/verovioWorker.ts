@@ -42,6 +42,17 @@ const PAGE_OPTIONS = {
   scale: 40,
   pageHeight: 2970,
   pageWidth: 2100,
+  // setOptions MERGES: whatever this set does not name stays at the tile
+  // set's value. The tile stickies must be countered explicitly — with
+  // adjustPage* true and zero side margins leaking in, the page viewBox
+  // cropped to the content bbox, which excludes staff-group braces and
+  // brackets (they overhang the system's left edge → clipped).
+  adjustPageWidth: false,
+  adjustPageHeight: false,
+  pageMarginLeft: 100,
+  pageMarginRight: 100,
+  pageMarginTop: 100,
+  pageMarginBottom: 100,
 };
 
 let toolkit: VerovioToolkit | null = null;

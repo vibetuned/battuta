@@ -96,6 +96,22 @@ async fn export_file(bytes: Vec<u8>, suggested: String, dir: Option<String>) -> 
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
+/// Native OK/Cancel confirm. The webview's own window.confirm is a
+/// SILENT NO-OP in wry (immediately returns false), so every
+/// destructive-action guard (dirty-tab close, overwrite prompts, paste
+/// warnings) routes through this dialog in the shell.
+#[tauri::command]
+async fn confirm_dialog(title: String, message: String) -> bool {
+    rfd::AsyncMessageDialog::new()
+        .set_level(rfd::MessageLevel::Warning)
+        .set_title(&title)
+        .set_description(&message)
+        .set_buttons(rfd::MessageButtons::OkCancel)
+        .show()
+        .await
+        == rfd::MessageDialogResult::Ok
+}
+
 /// Modification time (ms since epoch) of a file, for the external-change
 /// guard: save compares this against the value recorded at open/save and
 /// alerts before overwriting edits made by another program.
@@ -274,7 +290,7 @@ fn main() {
             spawn_midi(app.app_handle().clone());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![bench_echo, bench_report, js_log, open_score, save_score, save_score_as, export_file, file_mtime, initial_score])
+        .invoke_handler(tauri::generate_handler![bench_echo, bench_report, js_log, open_score, save_score, save_score_as, export_file, file_mtime, confirm_dialog, initial_score])
         .on_page_load(|webview, _| {
             eprintln!("[shell] page loaded: {}", webview.url().map(|u| u.to_string()).unwrap_or_default());
             // Headless shell self-test: exercise the save command end to end.

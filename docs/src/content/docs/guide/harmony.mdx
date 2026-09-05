@@ -1,17 +1,19 @@
 ---
-title: Harmony lanes
-description: Typing chord symbols above the staff and Roman numeral analysis below it, with a grammar that only accepts real symbols.
+title: Harmony and lyrics lanes
+description: Typing chord symbols, Roman numeral analysis, and lyrics at the caret — three lanes over the same music.
 sidebar:
   order: 6
 ---
 
 import { Aside, Steps } from "@astrojs/starlight/components";
 import Figure from "../../../components/Figure.astro";
+import KeymapTable from "../../../components/KeymapTable.astro";
 
-battuta has two annotation lanes over the same music, independent of each other:
+battuta has three annotation lanes over the same music, independent of each other:
 
 - **chord symbols** above the staff — `Cmaj7`, `Am7`, `D7/F#`
 - **Roman numeral analysis** below the staff — `I`, `vi`, `V65/V`
+- **lyrics** under the notes — [their own section below](#lyrics)
 
 Both are real MEI `<harm>` control events anchored to the note you attached them
 to, so they render in both views, travel with copy and paste, and undo like
@@ -77,3 +79,27 @@ becomes `ø` as you type.
 Incomplete text is not silently accepted — if you leave the lane with a buffer
 that isn't a valid symbol, battuta tells you and keeps the buffer so you can
 finish it.
+
+## Lyrics
+
+<KeymapTable ids={["lyrics"]} />
+
+<kbd>l</kbd> at the caret (or *lyrics* in the harmony select) opens the lyrics
+lane — one verse of syllables, typed the way MuseScore users expect:
+
+- type the syllable, then **space or enter** commits it and jumps to the next
+  note (rests are skipped);
+- **-** commits it *with a hyphen*: the word continues on the next note, and
+  battuta tracks the word position for you (`hel-lo` becomes `hel` + `lo`
+  joined by the drawn hyphen);
+- **arrows** commit and move one event; **esc** commits and leaves the lane.
+
+Syllables are MEI `<verse n="1">` content inside the note itself, so they
+render in both views, travel with the note through copy/paste and undo, and
+survive round-trips. Chords carry the verse on their first note.
+
+<Aside type="note" title="One verse, for now">
+Verse 2+, melisma extender lines and figured bass remain deferred — this lane
+covers the common case of texting a melody. Ask for more on the issue tracker
+if your material needs it.
+</Aside>

@@ -6,6 +6,85 @@ out to do (plan + exit criteria, moved here from
 README's old Status section). Remaining phases — reference layers, OMR
 correction — stay in [PLANNING.md](PLANNING.md).
 
+## 0.0.3 — unreleased (quality-of-life round)
+
+- **Confirm dialogs were invisible in the shell** (request: the
+  dirty-close alert never appeared). Root cause: wry does not implement
+  the webview's confirm panel — `window.confirm` is a SILENT NO-OP that
+  returns false — so all three guards misbehaved in the shell: a dirty
+  tab could never be closed, a mismatched paste silently refused, and
+  the external-change save guard silently cancelled. Every confirm now
+  routes through `confirmDialog`: a native rfd OK/Cancel dialog in the
+  shell (`confirm_dialog` command), the built-in modal in browsers, and
+  the async refactor keeps the browser e2e behavior byte-identical.
+- **Page view clipped staff-group symbols** (found testing the groups):
+  braces/brackets overhang the system's left edge, and the page viewBox
+  was cropping them. Root cause predates the feature — Verovio's
+  `setOptions` MERGES, so switching tile → page kept the tile mode's
+  sticky `adjustPageWidth/Height: true` and zero side margins; the page
+  was silently content-cropped all along. PAGE_OPTIONS now counters the
+  tile stickies explicitly (adjustPage* off, 10 mm margins all around),
+  so page view renders the full page with honest margins.
+- **Lyrics lane** (request; design decision: one verse, MuseScore-style
+  typing): `l` at the caret (or the harmony select) opens a lane in the
+  harm-lane mechanism — space/enter commits the syllable and advances to
+  the next NOTE (rests skipped), `-` commits with a hyphen and the word
+  position (i/m/t + con="d") is derived from the previous note's state,
+  arrows commit and move, esc commits and leaves. Syllables are
+  `<verse n="1"><syl>` INSIDE the note (unlike harm's startid anchor),
+  so tiles, copy/paste and undo carry them with the note for free;
+  chords anchor on their first note (universally rendered). Un-defers
+  lyrics from the deliberate-deferral list; verse 2+, melisma extenders
+  and figured bass stay deferred.
+- **Group/ungroup staves** (request; design decision: one gesture):
+  shift+G on a block spanning staves cycles the group symbol none →
+  brace → bracket → none (`CycleStaffGroupCommand`), bar.thru following
+  the symbol. An exact-match existing group (the scoreDef's root
+  included) is restyled in place — the root is never unwrapped, only
+  cleared; wrapping requires adjacent sibling staffDefs, and a range
+  crossing an existing group refuses. Byte-identical revert through the
+  whole cycle.
+- **Mouse-free context bar** (request; design decision: F6 + live
+  cycling): F6 focuses the status bar, ←/→ rove between the selects,
+  ↑/↓ on the value selects (clef/key/meter) cycle AND apply — each step
+  is one undoable command, so browsing key signatures by ear is safe —
+  while on the action selects (staves/voices/harmony) they open the
+  picker; esc returns to the score. Keyboard-driven changes skip the
+  selects' blur-on-change (a ref-guarded exception), so focus stays in
+  the bar; the mouse path still releases focus, which the e2e suite
+  asserts.
+- **First request batch triaged (2026-09-05)** — six requests into
+  PLANNING.md's Phase 8 list: three S (shipped below), three M
+  (mouse-free context bar; group/ungroup staves; a lyrics lane in the
+  harmony-lane mechanism — which un-defers lyrics from the deliberate
+  deferral list, syllables first).
+- **Duration change clears the dot** (request, both halves): alt+←/→ on
+  an existing note used to carry the dot onto the new value, and the
+  duration DIGITS (1–7) kept the pending dot for the next entries —
+  both surprised more than they helped. A new base value now starts
+  plain in both paths (entry state synced; re-dot with the dot key).
+- **Numpad 0 enters a rest** (request): the numpad digits already set
+  durations, so 0 completes the row. Probed: with NumLock OFF numpad-0
+  arrives as key "Insert" (code Numpad0), which collided with the
+  Insert = input-mode toggle — in input mode the code wins and a rest
+  is entered; everywhere else Insert still toggles. alt+numpad-0 stays
+  the finger-change key.
+- **6/4 joins the meter list** (request).
+- **Phases 6 and 7 deferred (2026-09-05).** Reference layers and OMR
+  correction stay planned but unstarted: the requests arriving since
+  0.0.2 — small quality-of-life fixes up to deeper engine changes —
+  take priority over opening a research phase. PLANNING.md now leads
+  with **Phase 8 — Quality of life (v0.0.3)**, which triages incoming
+  requests by size (S ships in 0.0.3, M gets its own slot, L becomes a
+  phase); the two research phases keep their entries, marked deferred.
+- **DESIGN.md caught up with 0.0.2.** The design document predated the
+  score tempo, the on-screen keyboard, format conversion, the session
+  safety net and the distribution pipeline; it now describes them at
+  design altitude (a conversion layer beside the render layer, the
+  keyboard as a keymap projection, persistence/distribution under the
+  shell decision) so the next deep-engine request is argued against a
+  document that matches the shipped editor.
+
 ## 0.0.2 — 2026-08-30
 
 Validated on Linux, macOS and Windows before tagging; the first release

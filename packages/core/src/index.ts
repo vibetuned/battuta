@@ -24,6 +24,10 @@ export { normalizeBlock, copyBlock, fragmentToText, materializeStaff, findStaffI
 export type { BlockSelection, ClipboardFragment, ClipboardStaff } from "./clipboard.js";
 
 export { SetHarmCommand, harmTextAt, isChordSymbol, isRomanNumeral, isHarmText, harmSuggestions, HARM_CHARS } from "./harm.js";
+export { SetSylCommand, sylAt } from "./lyrics.js";
+export type { SylValue } from "./lyrics.js";
+export { CycleStaffGroupCommand } from "./staffgroup.js";
+export type { StaffGroupState } from "./staffgroup.js";
 export type { HarmKind } from "./harm.js";
 
 export { planContextChange, ChangeContextCommand } from "./context-edit.js";
