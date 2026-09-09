@@ -7,7 +7,7 @@
 import {
   buildScore, resolveContexts, buildEventIndex, ensureIds, fromDom, serialize, serializeDocument, childElements, findAll, meterCapacity, frac,
   CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand, RegenerateIdsCommand,
-  copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, AddVoiceCommand, RemoveVoiceCommand, ToggleRepeatCommand, ToggleVoltaCommand,
+  copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, AddVoiceCommand, RemoveVoiceCommand, ToggleRepeatCommand, ToggleEndRepeatCommand, ToggleVoltaCommand,
   SetHarmCommand, harmTextAt, SetSylCommand, sylAt, type SylValue, CycleStaffGroupCommand, type StaffGroupState, SetTitleCommand, SetTempoCommand, fingTextsAt, buildExpansion, SetPitchesCommand, collectPitchEvents, playbackShaping, ReplaceEntryCommand,
   type PitchEvent, type PlaybackShaping, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, TupletCommand, AutoBeamCommand, UnbeamThen, measuresOf, ChangeContextCommand, planContextChange,
   type CoreScore, type MeasureContext, type EventIndex, type Command, type DirtyRegion, type DomLikeElement, type DomLikeNode,
@@ -152,6 +152,12 @@ export class DocumentSession {
   }
   toggleRepeat(from: number, to: number): DirtyRegion[] {
     return this.execute(new ToggleRepeatCommand(from, to));
+  }
+  /** End-repeat barline toggle on one measure; returns whether it is ON. */
+  toggleEndRepeat(measureIndex: number): boolean {
+    const cmd = new ToggleEndRepeatCommand(measureIndex);
+    this.execute(cmd);
+    return cmd.on;
   }
   /** Adds a voice (layer) to the staff from a measure onward; returns n. */
   addVoice(staffN: number, from = 0): number {

@@ -33,7 +33,7 @@ export type { HarmKind } from "./harm.js";
 export { planContextChange, ChangeContextCommand } from "./context-edit.js";
 export type { ContextChangeSpec, ClefSpec, ContextPlan } from "./context-edit.js";
 
-export { planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, AddVoiceCommand, RemoveVoiceCommand, ToggleRepeatCommand, ToggleVoltaCommand, emptyMeasureLike } from "./arrange.js";
+export { planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, AddVoiceCommand, RemoveVoiceCommand, ToggleRepeatCommand, ToggleEndRepeatCommand, ToggleVoltaCommand, emptyMeasureLike } from "./arrange.js";
 export type { PastePlan } from "./arrange.js";
 
 export { AutoBeamCommand, UnbeamMeasuresCommand, UnbeamThen, measuresOf } from "./beam.js";

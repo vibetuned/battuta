@@ -1872,14 +1872,22 @@ export default function App() {
           return;
         }
       }
-      if (hit("repeatBarlines") && !mod && !entryMode && bsel) {
-        // "r" on a block selection toggles repeat barlines around it — the
-        // bis. In input mode r still enters rests.
+      if (hit("repeatBarlines") && !mod) {
+        // alt+r, INPUT MODE INCLUDED (plain r keeps entering rests): a
+        // block selection gets 𝄆 𝄇 around it; without a selection the
+        // caret's measure gets an END repeat 𝄇 — playback loops it back
+        // to the last 𝄆, or the top of the piece.
         e.preventDefault();
         try {
-          session.toggleRepeat(bsel.measureFrom, bsel.measureTo);
-          afterCommand(session);
-          setNotice(`repeat toggled around m${bsel.measureFrom + 1}–m${bsel.measureTo + 1} (𝄆 𝄇)`);
+          if (bsel) {
+            session.toggleRepeat(bsel.measureFrom, bsel.measureTo);
+            afterCommand(session);
+            setNotice(`repeat toggled around m${bsel.measureFrom + 1}–m${bsel.measureTo + 1} (𝄆 𝄇)`);
+          } else if (caret) {
+            const on = session.toggleEndRepeat(caret.measureIndex);
+            afterCommand(session);
+            setNotice(on ? `end repeat 𝄇 at m${caret.measureIndex + 1} — playback loops from the last 𝄆 or the top` : `end repeat removed at m${caret.measureIndex + 1}`);
+          }
         } catch (err) {
           setNotice(`repeat refused: ${err instanceof Error ? err.message : err}`);
         }

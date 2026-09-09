@@ -37,6 +37,15 @@ describe("buildExpansion", () => {
     else expect(plan).toBeNull();
   });
 
+  it("a LONE rptend (no rptstart) loops to the top — m1 m2 m1 m2 m3", () => {
+    // Verovio auto-expands this when no other structure forces a plan
+    // (probed: timemap plays 5 measures); with a plan, same order.
+    const { score } = scoreFrom(mei(m(1) + m(2, ' right="rptend"') + m(3)));
+    const plan = buildExpansion(score);
+    if (plan) expect(playedMeasures(plan)).toEqual(["m1", "m2", "m1", "m2", "m3"]);
+    else expect(plan).toBeNull();
+  });
+
   it("unrolls volta passes: pre + [1], pre + [2], rest", () => {
     const { score } = scoreFrom(
       mei(m(1) + `<ending xml:id="e1" n="1">${m(2, ' right="rptend"')}</ending>` + `<ending xml:id="e2" n="2">${m(3)}</ending>` + m(4)),

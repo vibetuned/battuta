@@ -8,6 +8,19 @@ correction — stay in [PLANNING.md](PLANNING.md).
 
 ## 0.0.3 — unreleased (quality-of-life round)
 
+- **Repeats moved to alt+r, usable in input mode, and lone end repeats**
+  (request: "repeat only works with input mode off"). alt+r on a block
+  still pairs 𝄆 𝄇; with NO selection it toggles an END repeat 𝄇 on the
+  caret's measure (`ToggleEndRepeatCommand`, prior barline restored on
+  revert). Playback needed NOTHING: probed that Verovio's timemap
+  auto-expands a lone rptend by looping to the top (m1 m2𝄇 m3 plays
+  m1 m2 m1 m2 m3), and battuta's own expansion initializes repeatStart
+  at 0 so volta/jump scores behave identically — pinned by an expansion
+  test and an e2e play-through (22.5 s → 26.5 s with the repeat).
+  Found & fixed underneath: macOS composes Option+letter into a symbol
+  (alt+r → "®"), so alt bindings on plain letters never matched on Macs
+  — `keyMatches` now falls back to the physical key code for alt
+  bindings, which repairs alt+b auto-beam on macOS too.
 - **MIDI transpose** (request): a ±12-semitone select beside the MIDI
   checkbox shifts the MIDI SENDS and the playback-MIDI export by the
   chosen offset — the built-in piano is never transposed. Applies LIVE

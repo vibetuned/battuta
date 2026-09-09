@@ -535,6 +535,45 @@ export class RemoveStaffCommand implements Command {
  * on the first measure, @right="rptend" on the last. Toggling off restores
  * whatever barline values were there before (double bars survive).
  */
+/**
+ * Toggle an END-repeat barline (@right="rptend") on ONE measure — the
+ * "repeat everything so far" gesture. Playback needs no special case:
+ * Verovio's timemap auto-expands a lone rptend by looping to the top
+ * (probed: m1 m2𝄇 m3 plays m1 m2 m1 m2 m3), and battuta's own expansion
+ * initializes repeatStart at 0, so volta/jump scores do the same.
+ */
+export class ToggleEndRepeatCommand implements Command {
+  readonly label: string;
+  /** After apply: is the end repeat ON? (drives the notice) */
+  on = false;
+  private memento: { measure: CoreElement; right: string | undefined } | null = null;
+
+  constructor(private readonly measureIndex: number) {
+    this.label = `end repeat m${measureIndex + 1}`;
+  }
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    const measure = ctx.score.measures[this.measureIndex];
+    if (!measure) throw new Error("measure out of the score");
+    this.memento = { measure, right: measure.attrs["right"] };
+    if (measure.attrs["right"] === "rptend") {
+      delete measure.attrs["right"];
+      this.on = false;
+    } else {
+      measure.attrs["right"] = "rptend";
+      this.on = true;
+    }
+    return [{ measureIndex: this.measureIndex, staffN: 0 }];
+  }
+
+  revert(_ctx: CommandContext): DirtyRegion[] {
+    if (!this.memento) return [];
+    if (this.memento.right === undefined) delete this.memento.measure.attrs["right"];
+    else this.memento.measure.attrs["right"] = this.memento.right;
+    return [];
+  }
+}
+
 export class ToggleRepeatCommand implements Command {
   readonly label: string;
   private memento: { first: CoreElement; left: string | undefined; last: CoreElement; right: string | undefined } | null = null;

@@ -42,6 +42,9 @@ phase):
 - **S — shell confirm dialogs** (dirty-close alert invisible in the
   Tauri build — window.confirm is a no-op in wry; all three confirm
   guards now use a native dialog in the shell). _(shipped)_
+- **S — repeats on alt+r** (work in input mode now; no selection =
+  end-repeat 𝄇 on the caret measure, playback loops it; also fixed
+  macOS Option-composition breaking every alt binding). _(shipped)_
 - **S — MIDI transpose** (±12 st select on MIDI sends and the
   playback-MIDI export; the sampler stays at written pitch). _(shipped)_
 - **M — playback to MIDI devices** (checkbox in the player row: play

@@ -57,7 +57,7 @@ export const defaultKeymap = (layout: Layout): Record<string, KeyBinding> => {
     pedal: { keys: ["P"], label: "pedal (selection)", group: "marks" },
     simile: { keys: az ? ["ù"] : ["'"], label: "simile slash (one beat)", group: "repeats" },
     measureRepeat: { keys: az ? ["%"] : ['"'], label: "measure repeat % → %%", group: "repeats" },
-    repeatBarlines: { keys: ["r"], label: "repeat barlines 𝄆 𝄇", group: "repeats", when: "block selection" },
+    repeatBarlines: { keys: ["r"], alt: true, label: "repeat barlines 𝄆 𝄇 (block) · end repeat 𝄇 at the caret measure", group: "repeats", when: "works in input mode too" },
     staffGroup: { keys: ["G"], label: "staff group cycle: none → brace → bracket", group: "repeats", when: "block selection spanning staves" },
     lyrics: { keys: ["l"], label: "lyrics lane: type at the caret, space/enter advances, - hyphenates", group: "entry" },
     contextBar: { keys: ["F6"], label: "focus the context bar (←/→ selects · ↑/↓ change · esc back)", group: "system" },
@@ -119,11 +119,14 @@ export function clearKeymapOverrides(layout: Layout): void {
 }
 
 /** Does this event trigger the binding? (mod/ctrl guards stay at call sites) */
-export function keyMatches(b: KeyBinding | undefined, e: { key: string; shiftKey: boolean; altKey: boolean }): boolean {
+export function keyMatches(b: KeyBinding | undefined, e: { key: string; shiftKey: boolean; altKey: boolean; code?: string }): boolean {
   if (!b || b.locked) return false;
   if (b.alt ? !e.altKey : e.altKey) return false;
   if (b.shift !== undefined && e.shiftKey !== b.shift) return false;
-  return b.keys.includes(e.key);
+  if (b.keys.includes(e.key)) return true;
+  // macOS composes Option+letter into a symbol (alt+r -> "®", alt+b ->
+  // "∫"), so alt bindings on plain letters ALSO match the physical key.
+  return b.alt === true && e.code !== undefined && b.keys.some((k) => /^[a-z]$/.test(k) && e.code === `Key${k.toUpperCase()}`);
 }
 
 /** Human-readable key list for the editor. */

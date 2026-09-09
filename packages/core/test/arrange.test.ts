@@ -7,7 +7,7 @@ import {
   type CommandContext,
   ChangeContextCommand, resolveContexts,
   AddStaffCommand, RemoveStaffCommand,
-  ToggleRepeatCommand,
+  ToggleRepeatCommand, ToggleEndRepeatCommand,
   AddVoiceCommand, RemoveVoiceCommand,
   caretVertical,
   caretRight, caretLeft,
@@ -642,5 +642,40 @@ describe("ToggleVoltaCommand (volta number sets)", () => {
     expect(tile.xml).toContain('<ending n="1">');
     const plain = synthesizeTile(score, contexts, 0);
     expect(plain.xml).not.toContain("<ending");
+  });
+});
+
+describe("ToggleEndRepeatCommand", () => {
+  const setup = () => {
+    const { score } = scoreFrom(mei(measure(1) + measure(2) + measure(3)));
+    const ctx: CommandContext = { score, index: buildEventIndex(score) };
+    return { score, ctx };
+  };
+
+  it("toggles @right=rptend on one measure, on() reporting the state", () => {
+    const { score, ctx } = setup();
+    const on = new ToggleEndRepeatCommand(1);
+    on.apply(ctx);
+    expect(on.on).toBe(true);
+    expect(score.measures[1]!.attrs["right"]).toBe("rptend");
+    const off = new ToggleEndRepeatCommand(1);
+    off.apply(ctx);
+    expect(off.on).toBe(false);
+    expect(score.measures[1]!.attrs["right"]).toBeUndefined();
+  });
+
+  it("revert restores whatever barline was there (double bars survive)", () => {
+    const { score, ctx } = setup();
+    score.measures[1]!.attrs["right"] = "dbl";
+    const cmd = new ToggleEndRepeatCommand(1);
+    cmd.apply(ctx);
+    expect(score.measures[1]!.attrs["right"]).toBe("rptend");
+    cmd.revert(ctx);
+    expect(score.measures[1]!.attrs["right"]).toBe("dbl");
+  });
+
+  it("refuses a measure outside the score", () => {
+    const { ctx } = setup();
+    expect(() => new ToggleEndRepeatCommand(9).apply(ctx)).toThrow(/out of the score/);
   });
 });
