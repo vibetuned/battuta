@@ -23,7 +23,11 @@ const vlq = (n: number): number[] => {
   return out;
 };
 
-export function playbackToMidi(data: PlaybackData): Uint8Array {
+/** Clamp a transposed pitch into MIDI range. */
+const transposed = (pitch: number, semitones: number): number => Math.min(127, Math.max(0, pitch + semitones));
+
+export function playbackToMidi(data: PlaybackData, opts: { transpose?: number } = {}): Uint8Array {
+  const transpose = opts.transpose ?? 0;
   // Note lengths from the timemap's own on→off spans (same as play()).
   const onAt = new Map<string, number>();
   const durMs = new Map<string, number>();
@@ -47,8 +51,9 @@ export function playbackToMidi(data: PlaybackData): Uint8Array {
       if (!note) continue;
       const gate = gates[vis(id)] ?? GATE_DEFAULT;
       const ms = durations[id] ?? durMs.get(id) ?? 300;
-      notes.push({ tick: Math.round(ev.tstamp), off: false, pitch: note.pitch });
-      notes.push({ tick: Math.round(ev.tstamp + ms * gate), off: true, pitch: note.pitch });
+      const pitch = transposed(note.pitch, transpose);
+      notes.push({ tick: Math.round(ev.tstamp), off: false, pitch });
+      notes.push({ tick: Math.round(ev.tstamp + ms * gate), off: true, pitch });
     }
   }
   // Offs sort before ons at the same tick: a repeated pitch re-attacks

@@ -14,6 +14,10 @@ export interface Settings {
   lastDir?: string;
   /** On-screen keyboard visible (default: shown on coarse pointers). */
   vkeys?: boolean;
+  /** Playback goes to MIDI outputs instead of the built-in piano. */
+  midiOut?: boolean;
+  /** Semitone offset on MIDI sends and the playback-MIDI export. */
+  midiTranspose?: number;
 }
 
 const STORE = "battuta.settings.v1";

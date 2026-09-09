@@ -9,6 +9,7 @@
 import * as Tone from "tone";
 import { mergeTiedSpans, GATE_DEFAULT } from "@battuta/core";
 import type { PlaybackData } from "./render/renderPool";
+import { MidiSink, NOTE_ON, NOTE_OFF } from "./midiOut";
 
 // Vite inlines these as hashed asset URLs — embedded in the app bundle,
 // never a CDN (local-first, and the Tauri custom protocol serves them).
@@ -69,6 +70,23 @@ export class ScorePlayer {
   private data: PlaybackData | null = null;
   private durMs = new Map<string, number>();
   private factor = 1; // tempo multiplier: 2 = double speed
+  /** When set, playback SENDS MIDI here instead of sounding the sampler
+   * (the timemap, ties and gates drive both identically). */
+  private midiSink: MidiSink | null = null;
+
+  setMidiSink(sink: MidiSink | null): void {
+    this.midiSink?.panic();
+    this.midiSink = sink;
+  }
+
+  /** Semitone offset on the MIDI SENDS only (the sampler is untouched);
+   * applies live — the schedule reads it per attack, and each attack's
+   * note-off is scheduled with the same pitch, so a mid-playback change
+   * can never strand a note. */
+  private midiTranspose = 0;
+  setMidiTranspose(semitones: number): void {
+    this.midiTranspose = semitones;
+  }
 
   /** Musical length of the loaded score in seconds (tempo-independent). */
   musicalTotal(): number {
@@ -93,7 +111,7 @@ export class ScorePlayer {
 
   /** Build + start the Part with event times scaled by the tempo factor.
    * The transport is assumed stopped/cancelled. */
-  private schedulePart(sampler: Tone.Sampler): void {
+  private schedulePart(sampler: Tone.Sampler | null): void {
     const data = this.data!;
     const f = this.factor;
     const events = data.events
@@ -116,7 +134,16 @@ export class ScorePlayer {
         if (!note) continue;
         const gate = gates[vis(id)] ?? GATE_DEFAULT;
         const ms = durations[id] ?? this.durMs.get(id) ?? 300;
-        sampler.triggerAttackRelease(Tone.Frequency(note.pitch, "midi").toFrequency(), (ms * gate) / 1000 / f, time, 0.8);
+        if (this.midiSink) {
+          // Transport time -> wall clock: the callback runs a lookahead
+          // early, so the sink schedules the actual sends itself.
+          const atMs = performance.now() + (time - Tone.now()) * 1000;
+          const pitch = Math.min(127, Math.max(0, note.pitch + this.midiTranspose));
+          this.midiSink.schedule([NOTE_ON, pitch, 102], atMs);
+          this.midiSink.schedule([NOTE_OFF, pitch, 0], atMs + (ms * gate) / f);
+        } else if (sampler) {
+          sampler.triggerAttackRelease(Tone.Frequency(note.pitch, "midi").toFrequency(), (ms * gate) / 1000 / f, time, 0.8);
+        }
       }
       Tone.getDraw().schedule(() => {
         if (this.state === "playing") this.onHighlight(ev.on.map(vis), ev.off.map(vis), ev.measureOn ? vis(ev.measureOn) : undefined);
@@ -133,7 +160,9 @@ export class ScorePlayer {
     this.setState("loading");
     try {
       await Tone.start(); // resume the AudioContext inside the gesture
-      const sampler = await this.ensureSampler();
+      // MIDI destination: the transport still needs the AudioContext for
+      // timing, but the 2 MB piano never has to load.
+      const sampler = this.midiSink ? null : await this.ensureSampler();
 
       // Note lengths from the timemap itself: an id's off minus its on.
       // (Tied continuations never re-appear in "on", so a held note sounds
@@ -165,6 +194,7 @@ export class ScorePlayer {
   seek(fraction: number): void {
     if (this.state === "idle" || this.state === "loading" || !this.data) return;
     const target = Math.min(0.999, Math.max(0, fraction)) * this.total();
+    this.midiSink?.panic(); // pending sends belong to the old position
     Tone.getTransport().seconds = target;
     this.onHighlight([], [], undefined); // stale lit notes: clear, next events relight
   }
@@ -174,7 +204,7 @@ export class ScorePlayer {
    * the price of exact timing). */
   setTempo(f: number): void {
     if (f === this.factor) return;
-    if (this.state === "idle" || this.state === "loading" || !this.data || !this.sampler) {
+    if (this.state === "idle" || this.state === "loading" || !this.data || (!this.sampler && !this.midiSink)) {
       this.factor = f;
       return;
     }
@@ -184,8 +214,9 @@ export class ScorePlayer {
     transport.pause();
     transport.cancel(0);
     this.part?.dispose();
+    this.midiSink?.panic(); // pending sends belong to the OLD schedule
     this.factor = f;
-    this.schedulePart(this.sampler);
+    this.schedulePart(this.midiSink ? null : this.sampler);
     transport.seconds = musicalPos / f;
     this.onHighlight([], [], undefined);
     if (wasPlaying) transport.start();
@@ -194,6 +225,7 @@ export class ScorePlayer {
   pause(): void {
     if (this.state !== "playing") return;
     Tone.getTransport().pause();
+    this.midiSink?.panic(); // never leave a note hanging on a synth
     this.setState("paused");
   }
 
@@ -209,6 +241,7 @@ export class ScorePlayer {
     // touching Tone.getTransport() lazily builds the audio stack, and that
     // work has no business on the editing path.
     if (this.state === "idle" && !this.part) return;
+    this.midiSink?.panic(); // release external synths before teardown
     // An audio-stack failure below must never poison the editing path.
     try {
       const transport = Tone.getTransport();

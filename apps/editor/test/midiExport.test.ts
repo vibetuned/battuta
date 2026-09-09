@@ -109,6 +109,33 @@ describe("playbackToMidi", () => {
     expect(events.find((e) => !e.on)!.tick).toBe(250);
   });
 
+  it("transpose shifts every pitch and clamps at the MIDI range", () => {
+    const d = data({
+      events: [
+        { tstamp: 0, on: ["lo", "hi"] },
+        { tstamp: 500, off: ["lo", "hi"] },
+      ],
+      notes: { lo: { pitch: 2, duration: 500 }, hi: { pitch: 120, duration: 500 } },
+    });
+    const up = parseSmf(playbackToMidi(d, { transpose: 12 }));
+    expect(up.events.filter((e) => e.on).map((e) => e.pitch).sort((a, b) => a - b)).toEqual([14, 127]); // 120+12 clamps
+    const down = parseSmf(playbackToMidi(d, { transpose: -7 }));
+    expect(down.events.filter((e) => e.on).map((e) => e.pitch).sort((a, b) => a - b)).toEqual([0, 113]); // 2-7 clamps
+    // on/off pitches stay paired even when clamped
+    for (const ev of up.events) if (!ev.on) expect([14, 127]).toContain(ev.pitch);
+  });
+
+  it("transpose 0 (or omitted) is byte-identical", () => {
+    const d = data({
+      events: [
+        { tstamp: 0, on: ["a"] },
+        { tstamp: 500, off: ["a"] },
+      ],
+      notes: { a: { pitch: 60, duration: 500 } },
+    });
+    expect(playbackToMidi(d, { transpose: 0 })).toEqual(playbackToMidi(d));
+  });
+
   it("a repeated pitch at the same tick releases before it re-attacks", () => {
     const d = data({
       events: [

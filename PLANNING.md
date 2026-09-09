@@ -42,6 +42,11 @@ phase):
 - **S — shell confirm dialogs** (dirty-close alert invisible in the
   Tauri build — window.confirm is a no-op in wry; all three confirm
   guards now use a native dialog in the shell). _(shipped)_
+- **S — MIDI transpose** (±12 st select on MIDI sends and the
+  playback-MIDI export; the sampler stays at written pitch). _(shipped)_
+- **M — playback to MIDI devices** (checkbox in the player row: play
+  sends to every connected MIDI output instead of the built-in piano;
+  Web MIDI in browsers, a midir output bridge in the shell). _(shipped)_
 - **M — lyrics entry** _(shipped)_: one verse,
   MuseScore-style typing in the harmony-lane mechanism — space/enter
   commits the syllable and advances to the next note, "-" commits with

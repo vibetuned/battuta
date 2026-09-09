@@ -8,6 +8,37 @@ correction — stay in [PLANNING.md](PLANNING.md).
 
 ## 0.0.3 — unreleased (quality-of-life round)
 
+- **MIDI transpose** (request): a ±12-semitone select beside the MIDI
+  checkbox shifts the MIDI SENDS and the playback-MIDI export by the
+  chosen offset — the built-in piano is never transposed. Applies LIVE
+  (the schedule reads it per attack; each attack's note-off carries the
+  same shifted pitch, so a mid-playback change can never strand a note),
+  clamps at the MIDI range with on/off kept paired, persists in
+  settings.
+- **Playback to MIDI devices** (request): a MIDI checkbox in the player
+  row routes play to EVERY connected MIDI output instead of the sampler
+  — same timemap, expansion, tie merging and gates, so the wire carries
+  the player's exact interpretation, and the highlight still follows
+  (the transport keeps timing; the 2 MB piano never loads in this mode).
+  One `MidiSink` covers both environments: Web MIDI outputs in browsers,
+  a new midir OUTPUT bridge in the shell (`midi_open_outputs`/
+  `midi_send`, ports deduped by name like the inputs). Sends are
+  timer-scheduled with every sounding note tracked, and `panic()` —
+  wired into pause, seek, tempo change, stop and sink swaps — cancels
+  what is pending and releases what sounds, then sweeps with CC 123: an
+  external synth can never be left hanging. No outputs → notice + audio
+  fallback; the choice persists in settings.
+  - **Follow-up (midi-sink couldn't hear us)**: sending to destinations
+    only reaches apps that EXPOSE an input port; consumer apps that
+    LISTEN to sources (midi-sink connects to every input port the way
+    battuta itself does) heard nothing. The shell now also publishes a
+    virtual SOURCE named "battuta" while MIDI mode is on — listeners
+    pick it up like a hardware keyboard — retracted on uncheck
+    (`midi_close_outputs`), excluded from battuta's own input bridge
+    (feedback loop otherwise), and not on Windows (WinMM has no virtual
+    ports). Verified with a standalone listener probe: the source is
+    visible beside the hardware keyboard and delivers byte-identical
+    events.
 - **Confirm dialogs were invisible in the shell** (request: the
   dirty-close alert never appeared). Root cause: wry does not implement
   the webview's confirm panel — `window.confirm` is a SILENT NO-OP that

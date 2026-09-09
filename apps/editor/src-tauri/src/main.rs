@@ -146,6 +146,65 @@ async fn save_score_as(contents: String, suggested: String, dir: Option<String>)
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
+/// MIDI OUTPUT bridge for playback-to-MIDI mode (the webview has no Web
+/// MIDI here): the frontend opens every output port once, then streams
+/// note events through midi_send. Ports are deduped by name — the same
+/// driver quirk as inputs. Dropping a connection closes it.
+struct MidiOut(std::sync::Mutex<Vec<midir::MidiOutputConnection>>);
+
+#[tauri::command]
+fn midi_open_outputs(state: tauri::State<MidiOut>) -> Vec<String> {
+    let mut conns = state.0.lock().expect("midi-out lock");
+    conns.clear(); // reconnect fresh; drop = close
+    let mut names = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let Ok(probe) = midir::MidiOutput::new("battuta-out-probe") else {
+        return names;
+    };
+    for port in probe.ports() {
+        let Ok(name) = probe.port_name(&port) else { continue };
+        if !seen.insert(name.clone()) {
+            continue; // duplicate-named port: same device twice
+        }
+        let Ok(out) = midir::MidiOutput::new("battuta-out") else { continue };
+        if let Ok(conn) = out.connect(&port, "battuta-play") {
+            conns.push(conn);
+            names.push(name);
+        }
+    }
+    // ALSO publish a virtual SOURCE named "battuta": consumer apps that
+    // LISTEN to sources instead of exposing a destination (midi-sink, and
+    // anything that treats apps like keyboards) can only hear us this way.
+    // WinMM has no virtual ports, so Windows sends to destinations only.
+    #[cfg(not(target_os = "windows"))]
+    {
+        use midir::os::unix::VirtualOutput;
+        if let Ok(out) = midir::MidiOutput::new("battuta-out") {
+            if let Ok(conn) = out.create_virtual("battuta") {
+                conns.push(conn);
+                names.push("battuta (virtual source)".into());
+            }
+        }
+    }
+    eprintln!("[shell] midi outputs: {names:?}");
+    names
+}
+
+/// Uncheck: drop the connections AND the published virtual source, so
+/// "battuta" doesn't linger in other apps' device lists.
+#[tauri::command]
+fn midi_close_outputs(state: tauri::State<MidiOut>) {
+    state.0.lock().expect("midi-out lock").clear();
+}
+
+#[tauri::command]
+fn midi_send(state: tauri::State<MidiOut>, data: Vec<u8>) {
+    let mut conns = state.0.lock().expect("midi-out lock");
+    for c in conns.iter_mut() {
+        let _ = c.send(&data);
+    }
+}
+
 /// Native MIDI: WebKitGTK has no Web MIDI API, so the shell bridges it —
 /// every input port is connected and note on/off events stream to the
 /// webview as Tauri events ("midi-note"), with the device list on
@@ -172,12 +231,15 @@ fn spawn_midi(app: tauri::AppHandle) {
                 // Some drivers (seen on Windows) register the same device
                 // as TWO ports; connecting both would deliver every note
                 // twice — dedupe by name here and when connecting below.
+                // Our OWN virtual playback source is excluded: connecting
+                // to it would feed MIDI playback back into note entry.
                 let mut seen = std::collections::HashSet::new();
                 Some(
                     probe
                         .ports()
                         .iter()
                         .filter_map(|p| probe.port_name(p).ok())
+                        .filter(|n| !n.contains("battuta"))
                         .filter(|n| seen.insert(n.clone()))
                         .collect(),
                 )
@@ -188,9 +250,10 @@ fn spawn_midi(app: tauri::AppHandle) {
                 if let Ok(probe) = midir::MidiInput::new("battuta-probe") {
                     let mut connected = std::collections::HashSet::new();
                     for port in probe.ports() {
-                        // duplicate-named port: same device, skip (see above)
+                        // duplicate-named port: same device, skip (see above);
+                        // our own virtual source: NEVER (feedback loop).
                         let Ok(port_name) = probe.port_name(&port) else { continue };
-                        if !connected.insert(port_name) {
+                        if port_name.contains("battuta") || !connected.insert(port_name) {
                             continue;
                         }
                         let Ok(mut input) = midir::MidiInput::new("battuta") else { continue };
@@ -285,12 +348,13 @@ fn main() {
     let initial = std::env::args().nth(1).filter(|a| is_score_path(a));
     tauri::Builder::default()
         .manage(InitialFile(std::sync::Mutex::new(initial)))
+        .manage(MidiOut(std::sync::Mutex::new(Vec::new())))
         .setup(|app| {
             use tauri::Manager;
             spawn_midi(app.app_handle().clone());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![bench_echo, bench_report, js_log, open_score, save_score, save_score_as, export_file, file_mtime, confirm_dialog, initial_score])
+        .invoke_handler(tauri::generate_handler![bench_echo, bench_report, js_log, open_score, save_score, save_score_as, export_file, file_mtime, confirm_dialog, midi_open_outputs, midi_close_outputs, midi_send, initial_score])
         .on_page_load(|webview, _| {
             eprintln!("[shell] page loaded: {}", webview.url().map(|u| u.to_string()).unwrap_or_default());
             // Headless shell self-test: exercise the save command end to end.

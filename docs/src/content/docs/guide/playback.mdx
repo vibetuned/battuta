@@ -30,6 +30,27 @@ The score's own tempo comes from the **♩=** button beside the title: it sets
 the MEI tempo (`@midi.bpm`), page view prints the marking, and playback runs at
 it (120 bpm when unset). The speed select multiplies on top.
 
+## Playing through MIDI devices
+
+Check **MIDI** in the player row and play sends note events to **every
+connected MIDI output** — a hardware synth, a DAW, the IAC bus — instead of
+sounding the built-in piano. It is the same performance: the expanded form,
+merged ties, articulation gates, tempo and speed all apply identically, and
+the notation highlight keeps following. The **st** select beside the checkbox
+transposes the MIDI sends by that many semitones (±12, applied live — handy
+for transposing instruments or octave-shifted patches); the built-in piano is
+never transposed, and the same offset applies to the
+[playback-MIDI export](../files/#exporting). Pausing, seeking, changing the
+speed or stopping always releases everything first, so no note is ever left
+hanging on an external synth. If no output is connected, battuta says so and
+falls back to the piano.
+
+In browsers this uses Web MIDI (Chromium); the desktop app talks to the
+system's MIDI ports directly on every platform, and on macOS and Linux it
+also **publishes a virtual source named "battuta"** — so apps that listen to
+MIDI sources (the way battuta itself listens to your keyboard) hear the
+playback too, without exposing a port of their own.
+
 The note being sounded lights up as it plays, and the view scrolls when the
 playing measure leaves the window. Audio and highlight come from **one** timeline,
 so they cannot drift apart.

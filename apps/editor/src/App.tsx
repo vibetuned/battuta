@@ -14,6 +14,7 @@ import { converter } from "./converter";
 import notoMusicUrl from "./assets/fonts/NotoMusic-Regular.woff2?url";
 import { detectImport, IMPORT_FORMATS, EXPORT_FORMATS, OPEN_EXTENSIONS, type ExportFormat } from "./formats";
 import { playbackToMidi } from "./midiExport";
+import { openMidiSink, type MidiSink } from "./midiOut";
 import { saveStoredSession, loadStoredSession, clearStoredSession, type StoredSession } from "./sessionStore";
 
 /** savedMarks sentinel for restored-dirty docs: never equals an editMark,
@@ -492,6 +493,17 @@ export default function App() {
   const [playerState, setPlayerState] = useState<PlayerState>("idle");
   const [playerPos, setPlayerPos] = useState(0);
   const [playerTotal, setPlayerTotal] = useState(0);
+  /** MIDI checkbox: play to connected MIDI outputs, not the sampler. */
+  const [midiOutOn, setMidiOutOn] = useState(() => loadSettings().midiOut === true);
+  /** Semitone offset on MIDI sends + the playback-MIDI export. */
+  const [midiTranspose, setMidiTransposeState] = useState(() => {
+    const t = loadSettings().midiTranspose;
+    return typeof t === "number" && Number.isInteger(t) && Math.abs(t) <= 24 ? t : 0;
+  });
+  useEffect(() => {
+    scorePlayer.setMidiTranspose(midiTranspose); // live: next attacks use it
+  }, [midiTranspose]);
+  const midiSinkRef = useRef<MidiSink | null>(null);
   const [playerTempo, setPlayerTempo] = useState(() => {
     const t = loadSettings().tempo;
     return t !== undefined && TEMPO_STEPS.includes(t as (typeof TEMPO_STEPS)[number]) ? t : 1;
@@ -996,9 +1008,19 @@ export default function App() {
     if (playerState === "loading" || !session || !pool) return;
     void scorePlayer.unlock(); // inside the gesture, before any await
     const { xml, expand } = session.serializeForPlayback();
-    pool
-      .documentTimemap(xml, expand)
-      .then((data) => {
+    // MIDI mode: open the outputs once (kept for the session); if none
+    // exist, say so and fall back to the piano rather than playing silence.
+    const sink = midiOutOn
+      ? (midiSinkRef.current ? Promise.resolve(midiSinkRef.current) : openMidiSink(tauriInvoke()))
+      : Promise.resolve(null);
+    Promise.all([sink, pool.documentTimemap(xml, expand)])
+      .then(([s, data]) => {
+        if (midiOutOn && !s) setNotice("no MIDI outputs found — playing through the built-in piano");
+        if (midiOutOn && s && !midiSinkRef.current) {
+          midiSinkRef.current = s;
+          setNotice(`MIDI playback → ${s.outputs.join(", ")}`);
+        }
+        scorePlayer.setMidiSink(midiOutOn ? s : null);
         if (data.error) {
           setNotice(`playback failed: ${data.error}`);
           return;
@@ -1008,7 +1030,7 @@ export default function App() {
         return scorePlayer.play(data);
       })
       .catch((e) => setNotice(`playback failed: ${e instanceof Error ? e.message : e}`));
-  }, [playerState, session, pool]);
+  }, [playerState, session, pool, midiOutOn]);
 
   /** Choose the octave that puts pname nearest the previous note (or oct 4). */
   const nearestOctave = useCallback(
@@ -1339,11 +1361,11 @@ export default function App() {
         if (data.error) throw new Error(data.error);
         if (data.events.length === 0) throw new Error("nothing to play");
         data.shaping = session.playbackShaping();
-        return saveExport(`${active.name}-playback.mid`, playbackToMidi(data), "audio/midi");
+        return saveExport(`${active.name}-playback.mid`, playbackToMidi(data, { transpose: midiTranspose }), "audio/midi");
       })
-      .then(() => setNotice(`exported ${active.name}-playback.mid`))
+      .then(() => setNotice(`exported ${active.name}-playback.mid${midiTranspose !== 0 ? ` (transposed ${midiTranspose > 0 ? "+" : ""}${midiTranspose} st)` : ""}`))
       .catch((e) => setError(`export failed: ${e instanceof Error ? e.message : e}`));
-  }, [session, active, pool, saveExport]);
+  }, [session, active, pool, saveExport, midiTranspose]);
 
   /** ctrl+± and the loupe buttons step through the fixed zoom levels. */
   const zoomStep = useCallback(
@@ -2902,6 +2924,40 @@ export default function App() {
               {TEMPO_STEPS.map((f) => (
                 <option key={f} value={f}>
                   {f}×
+                </option>
+              ))}
+            </select>
+            <label data-midi-out title="send playback to every connected MIDI output (each one is a synth's input) instead of the built-in piano" style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={midiOutOn}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  scorePlayer.stop(); // the destination changes: reschedule on next play
+                  scorePlayer.setMidiSink(null);
+                  midiSinkRef.current = null; // re-enumerate outputs on next play
+                  if (!on) void tauriInvoke()?.("midi_close_outputs").catch(() => undefined); // shell: retract the virtual source
+                  setMidiOutOn(on);
+                  saveSettings({ midiOut: on });
+                }}
+              />
+              MIDI
+            </label>
+            <select
+              data-midi-transpose
+              title="transpose the MIDI sends (and the playback-MIDI export) by this many semitones — the built-in piano is never transposed"
+              value={midiTranspose}
+              onChange={(e) => {
+                const t = Number(e.target.value);
+                e.target.blur();
+                setMidiTransposeState(t);
+                saveSettings({ midiTranspose: t });
+              }}
+              style={{ fontSize: 12 }}
+            >
+              {Array.from({ length: 25 }, (_, i) => 12 - i).map((t) => (
+                <option key={t} value={t}>
+                  {t > 0 ? `+${t}` : t} st
                 </option>
               ))}
             </select>
