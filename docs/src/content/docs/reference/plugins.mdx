@@ -1,0 +1,54 @@
+---
+title: Plugins
+description: What a battuta plugin is, the Plugins tab, what turning one off does, and the list of plugins in this build.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+Since 0.1.0 battuta is a **host**: the editor proper — tiles, caret,
+selection, undoable commands, the score on disk — and, around it, features
+that attach through declared extension points. A plugin's code is not even
+loaded until something it declared happens (a key you press, a view you
+open, a file type you import), so a plugin you never use costs nothing.
+
+## The Plugins tab
+
+battuta menu → **🌣 shortcuts** → **plugins**. Every plugin in this build
+is listed with a switch and a state:
+
+| State | Means |
+| --- | --- |
+| **ready** | on, code not loaded yet — it will load the first time you use it |
+| **active** | on and running |
+| **off** | you turned it off |
+| **failed** | it could not be registered or started; the reason is shown |
+
+## What "off" does
+
+Turning a plugin off deactivates it **immediately, without a reload**:
+
+- its keys leave the shortcut editor and the [on-screen keyboard](../../guide/virtual-keyboard/);
+- its panels close and its menu and status-bar items disappear;
+- **the document does not change** — plugins keep nothing in your score
+  except what commands wrote into the MEI, and those are ordinary undo steps.
+
+The switch is remembered across restarts. If you had rebound one of its
+keys, the rebind comes back when you turn the plugin on again.
+
+<Aside type="tip" title="A whole session without plugins">
+Open the web editor with `?plugins=off` in the address to start with nothing
+registered — useful to tell a plugin problem from an editor problem. The
+Plugins tab says so.
+</Aside>
+
+## Plugins in this build
+
+| Plugin | Provides | Off removes |
+| --- | --- | --- |
+| *(none yet)* | The host shipped first, empty on purpose: each feature moves into a plugin in its own release, starting with the reflection cycle. | |
+
+<Aside type="note" title="Writing one">
+Plugins are first-party for now — a development conventions page and a
+worked example arrive with the first plugin. Third-party plugins and a
+marketplace are [deliberately not planned](../limits/).
+</Aside>

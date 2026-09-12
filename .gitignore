@@ -1,6 +1,10 @@
 node_modules/
 dist/
-/fixtures/
+# fixtures/: the sample-encodings corpus is fetched, not committed
+# (sh spikes/fetch-fixtures.sh); the hand-made e2e fixture IS committed.
+/fixtures/*
+!/fixtures/README.md
+!/fixtures/synthetic-context-changes.mei
 spikes/out/
 spikes/native-bench/bench
 apps/editor/src-tauri/target

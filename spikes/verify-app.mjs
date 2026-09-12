@@ -8,6 +8,13 @@
  */
 import { createServer } from "vite";
 import { chromium } from "playwright";
+import { openFixture, clickFirstNote } from "./lib/e2e.mjs";
+
+// Portable defaults: BATTUTA_ROOT points at the checkout, CHROME at a
+// browser binary ("bundled" = Playwright's own Chromium), SCRATCH at a
+// writable folder for artefacts. The originals were one machine's paths.
+const ROOT = process.env.BATTUTA_ROOT ?? "/home/flux/projects/battuta";
+const CHROME = process.env.CHROME ?? "/usr/bin/google-chrome";
 
 const scratch = process.env.SCRATCH ?? "/tmp/claude-1000/-home-flux-projects-battuta/6232b880-dd50-4f19-a593-9bf21de90cbb/scratchpad";
 let failures = 0;
@@ -17,14 +24,14 @@ const check = (label, ok) => {
 };
 
 const server = await createServer({
-  configFile: "/home/flux/projects/battuta/apps/editor/vite.config.ts",
-  root: "/home/flux/projects/battuta/apps/editor",
+  configFile: `${ROOT}/apps/editor/vite.config.ts`,
+  root: `${ROOT}/apps/editor`,
   server: { port: 0 },
   logLevel: "warn",
 });
 await server.listen();
 
-const browser = await chromium.launch({ executablePath: "/usr/bin/google-chrome", headless: true });
+const browser = await chromium.launch({ ...(CHROME === "bundled" ? {} : { executablePath: CHROME }), headless: true });
 const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
 page.on("pageerror", (e) => console.error("[pageerror]", e.message));
 await page.goto(server.resolvedUrls.local[0] + "?pool=2");
@@ -94,11 +101,17 @@ await page.waitForFunction((n) => {
 const otherClefAfter = JSON.stringify((await ctxAt(1, otherStaff)).clef);
 check(`clef change is staff-local (staff ${clefStaff} -> C3, staff ${otherStaff} unchanged)`, otherClefAfter === otherClefBefore);
 // meter: refused on full measures, allowed on an empty one
-await page.locator('.tile[data-index="0"] g[class~="note"] use').first().click({ force: true });
+// (the clef change above re-rendered m1 too — its inline <clef> sits at
+// the end of the previous measure — so click with a retry)
+await clickFirstNote(page, 0);
 await page.selectOption('select[title*="meter"]', "3/4");
 await page.waitForFunction(() => document.querySelector("[data-notice]").textContent.includes("refused"), null, { timeout: 5000 });
 check("meter change refuses when content no longer fits", true);
-await page.keyboard.press("NumpadAdd"); // caret lands in the new empty measure
+// A meter change is score-wide from its measure on, so the empty measure
+// must be the LAST one: inserted after m1 it would drag the full 4/4
+// measures behind it into 3/4, which the validator rightly refuses.
+await clickFirstNote(page, 9);
+await page.keyboard.press("NumpadAdd"); // caret lands in the new empty measure (m11)
 await page.waitForFunction(() => window.__SESSION__.score.measures.length === 11, null, { timeout: 10000 });
 await page.selectOption('select[title*="meter"]', "3/4");
 await page.waitForFunction(() => {
@@ -113,7 +126,7 @@ await page.waitForFunction(() => window.__SESSION__.stack.undoDepth === 0 && win
 check("undo chain restores all context changes", true);
 
 // --- 3. Quartet: virtualized scroll to the end ---
-await page.selectOption("select", "Beethoven_StringQuartet_Op18_No1.mei");
+await openFixture(page, `${ROOT}/fixtures/Beethoven_StringQuartet_Op18_No1.mei`);
 await page.waitForFunction(() => document.querySelectorAll(".tile").length > 300, null, { timeout: 60000 });
 const t0 = Date.now();
 await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
@@ -127,7 +140,7 @@ console.log("  status:", statusText);
 await page.screenshot({ path: `${scratch}/app-quartet-end.png` });
 
 // --- 4. Page view ---
-await page.selectOption("select", "Bach-JS_Ein_feste_Burg.mei");
+await openFixture(page, `${ROOT}/fixtures/Bach-JS_Ein_feste_Burg.mei`);
 await page.waitForFunction(() => document.querySelectorAll(".tile .ms").length >= 14, null, { timeout: 60000 });
 await page.getByRole("button", { name: "page view" }).click();
 await page.waitForFunction(() => document.querySelectorAll(".pages .page svg").length >= 1, null, { timeout: 60000 });

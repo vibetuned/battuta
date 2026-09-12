@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The hand-made e2e fixture. Every browser e2e script (spikes/verify-*.mjs)
+  and the docs shots open it first, and they address its notes by id:
+  cc-m<measure>n<note>. Reconstructed 2026-09-12 from the scripts'
+  assertions after the original was overwritten on one machine (the
+  folder was gitignored); now committed. Do not resave it from the app:
+  battuta regenerates ids and the scripts stop finding cc-m2n1.
+
+  Layout (what the scripts rely on):
+    m1  4/4, C major. s1: c4 half + e4 half (cc-m1n1, cc-m1n2). s2: c3 whole
+        tied INTO m2 (tie="i"/"t"). Slur cc-m1n2 -> cc-m2n1 crosses the barline.
+    m2  s1: one whole note g4 (cc-m2n1). s2: the tie's end.
+    m3  key changes to 4 sharps (scoreDef). s1: four quarters e f g a.
+    m4  s1: one whole note b4 (cc-m4n1). s2 ends with a tenor-clef change.
+    m5  s1: whole-measure rest; s2 (now C4 clef): cc-m5n1 is the first note.
+    m6  plain 4/4.
+    m7  meter changes to 6/8 (scoreDef); s1 starts with cc-m7n1.
+    m8-m10 6/8.
+-->
+<mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.0">
+  <meiHead>
+    <fileDesc>
+      <titleStmt>
+        <title>Synthetic Context Changes</title>
+      </titleStmt>
+      <pubStmt/>
+    </fileDesc>
+  </meiHead>
+  <music>
+    <body>
+      <mdiv xml:id="cc-mdiv">
+        <score xml:id="cc-score">
+          <scoreDef xml:id="cc-scoredef" meter.count="4" meter.unit="4" keysig="0">
+            <staffGrp xml:id="cc-staffgrp">
+              <staffDef xml:id="cc-staffdef1" n="1" lines="5" clef.shape="G" clef.line="2"/>
+              <staffDef xml:id="cc-staffdef2" n="2" lines="5" clef.shape="F" clef.line="4"/>
+            </staffGrp>
+          </scoreDef>
+          <section xml:id="cc-section">
+            <measure xml:id="cc-m1" n="1">
+              <staff xml:id="cc-m1s1" n="1">
+                <layer xml:id="cc-m1s1l1" n="1">
+                  <note xml:id="cc-m1n1" pname="c" oct="4" dur="2"/>
+                  <note xml:id="cc-m1n2" pname="e" oct="4" dur="2"/>
+                </layer>
+              </staff>
+              <staff xml:id="cc-m1s2" n="2">
+                <layer xml:id="cc-m1s2l1" n="1">
+                  <note xml:id="cc-m1n3" pname="c" oct="3" dur="1" tie="i"/>
+                </layer>
+              </staff>
+              <slur xml:id="cc-m1slur" staff="1" startid="#cc-m1n2" endid="#cc-m2n1"/>
+            </measure>
+            <measure xml:id="cc-m2" n="2">
+              <staff xml:id="cc-m2s1" n="1">
+                <layer xml:id="cc-m2s1l1" n="1">
+                  <note xml:id="cc-m2n1" pname="g" oct="4" dur="1"/>
+                </layer>
+              </staff>
+              <staff xml:id="cc-m2s2" n="2">
+                <layer xml:id="cc-m2s2l1" n="1">
+                  <note xml:id="cc-m2n2" pname="c" oct="3" dur="1" tie="t"/>
+                </layer>
+              </staff>
+            </measure>
+            <scoreDef xml:id="cc-key4s" keysig="4s"/>
+            <measure xml:id="cc-m3" n="3">
+              <staff xml:id="cc-m3s1" n="1">
+                <layer xml:id="cc-m3s1l1" n="1">
+                  <note xml:id="cc-m3n1" pname="e" oct="4" dur="4"/>
+                  <note xml:id="cc-m3n2" pname="f" oct="4" dur="4"/>
+                  <note xml:id="cc-m3n3" pname="g" oct="4" dur="4"/>
+                  <note xml:id="cc-m3n4" pname="a" oct="4" dur="4"/>
+                </layer>
+              </staff>
+              <staff xml:id="cc-m3s2" n="2">
+                <layer xml:id="cc-m3s2l1" n="1">
+                  <note xml:id="cc-m3n5" pname="e" oct="3" dur="2"/>
+                  <note xml:id="cc-m3n6" pname="b" oct="2" dur="2"/>
+                </layer>
+              </staff>
+            </measure>
+            <measure xml:id="cc-m4" n="4">
+              <staff xml:id="cc-m4s1" n="1">
+                <layer xml:id="cc-m4s1l1" n="1">
+                  <note xml:id="cc-m4n1" pname="b" oct="4" dur="1"/>
+                </layer>
+              </staff>
+              <staff xml:id="cc-m4s2" n="2">
+                <layer xml:id="cc-m4s2l1" n="1">
+                  <note xml:id="cc-m4n2" pname="e" oct="3" dur="1"/>
+                  <clef xml:id="cc-m4clef" shape="C" line="4"/>
+                </layer>
+              </staff>
+            </measure>
+            <measure xml:id="cc-m5" n="5">
+              <staff xml:id="cc-m5s1" n="1">
+                <layer xml:id="cc-m5s1l1" n="1">
+                  <mRest xml:id="cc-m5r1"/>
+                </layer>
+              </staff>
+              <staff xml:id="cc-m5s2" n="2">
+                <layer xml:id="cc-m5s2l1" n="1">
+                  <note xml:id="cc-m5n1" pname="a" oct="3" dur="2"/>
+                  <note xml:id="cc-m5n2" pname="b" oct="3" dur="2"/>
+                </layer>
+              </staff>
+            </measure>
+            <measure xml:id="cc-m6" n="6">
+              <staff xml:id="cc-m6s1" n="1">
+                <layer xml:id="cc-m6s1l1" n="1">
+                  <note xml:id="cc-m6n1" pname="f" oct="4" dur="2"/>
+                  <note xml:id="cc-m6n2" pname="g" oct="4" dur="2"/>
+                </layer>
+              </staff>
+              <staff xml:id="cc-m6s2" n="2">
+                <layer xml:id="cc-m6s2l1" n="1">
+                  <note xml:id="cc-m6n3" pname="d" oct="3" dur="1"/>
+                </layer>
+              </staff>
+            </measure>
+            <scoreDef xml:id="cc-meter68" meter.count="6" meter.unit="8"/>
+            <measure xml:id="cc-m7" n="7">
+              <staff xml:id="cc-m7s1" n="1">
+                <layer xml:id="cc-m7s1l1" n="1">
+                  <note xml:id="cc-m7n1" pname="g" oct="4" dur="8"/>
+                  <note xml:id="cc-m7n2" pname="a" oct="4" dur="8"/>
+                  <note xml:id="cc-m7n3" pname="b" oct="4" dur="8"/>
+                  <note xml:id="cc-m7n4" pname="c" oct="5" dur="8"/>
+                  <note xml:id="cc-m7n5" pname="d" oct="5" dur="8"/>
+                  <note xml:id="cc-m7n6" pname="e" oct="5" dur="8"/>
+                </layer>
+              </staff>
+              <staff xml:id="cc-m7s2" n="2">
+                <layer xml:id="cc-m7s2l1" n="1">
+                  <note xml:id="cc-m7n7" pname="c" oct="3" dur="4" dots="1"/>
+                  <note xml:id="cc-m7n8" pname="g" oct="3" dur="4" dots="1"/>
+                </layer>
+              </staff>
+            </measure>
+            <measure xml:id="cc-m8" n="8">
+              <staff xml:id="cc-m8s1" n="1">
+                <layer xml:id="cc-m8s1l1" n="1">
+                  <note xml:id="cc-m8n1" pname="d" oct="5" dur="4" dots="1"/>
+                  <note xml:id="cc-m8n2" pname="c" oct="5" dur="4" dots="1"/>
+                </layer>
+              </staff>
+              <staff xml:id="cc-m8s2" n="2">
+                <layer xml:id="cc-m8s2l1" n="1">
+                  <note xml:id="cc-m8n3" pname="c" oct="3" dur="8"/>
+                  <note xml:id="cc-m8n4" pname="d" oct="3" dur="8"/>
+                  <note xml:id="cc-m8n5" pname="e" oct="3" dur="8"/>
+                  <note xml:id="cc-m8n6" pname="f" oct="3" dur="8"/>
+                  <note xml:id="cc-m8n7" pname="g" oct="3" dur="8"/>
+                  <note xml:id="cc-m8n8" pname="a" oct="3" dur="8"/>
+                </layer>
+              </staff>
+            </measure>
+            <measure xml:id="cc-m9" n="9">
+              <staff xml:id="cc-m9s1" n="1">
+                <layer xml:id="cc-m9s1l1" n="1">
+                  <note xml:id="cc-m9n1" pname="e" oct="5" dur="8"/>
+                  <note xml:id="cc-m9n2" pname="d" oct="5" dur="8"/>
+                  <note xml:id="cc-m9n3" pname="c" oct="5" dur="8"/>
+                  <note xml:id="cc-m9n4" pname="b" oct="4" dur="8"/>
+                  <note xml:id="cc-m9n5" pname="a" oct="4" dur="8"/>
+                  <note xml:id="cc-m9n6" pname="g" oct="4" dur="8"/>
+                </layer>
+              </staff>
+              <staff xml:id="cc-m9s2" n="2">
+                <layer xml:id="cc-m9s2l1" n="1">
+                  <note xml:id="cc-m9n7" pname="e" oct="3" dur="4" dots="1"/>
+                  <note xml:id="cc-m9n8" pname="a" oct="2" dur="4" dots="1"/>
+                </layer>
+              </staff>
+            </measure>
+            <measure xml:id="cc-m10" n="10">
+              <staff xml:id="cc-m10s1" n="1">
+                <layer xml:id="cc-m10s1l1" n="1">
+                  <note xml:id="cc-m10n1" pname="g" oct="4" dur="2" dots="1"/>
+                </layer>
+              </staff>
+              <staff xml:id="cc-m10s2" n="2">
+                <layer xml:id="cc-m10s2l1" n="1">
+                  <note xml:id="cc-m10n2" pname="c" oct="3" dur="2" dots="1"/>
+                </layer>
+              </staff>
+            </measure>
+          </section>
+        </score>
+      </mdiv>
+    </body>
+  </music>
+</mei>

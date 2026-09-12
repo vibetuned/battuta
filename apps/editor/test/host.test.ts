@@ -1,0 +1,280 @@
+/**
+ * The host skeleton's guarantees, without a browser:
+ *
+ *  - registration validates (manifest, API range, capabilities, duplicate
+ *    commands) and a failed plugin is listed but contributes nothing;
+ *  - contributed keybindings appear in the keymap store at registration,
+ *    a keypress activates the owner lazily and runs the handler;
+ *  - off = deactivate + every disposable fires (bindings, slot items,
+ *    panels gone) with no reload, and the user's rebind survives the
+ *    round trip;
+ *  - the --no-plugins property: with plugins on or off, nothing reaches
+ *    the document except through execute — the host never calls it on
+ *    its own, and ?plugins=off registers nothing at all.
+ */
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { API_VERSION, definePlugin, type PluginContext, type PluginEntry, type PluginManifest } from "@battuta/api";
+import { createHost, memorySettings } from "../src/host";
+import { memoryStorage } from "../src/host/services";
+
+// keymap.ts persists overrides in localStorage; give node one.
+const shim = memoryStorage();
+(globalThis as unknown as { localStorage: unknown }).localStorage = { ...shim, clear: () => undefined };
+
+const flush = () => new Promise((r) => setTimeout(r, 0));
+
+const manifest = (patch: Partial<PluginManifest> = {}): PluginManifest => ({
+  id: "test.echo",
+  name: "Echo",
+  version: "1.0.0",
+  engines: { battuta: `^${API_VERSION}` },
+  activationEvents: ["onCommand:test.echo.say"],
+  contributes: {
+    commands: [{ id: "test.echo.say", title: "Say" }],
+    keybindings: [{ command: "test.echo.say", keys: ["Q"], label: "say hello", group: "rhythm", when: "always" }],
+  },
+  ...patch,
+});
+
+/** A plugin that records what happened to it and contributes one of everything. */
+function echoPlugin(): { entry: PluginEntry; state: { log: string[]; loads: number } } {
+  const state = { log: [] as string[], loads: 0 };
+  const entry: PluginEntry = {
+    manifest: manifest(),
+    load: async () => {
+      state.loads++;
+      return definePlugin({
+        activate(ctx: PluginContext) {
+          state.log.push("activate");
+          ctx.registerCommand("test.echo.say", () => {
+            state.log.push(`say:${ctx.editor.get().caret ? "caret" : "no caret"}`);
+            ctx.notice("hello");
+          });
+          ctx.slots.add("header", { id: "echo-btn", render: () => null });
+          ctx.panels.open({ id: "echo-panel", side: "bottom", title: "Echo", render: () => null });
+          ctx.subscriptions.add({ dispose: () => state.log.push("disposed") });
+          ctx.storage.set("count", (ctx.storage.get<number>("count") ?? 0) + 1);
+          ctx.settings.set("greeting", "hi");
+        },
+        deactivate() {
+          state.log.push("deactivate");
+        },
+      });
+    },
+  };
+  return { entry, state };
+}
+
+const makeHost = (plugins: PluginEntry[], opts: { noPlugins?: boolean; settings?: ReturnType<typeof memorySettings>; storage?: ReturnType<typeof memoryStorage> } = {}) =>
+  createHost({ layout: "qwerty", plugins, settings: opts.settings ?? memorySettings(), storage: opts.storage ?? memoryStorage(), confirm: async () => true, ...(opts.noPlugins !== undefined ? { noPlugins: opts.noPlugins } : {}) });
+
+beforeEach(() => {
+  shim.removeItem("battuta.keymap.v1.qwerty");
+  shim.removeItem("battuta.keymap.v1.azerty");
+});
+
+describe("registration", () => {
+  it("lists a valid plugin as ready and contributes its binding and command at once", () => {
+    const { entry } = echoPlugin();
+    const host = makeHost([entry]);
+    expect(host.registry.get().map((p) => [p.id, p.state, p.enabled])).toEqual([["test.echo", "registered", true]]);
+    expect(host.keymap.get()["test.echo.say"]).toMatchObject({ keys: ["Q"], label: "say hello", group: "rhythm", plugin: "test.echo" });
+    expect(host.commands.ownerOf("test.echo.say")).toBe("test.echo");
+  });
+
+  it("keeps a broken manifest on the list, failed, with the reason and no contributions", () => {
+    const { entry } = echoPlugin();
+    const bad: PluginEntry = { ...entry, manifest: manifest({ id: "Bad Id" }) };
+    const host = makeHost([bad]);
+    const [p] = host.registry.get();
+    expect(p?.state).toBe("failed");
+    expect(p?.error).toMatch(/id must be/);
+    expect(host.keymap.get()["test.echo.say"]).toBeUndefined();
+  });
+
+  it("refuses an API range the host does not satisfy, and a capability it lacks", () => {
+    const { entry } = echoPlugin();
+    const host = makeHost([
+      { ...entry, manifest: manifest({ id: "test.future", engines: { battuta: "^9.0.0" } }) },
+      { ...entry, manifest: manifest({ id: "test.needy", capabilities: ["midi"], contributes: {} }) },
+    ]);
+    const [future, needy] = host.registry.get();
+    expect(future?.error).toContain(`needs @battuta/api ^9.0.0, this host has ${API_VERSION}`);
+    expect(needy?.error).toContain('no "midi" capability');
+  });
+
+  it("a second plugin declaring the same command fails; the first keeps it", () => {
+    const { entry } = echoPlugin();
+    const host = makeHost([entry, { ...entry, manifest: manifest({ id: "test.copycat" }) }]);
+    const [first, second] = host.registry.get();
+    expect(first?.state).toBe("registered");
+    expect(second?.state).toBe("failed");
+    expect(second?.error).toContain("already declared by test.echo");
+    expect(host.commands.ownerOf("test.echo.say")).toBe("test.echo");
+  });
+
+  it("a core action id is never shadowed by a plugin binding", () => {
+    const { entry } = echoPlugin();
+    const shadow: PluginEntry = {
+      ...entry,
+      manifest: manifest({ contributes: { commands: [{ id: "rest", title: "steal rest" }], keybindings: [{ command: "rest", keys: ["r"], label: "stolen", group: "entry" }] } }),
+    };
+    const host = makeHost([shadow]);
+    expect(host.keymap.get()["rest"]?.plugin).toBeUndefined();
+    expect(host.keymap.get()["rest"]?.label).toBe("enter a rest (also numpad 0)");
+  });
+});
+
+describe("activation and commands", () => {
+  it("loads the code only when the binding is pressed, then runs the handler and notices", async () => {
+    const plugin = echoPlugin();
+    const host = makeHost([plugin.entry]);
+    const notices: string[] = [];
+    host.notices.subscribe((n) => n && notices.push(n.text));
+    expect(plugin.state.loads).toBe(0);
+    // shift+Q = "Q"
+    expect(host.dispatchKey({ key: "Q", shiftKey: true, altKey: false })).toBe(true);
+    await flush();
+    expect(plugin.state.loads).toBe(1);
+    expect(plugin.state.log).toEqual(["activate", "say:no caret"]);
+    expect(notices).toEqual(["hello"]);
+    expect(host.registry.info("test.echo")?.state).toBe("active");
+    // second press: no reload, handler again
+    host.dispatchKey({ key: "Q", shiftKey: true, altKey: false });
+    await flush();
+    expect(plugin.state.loads).toBe(1);
+    expect(plugin.state.log).toEqual(["activate", "say:no caret", "say:no caret"]);
+  });
+
+  it("ignores keys no plugin bound, and core keys", () => {
+    const host = makeHost([echoPlugin().entry]);
+    expect(host.dispatchKey({ key: "q", shiftKey: false, altKey: false })).toBe(false);
+    expect(host.dispatchKey({ key: "r", shiftKey: false, altKey: false })).toBe(false);
+  });
+
+  it("onStartup activates at creation; a plugin whose activate throws is failed with the reason", async () => {
+    const boom: PluginEntry = {
+      manifest: manifest({ id: "test.boom", activationEvents: ["onStartup"], contributes: {} }),
+      load: async () => ({ activate: () => { throw new Error("no such thing"); } }),
+    };
+    const host = makeHost([boom]);
+    const notices: string[] = [];
+    host.notices.subscribe((n) => n && notices.push(n.text));
+    await host.fire("onStartup");
+    expect(host.registry.info("test.boom")?.state).toBe("failed");
+    expect(host.registry.info("test.boom")?.error).toBe("activate failed: no such thing");
+    expect(notices).toEqual(["plugin test.boom: activate failed: no such thing"]);
+  });
+
+  it("a handler registered for a command the manifest did not declare is refused", async () => {
+    const sneaky: PluginEntry = {
+      manifest: manifest({ id: "test.sneaky", activationEvents: ["onStartup"], contributes: {} }),
+      load: async () => ({ activate: (ctx) => { ctx.registerCommand("core.save", () => undefined); } }),
+    };
+    const host = makeHost([sneaky]);
+    await host.fire("onStartup");
+    expect(host.registry.info("test.sneaky")?.error).toMatch(/did not declare command core.save/);
+  });
+});
+
+describe("off and on again", () => {
+  it("deactivates, fires every disposable, withdraws bindings/slots/panels, persists the switch", async () => {
+    const plugin = echoPlugin();
+    const settings = memorySettings();
+    const host = makeHost([plugin.entry], { settings });
+    host.dispatchKey({ key: "Q", shiftKey: true, altKey: false });
+    await flush();
+    expect(host.slots.items.get().header.map((i) => i.id)).toEqual(["echo-btn"]);
+    expect(host.panels.panels.get().map((p) => p.id)).toEqual(["echo-panel"]);
+
+    await host.registry.setEnabled("test.echo", false);
+    expect(plugin.state.log.slice(-2)).toEqual(["deactivate", "disposed"]);
+    expect(host.slots.items.get().header).toEqual([]);
+    expect(host.panels.panels.get()).toEqual([]);
+    expect(host.keymap.get()["test.echo.say"]).toBeUndefined();
+    expect(host.commands.ownerOf("test.echo.say")).toBeUndefined();
+    expect(host.registry.info("test.echo")).toMatchObject({ state: "disabled", enabled: false });
+    expect(settings.load().plugins?.["test.echo"]?.enabled).toBe(false);
+    // its key now does nothing
+    expect(host.dispatchKey({ key: "Q", shiftKey: true, altKey: false })).toBe(false);
+
+    await host.registry.setEnabled("test.echo", true);
+    expect(host.registry.info("test.echo")).toMatchObject({ state: "registered", enabled: true });
+    expect(host.keymap.get()["test.echo.say"]?.keys).toEqual(["Q"]);
+  });
+
+  it("a rebind of a plugin key survives off/on, and the switch is read back at the next start", async () => {
+    const settings = memorySettings();
+    const host = makeHost([echoPlugin().entry], { settings });
+    host.keymap.rebind("test.echo.say", { keys: ["W"] });
+    expect(host.keymap.get()["test.echo.say"]?.keys).toEqual(["W"]);
+    await host.registry.setEnabled("test.echo", false);
+    await host.registry.setEnabled("test.echo", true);
+    expect(host.keymap.get()["test.echo.say"]?.keys).toEqual(["W"]);
+    await host.registry.setEnabled("test.echo", false);
+    // a fresh host reading the same settings starts it disabled
+    const next = makeHost([echoPlugin().entry], { settings: memorySettings(settings.load()) });
+    expect(next.registry.info("test.echo")).toMatchObject({ state: "disabled", enabled: false });
+    expect(next.keymap.get()["test.echo.say"]).toBeUndefined();
+    expect(next.dispatchKey({ key: "W", shiftKey: true, altKey: false })).toBe(false);
+  });
+
+  it("reset-all clears plugin overrides too, and the layout switch keeps contributions", async () => {
+    const host = makeHost([echoPlugin().entry]);
+    host.keymap.rebind("test.echo.say", { keys: ["W"] });
+    host.keymap.setLayout("azerty");
+    expect(host.keymap.get()["test.echo.say"]?.keys).toEqual(["Q"]); // overrides are per layout
+    host.keymap.setLayout("qwerty");
+    expect(host.keymap.get()["test.echo.say"]?.keys).toEqual(["W"]);
+    host.keymap.resetOverrides();
+    expect(host.keymap.get()["test.echo.say"]?.keys).toEqual(["Q"]);
+  });
+});
+
+describe("the --no-plugins property", () => {
+  it("?plugins=off registers nothing", () => {
+    const host = makeHost([echoPlugin().entry], { noPlugins: true });
+    expect(host.noPlugins).toBe(true);
+    expect(host.registry.get()).toEqual([]);
+    expect(host.keymap.get()["test.echo.say"]).toBeUndefined();
+  });
+
+  it("registering, activating and disabling a plugin never touches the document: only execute does", async () => {
+    const doc = { score: { measures: [1, 2, 3] } as never, index: {} as never, contexts: [], version: 7 };
+    const before = JSON.stringify(doc);
+    const execute = vi.fn();
+    const plugin = echoPlugin();
+    const host = makeHost([plugin.entry]);
+    host.document.set(doc);
+    host.bindExecutor(execute);
+    host.dispatchKey({ key: "Q", shiftKey: true, altKey: false });
+    await flush();
+    await host.registry.setEnabled("test.echo", false);
+    await host.registry.setEnabled("test.echo", true);
+    expect(execute).not.toHaveBeenCalled();
+    expect(JSON.stringify(doc)).toBe(before);
+    // and the one door: execute reaches the bound executor, or throws without a document
+    const cmd = { apply: () => [], revert: () => [] } as never;
+    host.execute(cmd);
+    expect(execute).toHaveBeenCalledWith(cmd);
+    host.bindExecutor(null);
+    expect(() => host.execute(cmd)).toThrow("no document is open");
+  });
+});
+
+describe("storage and settings namespaces", () => {
+  it("are keyed per plugin: storage in its own web-storage entry, settings inside the editor's blob", async () => {
+    const plugin = echoPlugin();
+    const storage = memoryStorage();
+    const settings = memorySettings();
+    const host = makeHost([plugin.entry], { settings, storage });
+    await host.registry.activate("test.echo");
+    await host.registry.deactivate("test.echo");
+    await host.registry.activate("test.echo");
+    expect(plugin.state.log.filter((l) => l === "activate")).toHaveLength(2);
+    // the plugin bumps "count" on every activate: the value outlived the deactivation
+    expect(JSON.parse(storage.getItem("battuta.plugin.test.echo.v1")!)).toEqual({ count: 2 });
+    expect(storage.getItem("battuta.plugin.other.v1")).toBeNull();
+    expect(settings.load().plugins?.["test.echo"]).toEqual({ values: { greeting: "hi" } });
+  });
+});

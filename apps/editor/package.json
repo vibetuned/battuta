@@ -6,12 +6,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prebuild": "npm run build -w @battuta/core",
+    "prebuild": "npm run build -w @battuta/core && npm run build -w @battuta/api",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "budget": "node scripts/check-budget.mjs"
   },
   "dependencies": {
+    "@battuta/api": "*",
     "@battuta/core": "*",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",

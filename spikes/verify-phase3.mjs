@@ -11,6 +11,13 @@
  */
 import { createServer } from "vite";
 import { chromium } from "playwright";
+import { openFixture, setPerf } from "./lib/e2e.mjs";
+
+// Portable defaults: BATTUTA_ROOT points at the checkout, CHROME at a
+// browser binary ("bundled" = Playwright's own Chromium), SCRATCH at a
+// writable folder for artefacts. The originals were one machine's paths.
+const ROOT = process.env.BATTUTA_ROOT ?? "/home/flux/projects/battuta";
+const CHROME = process.env.CHROME ?? "/usr/bin/google-chrome";
 import { readFileSync } from "node:fs";
 import { DOMParser } from "@xmldom/xmldom";
 import createVerovioModule from "verovio/wasm";
@@ -25,14 +32,14 @@ const check = (label, ok) => {
 };
 
 const server = await createServer({
-  configFile: "/home/flux/projects/battuta/apps/editor/vite.config.ts",
-  root: "/home/flux/projects/battuta/apps/editor",
+  configFile: `${ROOT}/apps/editor/vite.config.ts`,
+  root: `${ROOT}/apps/editor`,
   server: { port: 0 },
   logLevel: "warn",
 });
 await server.listen();
 
-const browser = await chromium.launch({ executablePath: "/usr/bin/google-chrome", headless: true });
+const browser = await chromium.launch({ ...(CHROME === "bundled" ? {} : { executablePath: CHROME }), headless: true });
 const context = await browser.newContext({ viewport: { width: 1500, height: 950 }, acceptDownloads: true });
 await context.grantPermissions(["clipboard-read", "clipboard-write"]);
 const page = await context.newPage();
@@ -42,6 +49,7 @@ await page.goto(server.resolvedUrls.local[0] + "?pool=2");
 try {
 const waitTiles = (n) => page.waitForFunction((n) => document.querySelectorAll(".tile .ms").length >= n, n, { timeout: 60000 });
 await waitTiles(10);
+await setPerf(page, true); // "clip 2m × 1s" is a HUD number, off by default
 
 /** Count notes in staff n of measure index m via the exposed session. */
 const notesIn = (m, n) =>
@@ -114,8 +122,7 @@ await page.waitForFunction((want) => {
 check("undo restores the pasted staff", true);
 
 // --- 4. cross-document paste: open chorale, copy, paste into doc 1 ---
-await page.selectOption("select", "Bach-JS_Ein_feste_Burg.mei");
-await waitTiles(14);
+await openFixture(page, `${ROOT}/fixtures/Bach-JS_Ein_feste_Burg.mei`, 14);
 // m2..m3 (indexes 1-2): full 4/4 measures — the chorale also contains short
 // phrase-upbeat measures (metcon=false) which the validator rightly refuses
 // to paste into full measures (that refusal is itself covered below).
@@ -191,7 +198,7 @@ check("inserted measure renders as notation, not a placeholder", true);
 // Regression: -m must not crash on the last tile / stale visible indexes.
 const del = await staffCenter(2, 0); // caret on the inserted empty measure (index 2)
 await page.mouse.click(del.x, del.y);
-await page.locator("button", { hasText: "−m" }).click();
+await page.keyboard.press("NumpadSubtract"); // the header −m button became the numpad key in 0.0.2
 await page.waitForFunction((n) => window.__SESSION__.score.measures.length === n, measureCount, { timeout: 10000 });
 const appAlive = await page.evaluate(() => document.querySelectorAll(".tile").length > 0);
 check("delete removes exactly the targeted measure and the app survives", appAlive);
@@ -247,7 +254,7 @@ const toolkit = new VerovioToolkit(VerovioModule);
 check("saved file renders in a fresh Verovio toolkit", toolkit.loadData(savedXml) && toolkit.getPageCount() >= 1);
 
 await page.screenshot({ path: `${scratch}/phase3-arranging.png` });
-// --- repeat barlines: "r" on a block selection toggles the bis ---
+// --- repeat barlines: alt+r on a block selection toggles the bis ---
 {
   const rFrom = await staffCenter(0, 0);
   const rTo = await staffCenter(1, 0);
@@ -266,18 +273,18 @@ await page.screenshot({ path: `${scratch}/phase3-arranging.png` });
   }
   void rFrom; void rTo;
   check("block m1–m2 selected for the repeat", rBlock === "0-1/1-1");
-  await page.keyboard.press("r");
+  await page.keyboard.press("Alt+r"); // repeats moved to alt+r in 0.0.3 (plain r is the rest in input mode)
   await page.waitForFunction(() => {
     const ms = window.__SESSION__.score.measures;
     return ms[0].attrs.left === "rptstart" && ms[1].attrs.right === "rptend";
   }, null, { timeout: 10000 });
-  check("r wraps the block in repeat barlines (𝄆 𝄇)", true);
-  await page.keyboard.press("r");
+  check("alt+r wraps the block in repeat barlines (𝄆 𝄇)", true);
+  await page.keyboard.press("Alt+r");
   await page.waitForFunction(() => {
     const ms = window.__SESSION__.score.measures;
     return ms[0].attrs.left === undefined && ms[1].attrs.right === undefined;
   }, null, { timeout: 10000 });
-  check("second r removes them", true);
+  check("second alt+r removes them", true);
 }
 
 } finally {

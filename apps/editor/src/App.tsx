@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, isHarmText, harmSuggestions, HARM_CHARS, reflectionForm, REFLECTION_CYCLE, REFLECTION_LABELS, type ReflectionForm, type PitchEvent, type HarmKind, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
 import { RenderPool, type TileResult } from "./render/renderPool";
-import { loadKeymap, saveKeymapOverride, clearKeymapOverrides, keyMatches, type Keymap, type Layout } from "./keymap";
+import { keyMatches, type Keymap, type Layout } from "./keymap";
+import { host, useStore, Slot, Panels, confirmDialog, tauriInvoke } from "./host";
 import { ShortcutEditor } from "./ShortcutEditor";
 import { loadSettings, saveSettings, detectLayout } from "./settings";
 import { scorePlayer, type PlayerState } from "./player";
@@ -46,22 +47,8 @@ const rememberDir = (path: string): void => {
   if (cut > 0) saveSettings({ lastDir: path.slice(0, cut) });
 };
 
-/** OK/Cancel confirm that is actually VISIBLE in the shell: wry's own
- * window.confirm silently returns false there, so the shell asks through
- * a native dialog; browsers keep the built-in modal. */
-const confirmDialog = (message: string, title = "battuta"): Promise<boolean> => {
-  const invoke = tauriInvoke();
-  if (!invoke) return Promise.resolve(window.confirm(message));
-  return invoke("confirm_dialog", { title, message }).then(
-    (r) => r === true,
-    () => window.confirm(message), // dialog unavailable: last-ditch fallback
-  );
-};
-
-const tauriInvoke = (): ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null => {
-  const t = (window as unknown as { __TAURI__?: { core?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> } } }).__TAURI__;
-  return t?.core?.invoke ?? null;
-}
+// confirmDialog and tauriInvoke are host services (./host/shell): plugins
+// reach the same dialogs through ctx.confirm.
 
 interface TileState {
   /** Content key (context + measure + header variant), spacing-agnostic. */
@@ -525,12 +512,14 @@ export default function App() {
   /** ⏱ toggle: render timings, measure counts, pool stats (off by default;
    * flip it in the battuta menu). */
   const [showPerf, setShowPerf] = useState(false);
-  const [layout, setLayoutState] = useState<Layout>(() => loadSettings().layout ?? detectLayout());
-  const [keymap, setKeymap] = useState<Keymap>(() => loadKeymap(layout));
+  const [layout, setLayoutState] = useState<Layout>(() => host.keymap.getLayout());
+  /** The host's reactive keymap: core bindings ∪ what enabled plugins contribute. */
+  const keymap: Keymap = useStore(host.keymap);
+  const plugins = useStore(host.registry);
   const setLayout = (l: Layout) => {
     setLayoutState(l);
     saveSettings({ layout: l });
-    setKeymap(loadKeymap(l));
+    host.keymap.setLayout(l);
   };
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   /** App menu under the battuta name (open/save/tools). */
@@ -1377,6 +1366,32 @@ export default function App() {
     },
     [],
   );
+
+  // --- Host bridges. Plugins see the document and the editor state
+  // through read-only stores and mutate only through execute — one undo
+  // step, the same afterCommand as every core edit. Their notices land in
+  // the same toast.
+  useEffect(() => {
+    const d = host.notices.subscribe((n) => n && setNotice(n.text));
+    return () => d.dispose();
+  }, []);
+  useEffect(() => {
+    host.document.set(session ? { score: session.score, index: session.index, contexts: session.contexts, version: session.version } : null);
+  }, [session, version]);
+  useEffect(() => {
+    host.editor.set({ caret, selection, block, view, entryMode });
+  }, [caret, selection, block, view, entryMode]);
+  useEffect(() => {
+    if (!session) {
+      host.bindExecutor(null);
+      return;
+    }
+    host.bindExecutor((cmd) => {
+      session.execute(cmd);
+      afterCommand(session);
+    });
+    return () => host.bindExecutor(null);
+  }, [session, afterCommand]);
 
   // Keyboard: navigation, selection, edits, undo/redo.
   useEffect(() => {
@@ -2299,6 +2314,10 @@ export default function App() {
         anchor.current = null;
         setSelection([]);
         setBlock(null);
+      } else if (!mod && host.dispatchKey(e)) {
+        // A plugin's binding — reached only after every core branch fell
+        // through, so a plugin can never shadow a core key.
+        e.preventDefault();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -2777,6 +2796,7 @@ export default function App() {
                 >
                   ⟲ regenerate ids
                 </button>
+                <Slot store={host.slots} name="menu" />
               </div>
             </>
           )}
@@ -2826,6 +2846,7 @@ export default function App() {
         <button title="on-screen keyboard — piano + every shortcut, for touch devices" data-vkeys-toggle onClick={() => toggleVk(!vkOpen)} style={{ opacity: vkOpen ? 1 : 0.45 }}>
           🎹
         </button>
+        <Slot store={host.slots} name="header" />
         <span style={{ color: "#666", fontSize: 13 }} data-status>
           {showPerf ? status : ""}
         </span>
@@ -3034,16 +3055,22 @@ export default function App() {
             setNotice(`keyboard layout: ${l} (own defaults and overrides)`);
           }}
           onRebind={(id, b) => {
-            saveKeymapOverride(layout, id, b);
-            setKeymap(loadKeymap(layout));
+            host.keymap.rebind(id, b);
             setNotice(`"${keymap[id]?.label ?? id}" rebound to ${b.keys.join(" ")}`);
           }}
           onReset={() => {
-            clearKeymapOverrides(layout);
-            setKeymap(loadKeymap(layout));
+            host.keymap.resetOverrides();
             setNotice(`shortcuts reset to ${layout} defaults`);
           }}
           onClose={() => setShortcutsOpen(false)}
+          plugins={plugins}
+          noPlugins={host.noPlugins}
+          onTogglePlugin={(id, on) => {
+            void host.registry.setEnabled(id, on).then(() => {
+              const p = host.registry.info(id);
+              setNotice(`${p?.manifest.name ?? id}: ${on ? "on" : "off — deactivated, its bindings and panels withdrawn"}`);
+            });
+          }}
         />
       )}
       {accidPick && (
@@ -3066,6 +3093,9 @@ export default function App() {
           font-display: block;
         }
         button, select, input { font-family: inherit; }
+        /* Menu items a plugin contributes (slot "menu") use this class to match the host's own entries. */
+        .menu-item { text-align: left; background: none; border: none; padding: 7px 10px; font-size: 13px; cursor: pointer; border-radius: 4px; font-family: inherit; color: #223; white-space: nowrap; }
+        .menu-item:hover { background: #f0f3f7; }
         /* Block-selection drags must never paint the native text-selection
            overlay — WebKitGTK needs the prefixed form AND it applied to the
            SVG content itself, not just the container. */
@@ -3126,6 +3156,8 @@ export default function App() {
         )}
       </main>
       {vkOpen && <VirtualKeyboard keymap={keymap} layout={layout} entryMode={entryMode} onNoteOn={midiNoteOn} onNoteOff={midiNoteOff} onClose={() => toggleVk(false)} />}
+      <Panels store={host.panels} side="bottom" />
+      <Panels store={host.panels} side="side" />
       <footer data-statusbar onKeyDown={onBarKey} style={{ position: "fixed", left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", gap: 12, background: "#1f2733", color: "#aab", fontSize: 12, lineHeight: "20px", padding: "2px 10px", zIndex: 30 }}>
         <button
           data-input-indicator
@@ -3284,6 +3316,7 @@ export default function App() {
             <option key={m}>{m}</option>
           ))}
         </select>
+        <Slot store={host.slots} name="statusBar" />
         <span style={{ position: "relative" }}>
           {zoomPanel && (
             <div data-zoom-panel style={{ position: "absolute", right: 0, bottom: 26, background: "#233040", color: "#dde", padding: "6px 8px", borderRadius: 4, whiteSpace: "nowrap", boxShadow: "0 2px 10px rgba(0,0,0,.4)", display: "flex", gap: 6, alignItems: "center" }}>

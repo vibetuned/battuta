@@ -10,6 +10,13 @@
  */
 import { createServer } from "vite";
 import { chromium } from "playwright";
+import { menuClick, setLayout } from "./lib/e2e.mjs";
+
+// Portable defaults: BATTUTA_ROOT points at the checkout, CHROME at a
+// browser binary ("bundled" = Playwright's own Chromium), SCRATCH at a
+// writable folder for artefacts. The originals were one machine's paths.
+const ROOT = process.env.BATTUTA_ROOT ?? "/home/flux/projects/battuta";
+const CHROME = process.env.CHROME ?? "/usr/bin/google-chrome";
 import { readFileSync } from "node:fs";
 import { DOMParser } from "@xmldom/xmldom";
 import { fromDom, buildScore, resolveContexts, validateMeasureDurations, ensureIds, findAll } from "../packages/core/dist/index.js";
@@ -22,13 +29,13 @@ const check = (label, ok) => {
 };
 
 const server = await createServer({
-  configFile: "/home/flux/projects/battuta/apps/editor/vite.config.ts",
-  root: "/home/flux/projects/battuta/apps/editor",
+  configFile: `${ROOT}/apps/editor/vite.config.ts`,
+  root: `${ROOT}/apps/editor`,
   server: { port: 0 },
   logLevel: "warn",
 });
 await server.listen();
-const browser = await chromium.launch({ executablePath: "/usr/bin/google-chrome", headless: true });
+const browser = await chromium.launch({ ...(CHROME === "bundled" ? {} : { executablePath: CHROME }), headless: true });
 const context = await browser.newContext({ viewport: { width: 1500, height: 950 }, acceptDownloads: true });
 const page = await context.newPage();
 page.on("pageerror", (e) => console.error("[pageerror]", e.message));
@@ -190,6 +197,8 @@ const unDot = await dotState();
 check(`second postfix dot un-dots it (${unDot.join(" ")})`, !unDot.some((x) => x.startsWith("g") && x.includes(".")));
 
 // --- 2b. AZERTY layout: physical digits and the dot work without Shift ---
+// The default layout follows the browser locale (fr → azerty), so pick it explicitly.
+await setLayout(page, "azerty");
 const azerty = (key, code) => page.evaluate(({ key, code }) => window.dispatchEvent(new KeyboardEvent("keydown", { key, code, bubbles: true, cancelable: true })), { key, code });
 await azerty("\u00e8", "Digit7"); // AZERTY unshifted 7 -> whole
 check("AZERTY unshifted digit row sets duration (è/Digit7 -> whole)", (await page.evaluate(() => document.querySelector("main").dataset.entry)) === "1");
@@ -198,6 +207,7 @@ check("AZERTY ':' key toggles the dot", (await page.evaluate(() => document.quer
 await azerty(";", "Comma"); // AZERTY ";." key -> accent path, must NOT touch the dot
 check("AZERTY ';' key does not collide with the dot", (await page.evaluate(() => document.querySelector("main").dataset.entry)) === "1.");
 await azerty(":", "Period");
+await setLayout(page, "qwerty");
 await page.keyboard.press("5"); // restore quarter for later steps
 check("entry duration restored", (await page.evaluate(() => document.querySelector("main").dataset.entry)) === "4");
 
@@ -390,7 +400,7 @@ check("merge across different pitches is refused with a reason", true);
 
 // --- 3c. split/merge work in freshly inserted measures (mRest handling) ---
 await page.locator('.tile[data-index="4"] g[class~="note"] use').first().click({ force: true });
-await page.locator("button", { hasText: "+m" }).click();
+await page.keyboard.press("NumpadAdd"); // the header +m button became the numpad key in 0.0.2
 await page.waitForFunction((n) => window.__SESSION__.score.measures.length === n, 11, { timeout: 10000 });
 await page.waitForFunction(() => document.querySelectorAll(".tile .ms").length >= 11, null, { timeout: 10000 });
 const newTile = await page.evaluate(() => {
@@ -469,7 +479,7 @@ check(`full undo restores the original whole note (${restored.join(" ")})`, JSON
 
 // --- 5. save: full document round-trip with stable ids ---
 await page.keyboard.press("Escape"); // leave input mode
-const [download] = await Promise.all([page.waitForEvent("download"), page.locator("button", { hasText: "save" }).click()]);
+const [download] = await Promise.all([page.waitForEvent("download"), menuClick(page, "save")]);
 const savedPath = `${scratch}/phase4-saved.mei`;
 await download.saveAs(savedPath);
 const savedXml = readFileSync(savedPath, "utf8");

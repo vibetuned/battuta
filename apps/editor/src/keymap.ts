@@ -27,6 +27,8 @@ export interface KeyBinding {
   when?: string;
   /** Shown in the editor but not rebindable (physical/system binding). */
   locked?: boolean;
+  /** Set on bindings a plugin contributed (its id); the action id is the command id. */
+  plugin?: string;
 }
 
 export const defaultKeymap = (layout: Layout): Record<string, KeyBinding> => {
@@ -81,20 +83,24 @@ const overrideStore = (layout: Layout) => `battuta.keymap.v1.${layout}`;
 
 export type Keymap = Record<string, KeyBinding>;
 
-export function loadKeymap(layout: Layout): Keymap {
-  const map: Keymap = Object.fromEntries(Object.entries(defaultKeymap(layout)).map(([k, v]) => [k, { ...v, keys: [...v.keys] }]));
+export type KeymapOverride = { keys: string[]; shift?: boolean; alt?: boolean };
+
+/** The user's rebinds for a layout, keyed by action id (core or plugin command). Empty when storage is unavailable or corrupt. */
+export function readKeymapOverrides(layout: Layout): Record<string, KeymapOverride> {
   try {
     const raw = localStorage.getItem(overrideStore(layout));
-    if (raw) {
-      const overrides = JSON.parse(raw) as Record<string, { keys: string[]; shift?: boolean; alt?: boolean }>;
-      for (const [id, o] of Object.entries(overrides)) {
-        if (map[id] && !map[id].locked && Array.isArray(o.keys)) {
-          map[id] = { ...map[id], keys: o.keys, shift: o.shift, alt: o.alt };
-        }
-      }
-    }
+    return raw ? (JSON.parse(raw) as Record<string, KeymapOverride>) : {};
   } catch {
-    /* corrupted storage: fall back to defaults */
+    return {}; /* corrupted or unavailable storage: defaults */
+  }
+}
+
+export function loadKeymap(layout: Layout): Keymap {
+  const map: Keymap = Object.fromEntries(Object.entries(defaultKeymap(layout)).map(([k, v]) => [k, { ...v, keys: [...v.keys] }]));
+  for (const [id, o] of Object.entries(readKeymapOverrides(layout))) {
+    if (map[id] && !map[id].locked && Array.isArray(o.keys)) {
+      map[id] = { ...map[id], keys: o.keys, shift: o.shift, alt: o.alt };
+    }
   }
   return map;
 }

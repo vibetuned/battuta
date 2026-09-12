@@ -1,0 +1,34 @@
+{
+  "name": "@battuta/api",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "description": "The plugin contract of the battuta host: manifest, activation, context. Everything a plugin can see or do.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "api:update": "node scripts/api-report.mjs --update"
+  },
+  "//": [
+    "prepare is LOAD-BEARING (same as @battuta/core): the editor and every plugin resolve @battuta/api via dist/, and npm install/ci runs prepare in workspaces.",
+    "The version is the API version plugins declare in engines.battuta. Any change to the public types (api-report.d.ts) requires bumping it — the surface test refuses otherwise."
+  ],
+  "dependencies": {
+    "@battuta/core": "*"
+  },
+  "peerDependencies": {
+    "react": "^18.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

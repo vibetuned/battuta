@@ -9,6 +9,12 @@
 import { createServer } from "vite";
 import { chromium } from "playwright";
 
+// Portable defaults: BATTUTA_ROOT points at the checkout, CHROME at a
+// browser binary ("bundled" = Playwright's own Chromium), SCRATCH at a
+// writable folder for artefacts. The originals were one machine's paths.
+const ROOT = process.env.BATTUTA_ROOT ?? "/home/flux/projects/battuta";
+const CHROME = process.env.CHROME ?? "/usr/bin/google-chrome";
+
 let failures = 0;
 const check = (label, ok) => {
   console.log(`${ok ? "PASS" : "FAIL"}  ${label}`);
@@ -16,14 +22,14 @@ const check = (label, ok) => {
 };
 
 const server = await createServer({
-  configFile: "/home/flux/projects/battuta/apps/editor/vite.config.ts",
-  root: "/home/flux/projects/battuta/apps/editor",
+  configFile: `${ROOT}/apps/editor/vite.config.ts`,
+  root: `${ROOT}/apps/editor`,
   server: { port: 0 },
   logLevel: "warn",
 });
 await server.listen();
 
-const browser = await chromium.launch({ executablePath: "/usr/bin/google-chrome", headless: true });
+const browser = await chromium.launch({ ...(CHROME === "bundled" ? {} : { executablePath: CHROME }), headless: true });
 const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
 page.on("pageerror", (e) => console.error("[pageerror]", e.message));
 await page.goto(server.resolvedUrls.local[0] + "?pool=2");
@@ -832,11 +838,18 @@ check("harmony round unwinds cleanly", await page.evaluate(() =>
 
 // --- 7j. ctrl+o / ctrl+s (browser fallbacks; the shell uses native dialogs) ---
 {
-  const chooserPromise = page.waitForEvent("filechooser", { timeout: 10000 });
+  // The app's side of ctrl+o is a click on its hidden file input; whether
+  // Chromium then shows a chooser is the browser's business (headless
+  // builds differ), so assert the click and treat the dialog as best-effort.
+  const inputClicked = page.evaluate(() => new Promise((resolve) => {
+    document.querySelector('input[type="file"]').addEventListener("click", () => resolve(true), { once: true });
+    setTimeout(() => resolve(false), 5000);
+  }));
+  const chooserPromise = page.waitForEvent("filechooser", { timeout: 5000 }).catch(() => null);
   await page.keyboard.press("Control+o");
+  check("ctrl+o opens the file picker in the browser (hidden input clicked)", await inputClicked);
   const chooser = await chooserPromise;
-  check("ctrl+o opens the file chooser in the browser", true);
-  await chooser.setFiles([]); // dismiss
+  if (chooser) await chooser.setFiles([]); // dismiss
   const downloadPromise = page.waitForEvent("download", { timeout: 10000 });
   await page.keyboard.press("Control+s");
   const download = await downloadPromise;
@@ -1197,20 +1210,20 @@ check("harmony round unwinds cleanly", await page.evaluate(() =>
     s2note = await page.evaluate(() => window.__SESSION__.index.eventsAt(0, 2, 1).find((id) => window.__SESSION__.index.byId.get(id)?.tag === "note"));
   }
 
-  // (a) shift-run → measure-shaped action: r toggles repeat barlines
+  // (a) shift-run → measure-shaped action: alt+r toggles repeat barlines (0.0.3 moved it off plain r)
   const m2note = await page.evaluate(() => window.__SESSION__.index.eventsAt(1, 1, 1).find((id) => window.__SESSION__.index.byId.get(id)?.tag === "note"));
   let rptOk = false;
   for (let t = 0; t < 4 && !rptOk; t++) {
     await clickEvent("cc-m1n1");
     await page.locator(`g[id="${m2note}"] use`).first().click({ modifiers: ["Shift"], force: true });
-    await page.keyboard.press("r");
+    await page.keyboard.press("Alt+r");
     rptOk = await page
       .waitForFunction(() => window.__SESSION__.score.measures[0].attrs.left === "rptstart" && window.__SESSION__.score.measures[1].attrs.right === "rptend", null, { timeout: 2000 })
       .then(() => true)
       .catch(() => false);
   }
   check("a shift-run drives the measure-shaped repeat action", rptOk);
-  await page.keyboard.press("r"); // the selection still stands: toggle back off
+  await page.keyboard.press("Alt+r"); // the selection still stands: toggle back off
   await page.waitForFunction(() => window.__SESSION__.score.measures[0].attrs.left !== "rptstart", null, { timeout: 5000 });
   check("…and toggles back off from the same selection", true);
 
@@ -1339,7 +1352,7 @@ check("harmony round unwinds cleanly", await page.evaluate(() =>
 }
 
 // --- 8. open file… from disk ---
-await page.setInputFiles('input[type="file"]', "/home/flux/projects/battuta/fixtures/Bach-JS_Ein_feste_Burg.mei");
+await page.setInputFiles('input[type="file"]', `${ROOT}/fixtures/Bach-JS_Ein_feste_Burg.mei`);
 await page.waitForFunction(() => [...document.querySelectorAll(".tabs .tab")].some((t) => t.textContent.includes("Bach-JS_Ein_feste_Burg")), null, { timeout: 10000 });
 check("open file… creates a tab named after the file", true);
 check("a freshly opened tab has no dirty star", await page.evaluate(() => {

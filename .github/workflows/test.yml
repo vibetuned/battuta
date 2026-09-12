@@ -1,6 +1,9 @@
-# Unit tests on every push and PR: the core command/engine suite and the
-# editor's virtual-keyboard guard (every keymap action must be reachable
-# from the on-screen panel — adding a shortcut without a button fails here).
+# Unit tests on every push and PR: the core command/engine suite, the
+# editor's suites (incl. the virtual-keyboard guard: every keymap action
+# must be reachable from the on-screen panel), the @battuta/api surface
+# snapshot (a public type change without a version bump fails here), and
+# the host bundle budget (the initial chunk under apps/editor/budget.json,
+# no plugin chunk reachable statically).
 name: test
 
 on:
@@ -21,4 +24,8 @@ jobs:
       - run: npm ci
       - run: npm run typecheck -w @battuta/editor
       - run: npx vitest run --root packages/core
+      - run: npx vitest run --root packages/api
       - run: npm test -w @battuta/editor
+      # Bundle budget: build for real, then measure the initial chunk.
+      - run: npm run build -w @battuta/editor
+      - run: npm run budget -w @battuta/editor

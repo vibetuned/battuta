@@ -18,6 +18,14 @@ export interface Settings {
   midiOut?: boolean;
   /** Semitone offset on MIDI sends and the playback-MIDI export. */
   midiTranspose?: number;
+  /** Per plugin: the on/off switch from the Plugins tab and the plugin's own small settings. */
+  plugins?: Record<string, PluginSettings>;
+}
+
+export interface PluginSettings {
+  /** Absent means on. */
+  enabled?: boolean;
+  values?: Record<string, unknown>;
 }
 
 const STORE = "battuta.settings.v1";

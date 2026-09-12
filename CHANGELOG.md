@@ -5,7 +5,129 @@ out to do (plan + exit criteria, moved here from
 [PLANNING.md](PLANNING.md)) and what actually landed (moved here from the
 README's old Status section). The open phase — extension architecture,
 with reference layers and OMR folded into it — stays in
-[PLANNING.md](PLANNING.md).
+[PLANNING.md](PLANNING.md); its running record — one bullet per
+decision, one per slice as it closes — is the unreleased section
+below.
+
+## 0.1.0 — unreleased (Phase 9 — Extension architecture)
+
+The plan — extension points, host API, the ten slices, exit criteria —
+is in [PLANNING.md](PLANNING.md). What lands here: each decision as it
+is taken, and each slice as it closes, with the `App.tsx` line count
+(baseline 2026-09-12: 3,330).
+
+- **The browser e2e scripts pass again — 347 checks, five scripts, all
+  green (2026-09-12).** Three causes, none of them the host. (1) The
+  hand-made fixture `fixtures/synthetic-context-changes.mei` had been
+  OVERWRITTEN on this machine by a score saved from the app (`bt-` ids,
+  twelve measures) and the folder was gitignored, so the loss was
+  invisible; every script addresses that fixture by id (`cc-m2n1`).
+  Reconstructed from the scripts' own assertions — ten measures, c4+e4
+  halves then a whole g4, a slur and a tie crossing m1→m2, four sharps
+  from m3, a whole b4 in m4, a tenor clef on staff 2 from m5, 6/8 from
+  m7 — with the constraints listed in its header comment, and now
+  COMMITTED (`.gitignore` keeps ignoring the corpus, which
+  `spikes/fetch-fixtures.sh` downloads from sample-encodings; see
+  `fixtures/README.md`). (2) UI removed in 0.0.2 that the scripts still
+  drove: the demo-file `<select>` (now the hidden file input, as "open
+  file…" uses), the header `+m`/`−m` buttons (numpad keys), the header
+  save (menu), and the perf HUD that is off by default — all behind a
+  shared `spikes/lib/e2e.mjs` (`openFixture`, `menuClick`, `setPerf`,
+  `setLayout`, `clickFirstNote`). (3) 0.0.3's own moves: repeats on
+  alt+r (three places), the layout default following the browser
+  locale (the AZERTY block now selects the layout explicitly), and one
+  semantic drift — a meter change is score-wide from its measure on, so
+  the "succeeds on an empty measure" check inserts the measure at the
+  END of the score instead of after m1, where the full 4/4 measures
+  behind it rightly refuse 3/4. One check was loosened on purpose:
+  ctrl+o now asserts the app clicked its hidden file input, with
+  Chromium's chooser dialog best-effort (headless builds differ). The
+  identical-before-and-after comparison that closed slice 1 stands; the
+  gates are now real: app 18, phase 2 20, phase 3 21, phase 4 67,
+  phase 5 221. `verify-core-tiles.mjs` (core-level, reads the same
+  fixture and the four corpus scores) passes as well.
+- **Slice 1 — Host skeleton, closed 2026-09-12.** `@battuta/api` 0.1.0:
+  the manifest (id, `engines.battuta`, activation events, capabilities,
+  `commands` + `keybindings` contributions), the plugin context (stores
+  over the document and the editor state, `execute`, `registerCommand`,
+  `notice`, `confirm`, settings and storage namespaces, slots, panels,
+  `subscriptions`), `validateManifest`, `satisfiesEngine` (npm caret
+  semantics, no dependency) and `DisposableStore`. Its public surface is
+  snapshotted in `api-report.d.ts` — generated through the compiler API
+  so a stale `dist/` cannot mask a change — and a test refuses a changed
+  surface without a version bump. The host lives in
+  `apps/editor/src/host/`: a registry that validates, refuses an
+  unsatisfied API range or a missing capability, keeps a failed plugin
+  LISTED with the reason, applies declarative contributions at
+  registration and loads code only on an activation event (pressing a
+  contributed key fires `onCommand:` implicitly); the keymap as a
+  reactive store (core ∪ contributions; a rebind of a plugin key lives
+  in the same per-layout override blob and survives off/on); `header`,
+  `statusBar` and `menu` slots plus bottom/side panels that render
+  nothing while empty; notice, confirm, per-plugin settings (inside
+  `battuta.settings.v1` under `plugins`) and storage
+  (`battuta.plugin.<id>.v1`); `execute` bound to the active session with
+  the same `afterCommand` as every core edit; a **Plugins tab** in the
+  🌣 editor with a persisted switch, and `?plugins=off` for a session
+  with nothing registered. Decisions: the host is a module singleton
+  (no React context, nothing for StrictMode to double-create); plugin
+  keys are dispatched only after the core key chain falls through, so a
+  plugin can never shadow a core key; the host offers no capabilities
+  yet (`midi` arrives with slice 3); the **bundle budget** covers the
+  HTML entry's static JS+CSS closure — workers and dynamic imports
+  excluded — measured at 592.8 kB (607,010 bytes), ceiling 620,000 in
+  `apps/editor/budget.json`, and every `packages/plugins/*` module is
+  forced into a `plugin-<name>` chunk so a leak into the host fails by
+  name. Dead end: class stores handed to `useSyncExternalStore` as bare
+  method references lost `this` and no tile rendered — `useStore` wraps
+  the calls and the class stores bind `get`/`subscribe` as arrow
+  properties. `App.tsx` 3,330 → 3,363: the confirm/invoke helpers and
+  the keymap loading left; the bridges (document/editor mirrors,
+  executor, notices), four slot mounts and the Plugins-tab props came
+  in. The count starts falling with slice 2. Tests: 15 host tests
+  (registration rules, lazy activation, off/on with every disposable
+  firing, the no-plugins property, namespaces) and 17 API tests; CI
+  gains the api suite, a production build and the budget check. Docs:
+  `packages/plugins/README.md` (where things are, package anatomy, the
+  ten rules, verification, the README/BUILDING templates), a
+  `reference/plugins` page in the guide, the DESIGN.md note extended.
+  **Finding — the e2e scripts do not pass at HEAD on this machine,
+  before or after the slice**: `verify-phase2.mjs` selects the demo-file
+  dropdown removed from the web build in 0.0.2; `verify-app.mjs` fails
+  three content checks and times out on page view; phase 3 fails the
+  block drag, phase 4 three entry checks, phase 5 stops at a fixture id.
+  Run one at a time against pristine HEAD and against this tree
+  (bundled Chromium), the five scripts produce IDENTICAL PASS/FAIL
+  sets — that identity is this slice's behaviour-neutrality evidence.
+  The scripts also hardcoded one Linux machine's paths; they now take
+  `BATTUTA_ROOT`, `CHROME` (`bundled` = Playwright's Chromium) and
+  `SCRATCH`, defaults unchanged. Repaired the same day — the bullet above.
+- **Slices reworked to run one at a time, each a complete brief
+  (2026-09-12).** The eight slices became ten: the MIDI service leaves
+  the host skeleton as its own slice (nothing needs it before the
+  on-screen keyboard, and a host-service extraction should be judged on
+  its own), and the lanes become two slices (lyrics defines the point,
+  harmony confirms it and deletes the old path). Every slice now
+  carries the same six blocks — delivers, proves, leaves `App.tsx`,
+  gates, documents, done when — so a fresh session, person or agent,
+  can take one slice plus the previous plugin's `BUILDING.md` and
+  start. A slice closes on its documents, not its code; the next does
+  not open before. Estimates are the original ones, shared across the
+  split halves.
+- **Every plugin ships two documents (2026-09-12).** `README.md` — how
+  to use it — and `BUILDING.md` — how it was built: origin, manifest,
+  API surface, state, commands, tests, dead ends, recipe, under fixed
+  headings so two plugins read side by side. The second is written for
+  the next author, human or agent; the reflection plugin (slice 2) is
+  the worked example the "Writing a plugin" guide walks through, and
+  the docs drift check will fail a `BUILDING.md` missing a heading.
+  The templates land in slice 1 (`packages/plugins/README.md`).
+- **DESIGN.md annotated ahead of the phase (2026-09-12):** a *Host and
+  plugins* note in the architecture overview (core → command → host →
+  plugins; render and interaction become host services) and one-line
+  notes on every section that becomes a plugin — the overlay hook,
+  conversion, the on-screen keyboard, playback, reference layers, OMR.
+  The full section is written at the phase exit from those notes.
 
 ## 0.0.3 — 2026-09-12 (Phase 8 — Quality of life)
 

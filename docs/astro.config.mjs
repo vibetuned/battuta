@@ -76,6 +76,7 @@ export default defineConfig({
           items: [
             { slug: "reference/keyboard" },
             { slug: "reference/status-bar" },
+            { slug: "reference/plugins" },
             { slug: "reference/limits" },
             { slug: "reference/troubleshooting" },
             { slug: "reference/whats-new" },

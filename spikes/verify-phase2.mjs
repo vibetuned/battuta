@@ -10,6 +10,13 @@
  */
 import { createServer } from "vite";
 import { chromium } from "playwright";
+import { openFixture, setPerf } from "./lib/e2e.mjs";
+
+// Portable defaults: BATTUTA_ROOT points at the checkout, CHROME at a
+// browser binary ("bundled" = Playwright's own Chromium), SCRATCH at a
+// writable folder for artefacts. The originals were one machine's paths.
+const ROOT = process.env.BATTUTA_ROOT ?? "/home/flux/projects/battuta";
+const CHROME = process.env.CHROME ?? "/usr/bin/google-chrome";
 
 const scratch = process.env.SCRATCH ?? "/tmp/claude-1000/-home-flux-projects-battuta/6232b880-dd50-4f19-a593-9bf21de90cbb/scratchpad";
 let failures = 0;
@@ -19,20 +26,20 @@ const check = (label, ok) => {
 };
 
 const server = await createServer({
-  configFile: "/home/flux/projects/battuta/apps/editor/vite.config.ts",
-  root: "/home/flux/projects/battuta/apps/editor",
+  configFile: `${ROOT}/apps/editor/vite.config.ts`,
+  root: `${ROOT}/apps/editor`,
   server: { port: 0 },
   logLevel: "warn",
 });
 await server.listen();
 
-const browser = await chromium.launch({ executablePath: "/usr/bin/google-chrome", headless: true });
+const browser = await chromium.launch({ ...(CHROME === "bundled" ? {} : { executablePath: CHROME }), headless: true });
 const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
 page.on("pageerror", (e) => console.error("[pageerror]", e.message));
 await page.goto(server.resolvedUrls.local[0] + "?pool=2");
 try {
-await page.selectOption("select", "Bach-JS_Ein_feste_Burg.mei");
-await page.waitForFunction(() => document.querySelectorAll(".tile .ms").length >= 14, null, { timeout: 60000 });
+await openFixture(page, `${ROOT}/fixtures/Bach-JS_Ein_feste_Burg.mei`, 14);
+await setPerf(page, true); // the HUD numbers below are off by default
 
 const caretId = () => page.evaluate(() => document.querySelector("main").dataset.caret);
 const selCount = () => page.evaluate(() => Number(document.querySelector("main").dataset.selection));
