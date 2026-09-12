@@ -16,6 +16,18 @@ is in [PLANNING.md](PLANNING.md). What lands here: each decision as it
 is taken, and each slice as it closes, with the `App.tsx` line count
 (baseline 2026-09-12: 3,330).
 
+- **Fresh-clone install fixed (2026-09-12, found by CI on the slice-1
+  push).** `npm ci` runs every workspace's `prepare`, and npm does not
+  order them by dependency: on the runner `@battuta/api`'s `tsc` ran
+  before `@battuta/core` had a `dist/`, so the api's declarations could
+  not resolve core's types (`TS2307: Cannot find module '@battuta/core'`).
+  Locally it passed only because core was already built. The api's
+  `prepare` is now `scripts/prepare.mjs`: build core first when its dist
+  is missing, then emit — idempotent, and the same `npm ci` works on a
+  fresh machine. Reproduced by deleting both dists and running the api's
+  prepare alone, then with a full `npm ci`. Plugins avoid the whole class
+  of problem by pointing their `exports` at `src/` (no prepare), the
+  default `packages/plugins/README.md` recommends.
 - **The browser e2e scripts pass again — 347 checks, five scripts, all
   green (2026-09-12).** Three causes, none of them the host. (1) The
   hand-made fixture `fixtures/synthetic-context-changes.mei` had been
