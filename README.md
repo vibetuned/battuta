@@ -178,6 +178,36 @@ The native Verovio benchmark needs a
 [verovio](https://github.com/rism-digital/verovio) checkout built with
 `cmake -B build -S cmake -DBUILD_AS_LIBRARY=ON -DCMAKE_BUILD_TYPE=Release`.
 
+## Code signing policy
+
+- **Binaries are built on public GitHub Actions directly from tagged
+  commits.** Pushing a `v*` tag runs
+  [.github/workflows/release.yml](.github/workflows/release.yml), which
+  checks out that tag on GitHub-hosted runners and bundles every platform
+  there — the workflow, its runs and its logs are public, and nothing that
+  ships is built on a developer's machine.
+- **Code signing certificates are provided by the [SignPath
+  Foundation](https://signpath.org/).** Signing runs as a step of that same
+  workflow through [SignPath.io](https://signpath.io/): the artifact is
+  submitted, signed with the certificate issued to this project, and
+  returned for publication. The private key never touches a runner, a
+  maintainer's machine or this repository. macOS bundles are additionally
+  signed with Vibetuned's Apple Developer ID and notarized by Apple; the
+  apt repository is signed with the project's OpenPGP key.
+- **Every release is verified and manually approved by the maintainer
+  before publishing.** The workflow attaches its artifacts to a *draft*
+  release. The maintainer installs and launches each platform's build,
+  checks it against the tag it claims, and only then publishes — nothing
+  reaches the downloads page, the Homebrew cask, the winget manifest or
+  the apt repository without that step.
+
+Write access, tag-push rights and signing approval all rest with the project
+maintainer. How to verify a signature on each platform is in the guide:
+[Code signing policy](https://battuta.vibetuned.com/reference/code-signing/).
+
+Free code signing for battuta is provided by [SignPath.io](https://signpath.io/),
+with a certificate issued by the [SignPath Foundation](https://signpath.org/).
+
 ## License
 
 [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only).

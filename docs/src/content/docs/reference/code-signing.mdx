@@ -1,0 +1,91 @@
+---
+title: Code signing policy
+description: How battuta's binaries are built, signed and approved before release, and how to verify the ones you download.
+sidebar:
+  order: 5
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+This page states, in full, how the binaries published under the battuta name
+come to exist — so that anyone can check that the installer they downloaded
+was built from source they can read.
+
+## Source code
+
+battuta is open source under the
+[GNU Affero General Public License v3.0](https://github.com/vibetuned/battuta/blob/main/LICENSE).
+The complete source of every release lives in the public repository at
+[github.com/vibetuned/battuta](https://github.com/vibetuned/battuta), and each
+release is tagged (`v0.0.3`, and so on) so the exact commit behind a binary is
+always identifiable.
+
+## Build
+
+**Binaries are built on public GitHub Actions directly from tagged commits.**
+
+Pushing a `v*` tag triggers
+[`.github/workflows/release.yml`](https://github.com/vibetuned/battuta/blob/main/.github/workflows/release.yml),
+which checks out that tag and builds each platform's bundle on a
+GitHub-hosted runner — Linux `.deb` and `.AppImage`, a universal macOS `.dmg`,
+and a Windows NSIS `-setup.exe`. The workflow file, every run, and every log
+are public. No binary that is published was built on a developer's machine,
+and no build step fetches code from anywhere other than the tagged commit and
+the dependency lockfile it carries.
+
+## Signing
+
+**Code signing certificates are provided by the [SignPath Foundation](https://signpath.org/).**
+
+Signing is performed by [SignPath.io](https://signpath.io/) as a step of the
+same public workflow: the artifact built by the runner is submitted to
+SignPath, signed with the certificate issued to this project by the SignPath
+Foundation, and returned to the workflow for publication. The private key is
+held by SignPath and is never present on a runner, on a maintainer's machine,
+or in the repository.
+
+Two platforms sign through their own vendor channels instead:
+
+- **macOS** — the app and `.dmg` are signed with Vibetuned's Apple Developer ID
+  certificate and notarized by Apple, in the same workflow.
+- **Linux** — packages in the apt repository are signed with the project's
+  OpenPGP key, which is what `signed-by=/etc/apt/keyrings/battuta.asc`
+  verifies on every `apt update`.
+
+## Release approval
+
+**Every release is verified and manually approved by the maintainer before
+publishing.** The workflow attaches its artifacts to a *draft* GitHub release,
+never a public one. The maintainer then installs and launches the build on
+each platform, checks it against the tag it claims to come from, and only then
+publishes the release. Nothing reaches the downloads page, the Homebrew cask,
+the winget manifest or the apt repository without that step.
+
+Write access to the repository, the ability to push tags, and the authority to
+approve a signing request all rest with the project maintainer.
+
+## Privacy
+
+battuta reads and writes files on your own disk and makes no network requests
+of its own: no telemetry, no update pings, no account. Signing changes nothing
+about that — see [Install](../../install/) for what each bundle contains.
+
+## Verifying a download
+
+- **Windows** — right-click the installer, *Properties* → *Digital
+  Signatures*; the signature names the project and chains to the SignPath
+  Foundation's certificate authority.
+- **macOS** — `spctl -a -vvv -t install /Applications/battuta.app` reports
+  `accepted` and names the Developer ID; `codesign -dv --verbose=4` shows the
+  authority chain.
+- **Linux** — `apt` verifies the repository signature for you; for a directly
+  downloaded bundle, compare its checksum against the one on the
+  [release page](https://github.com/vibetuned/battuta/releases).
+
+Anything that fails these checks did not come from this project. Please
+[report it](https://github.com/vibetuned/battuta/issues).
+
+<Aside type="note" title="Acknowledgement">
+Free code signing for battuta is provided by [SignPath.io](https://signpath.io/),
+with a certificate issued by the [SignPath Foundation](https://signpath.org/).
+</Aside>
