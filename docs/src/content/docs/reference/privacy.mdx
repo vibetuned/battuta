@@ -1,0 +1,86 @@
+---
+title: Privacy
+description: battuta collects no data — what it stores on your own machine, what this website does and does not do, and how to verify both.
+sidebar:
+  order: 6
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+**battuta collects no data.** No telemetry, no analytics, no crash reporting,
+no accounts, no sign-in, no licence check, no update ping. The application
+makes no network requests of its own — not on first run, not ever. Nothing you
+open, edit, play or save leaves your machine.
+
+There is no server to send anything to: battuta is a desktop application that
+reads and writes MEI files on your disk, and nobody — including the
+maintainer — can see what you are working on.
+
+## What the app stores
+
+Everything battuta keeps lives on your own computer, and you can delete all of
+it without losing a score.
+
+| What | Where | Why |
+| --- | --- | --- |
+| Your scores | Wherever *you* saved them | They are ordinary `.mei` files; battuta never copies them elsewhere |
+| Open tabs and caret position | `battuta.session.v1` in local storage | [Session restore](../../guide/files/#session-restore) — reopens what you had open, by path |
+| Editor settings | `battuta.settings.v1` | Layout, zoom, playback and input options |
+| Keymap changes | `battuta.keymap.v1.<layout>` | Only the bindings you rebound; defaults are not stored |
+
+The session entry holds file *paths* and names — not the contents of your
+scores. Clearing your browser data (web build) or the app's local storage
+(desktop) resets all three; your files on disk are untouched.
+
+## MIDI and audio
+
+A connected MIDI keyboard is read locally: battuta asks the operating system
+for the device list, shows the names in the status bar, and receives the notes
+you play. Playback goes to the built-in piano or to the output device you
+choose. None of it is recorded, and none of it is transmitted anywhere. In a
+browser, Web MIDI asks your permission first — declining it costs you MIDI
+input and nothing else.
+
+## Opening and saving files
+
+The desktop app uses your platform's native file dialogs and touches only the
+file you pick. In the browser build, *open file…* reads the file inside the
+page and saving produces an ordinary download — **files are never uploaded**;
+there is nowhere for them to be uploaded to.
+
+## This website
+
+The guide and the [web editor](https://battuta.vibetuned.com/editor/) are
+static files on GitHub Pages.
+They set no cookies, run no analytics, and load nothing from a third party —
+fonts are served from this site, and the search index runs in your browser, so
+what you type into search never goes anywhere either. Your light/dark choice
+is remembered in local storage, by your browser.
+
+Like any web server, GitHub's logs the requests it serves (IP address, time,
+user agent) under
+[GitHub's privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement).
+The same applies when you download a release, install from the apt repository,
+or use Homebrew or winget: those services see the request, the project does
+not.
+
+## Verifying all of this
+
+The claims above are checkable, which is the point of shipping
+[source](https://github.com/vibetuned/battuta):
+
+- The desktop shell has no HTTP client at all — see
+  [`src-tauri/Cargo.toml`](https://github.com/vibetuned/battuta/blob/main/apps/editor/src-tauri/Cargo.toml);
+  its dependencies are the webview, file dialogs, MIDI and JSON.
+- There is no updater plugin configured, so nothing calls home to check for
+  versions.
+- Run the app offline, or watch it with a network monitor: it stays silent.
+
+How those binaries are built and signed is a separate promise, kept on the
+[code signing policy](../code-signing/) page.
+
+<Aside type="note" title="Changes to this page">
+If this ever stops being true, it will be announced in
+[What's new](../whats-new/) and in the changelog before a release that changes
+it — not quietly edited in.
+</Aside>

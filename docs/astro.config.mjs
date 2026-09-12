@@ -79,6 +79,8 @@ export default defineConfig({
             { slug: "reference/plugins" },
             { slug: "reference/limits" },
             { slug: "reference/troubleshooting" },
+            { slug: "reference/code-signing" },
+            { slug: "reference/privacy" },
             { slug: "reference/whats-new" },
           ],
         },

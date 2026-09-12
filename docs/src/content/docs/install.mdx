@@ -9,7 +9,8 @@ import { Tabs, TabItem, Steps } from "@astrojs/starlight/components";
 
 battuta is a desktop application. It reads and writes MEI files on your own
 disk, needs no account, and makes no network requests — nothing you open
-leaves your machine.
+leaves your machine, and nothing about you is collected
+([privacy](../reference/privacy/)).
 
 ## Download a build
 
@@ -71,7 +72,9 @@ bootstraps Microsoft's WebView2 runtime if the machine doesn't have it.
 
 The installer is **not Authenticode-signed yet**, so SmartScreen warns about
 an unknown publisher the first time: choose *More info* → *Run anyway*.
-(Free code signing for open-source projects is in the works.)
+(Signing through the SignPath Foundation is being set up; how builds are
+produced, signed and approved is spelled out in the
+[code signing policy](../reference/code-signing/).)
 
 Verified on Windows 11: the installer completes and the editor runs.
 
