@@ -139,12 +139,23 @@ SmartScreen ("More info → Run anyway", or a code-signing certificate).
 macOS icon: the artwork must be **fully opaque edge-to-edge** — macOS 26
 (Tahoe) treats transparent corners as a legacy pre-shaped icon, discards
 the background, and re-composites the glyph on a system tile that is
-dark grey under the Dark icon style (the "grey dock icon" bug; full
-story in [mac.md](mac.md)). `apps/editor/src-tauri/icons/icon.icns` is
-built natively from the full-bleed set:
+dark grey under the Dark icon style (the "grey dock icon" bug; the
+diagnosis is in [CHANGELOG.md](CHANGELOG.md) under 0.0.1).
+`apps/editor/src-tauri/icons/icon.icns` is built natively from the
+full-bleed set:
 
 ```sh
 iconutil -c icns icons/battuta-macos.iconset -o apps/editor/src-tauri/icons/icon.icns
+```
+
+When retesting an icon change, purge the icon caches first — they make
+every test lie, and resolution goes by bundle id, so delete stale copies
+of the app too:
+
+```sh
+rm -rf "$(getconf DARWIN_USER_CACHE_DIR)/com.apple.iconservices"*
+sudo rm -rf /Library/Caches/com.apple.iconservices.store
+killall iconservicesagent Dock Finder
 ```
 
 Never regenerate it from `icons/battuta.iconset/` (the transparent

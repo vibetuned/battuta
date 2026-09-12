@@ -3,11 +3,56 @@
 The phase-by-phase record of battuta, newest first: what each phase set
 out to do (plan + exit criteria, moved here from
 [PLANNING.md](PLANNING.md)) and what actually landed (moved here from the
-README's old Status section). Remaining phases — reference layers, OMR
-correction — stay in [PLANNING.md](PLANNING.md).
+README's old Status section). The open phase — extension architecture,
+with reference layers and OMR folded into it — stays in
+[PLANNING.md](PLANNING.md).
 
-## 0.0.3 — unreleased (quality-of-life round)
+## 0.0.3 — 2026-09-12 (Phase 8 — Quality of life)
 
+**Plan** (Phase 8, opened 2026-09-05; moved here from PLANNING.md).
+Defer the two research phases and serve the request stream instead:
+triage what users ask for by size — S ships in this round, M gets its
+own slot, L becomes a phase — and ship the S/M items as 0.0.3.
+
+**Exit criteria (met):** every triaged request shipped, each with tests
+in the suite that guards its area, docs updated (user guide, and
+DESIGN.md for anything architectural), and the decision trail below.
+
+**The triage, as it closed** — ten requests, all shipped:
+
+| | Request | Shipped as |
+|---|---|---|
+| S | 6/4 time signature | the meter list |
+| S | numpad 0 enters a rest | input mode (NumLock-off included) |
+| S | a duration change clears the dot | alt+←/→ *and* the digits 1–7 |
+| S | repeats usable in input mode | alt+r, plus lone end repeats 𝄇 |
+| S | the dirty-close alert is invisible in the shell | native confirm dialogs |
+| S | transpose the MIDI | ±12 st on sends and the playback export |
+| M | mouse-free context bar | F6, arrows, live-applying cycles |
+| M | group/ungroup staves | shift+G, none → brace → bracket |
+| M | lyrics | one verse, MuseScore-style typing |
+| M | playback to MIDI devices | the MIDI checkbox and its sink |
+
+Two more fixes came out of testing those rather than from a request:
+page view clipping staff-group symbols, and macOS Option-composition
+breaking every alt binding (alt+b auto-beam had been dead on Macs).
+
+- **Phase 8 closed, Phase 9 opened (2026-09-12).** With the round's
+  requests shipped, PLANNING.md opens **Phase 9 — Extension
+  architecture (v0.1.0)**: features that would weigh the editor down
+  become plugins and the editor becomes a host. The evidence is this
+  round's own shape — the requests split cleanly into quality-of-life
+  fixes that belong in the core and features that every user would
+  carry whether or not they use them, while `App.tsx` grew to 3,300
+  lines with a 33-branch key dispatcher and 81 hooks. Bundle weight is
+  already handled lazily (the piano, the Humdrum converter); the host
+  is what needs protecting. The model is VSCode's, cut down: manifest
+  contribution points, activation events, and a narrow versioned
+  `@battuta/api` — no extension-host process, no marketplace, third
+  party deferred. **Phases 6 and 7 fold into it**: reference layers
+  become the overlay slice (and its exit criterion), OMR follows as the
+  second overlay plugin. Live file watching, open since 0.0.2, ships
+  inside the folder-view slice.
 - **Repeats moved to alt+r, usable in input mode, and lone end repeats**
   (request: "repeat only works with input mode off"). alt+r on a block
   still pairs 𝄆 𝄇; with NO selection it toggles an END repeat 𝄇 on the
@@ -359,8 +404,8 @@ winget pending its initial manifest).
   thread that created the MIDI client, and the poll thread only slept,
   so plug/unplug was never seen; on macOS it now pumps a CFRunLoop for
   the poll interval (`core-foundation`, cfg-gated; ALSA/WinMM behavior
-  untouched). (2) **Grey dock icon** — root cause found on-device (see
-  [mac.md](mac.md)): the icns format was never at fault; macOS 26
+  untouched). (2) **Grey dock icon** — root cause found on-device: the
+  icns format was never at fault; macOS 26
   re-themes any icon with TRANSPARENT CORNERS as a legacy pre-shaped
   icon, discarding our white card and repainting the black glyph on a
   system tile that is dark grey under the Dark icon style. Fix: the

@@ -11,6 +11,55 @@ A user-facing digest. The full engineering record — every phase, every fix, ev
 probed Verovio behaviour — lives in
 [CHANGELOG.md](https://github.com/vibetuned/battuta/blob/main/CHANGELOG.md).
 
+## 0.0.3 — 2026-09-12
+
+A quality-of-life round: ten requests from the first release users, plus two
+fixes that fell out of testing them.
+
+### Writing music
+
+- **Lyrics** under the notes: <kbd>l</kbd> opens the lane, space or enter
+  commits a syllable and jumps to the next note, <kbd>-</kbd> hyphenates a
+  word across notes. [Lyrics →](../../guide/harmony/#lyrics)
+- **Repeats work in note input** — they moved to <kbd>alt</kbd> +
+  <kbd>r</kbd>, so closing a section no longer means leaving input mode. With
+  nothing selected it puts an **end repeat** on the caret's measure, and
+  playback loops it. [Repeats →](../../guide/form/#repeat-barlines)
+- **Group staves** with <kbd>shift</kbd> + <kbd>G</kbd> over a block: none →
+  brace → bracket, barlines following the symbol.
+  [Staff groups →](../../guide/structure/#grouping-staves)
+- **Numpad 0 writes a rest**, completing the numpad's duration row, and
+  **picking a duration now clears the dot** — a new value starts plain,
+  whether you change it with the digits or with <kbd>alt</kbd> + arrows.
+- **6/4** joined the meter list.
+
+### Playing
+
+- **Play through your MIDI devices**: tick **MIDI** in the player row and
+  playback goes to every connected output instead of the built-in piano —
+  the same performance, with repeats, ties and articulations. On macOS and
+  Linux battuta also appears as a MIDI source of its own, so listener apps
+  hear it. [Playback →](../../guide/playback/#playing-through-midi-devices)
+- **Transpose the MIDI** by ±12 semitones, live, applying to the
+  playback-MIDI export too. The written score and the built-in piano stay at
+  pitch.
+
+### Getting around
+
+- **The context bar is keyboard-drivable**: <kbd>F6</kbd> focuses it, arrows
+  move and change values, <kbd>esc</kbd> returns to the score.
+  [Status bar →](../../reference/status-bar/#driving-the-bar-from-the-keyboard)
+
+### Fixes
+
+- **Dialogs that never appeared in the desktop app now do** — the unsaved-work
+  warning when closing a tab, the paste-differences question and the
+  overwrite guard were all silently answering "no" for themselves.
+- **Page view no longer clips** braces and brackets at the left edge; pages
+  render with proper margins.
+- **macOS: <kbd>alt</kbd> shortcuts work** (auto-beam among them) — Option
+  composes letters into symbols there, which battuta was not accounting for.
+
 ## 0.0.2 — 2026-08-30
 
 Validated on all three platforms, and the first release with signed macOS

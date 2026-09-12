@@ -34,19 +34,22 @@ preserved verbatim rather than understood — safe, but not editable in the UI.
 | --- | --- |
 | MusicXML **export** | Verovio converts *from* MusicXML, not to it. [Import](../../guide/files/#importing) works — MusicXML, `.mxl`, ABC, Plaine & Easie and Humdrum all open |
 | PDF / print output | [SVG pages export](../../guide/files/#exporting) exists; PDF does not (the SVGs print well from a browser) |
-| Live file watching | External changes are detected **when you save** (the desktop app alerts before overwriting) — not the moment they happen |
+| Live file watching | External changes are detected **when you save** (the desktop app alerts before overwriting) — not the moment they happen; live watching arrives with the folder view in 0.1.0 |
 | Splice-at-caret and overlay-as-new-layer paste | Only replace-measures is implemented |
 | Split view | Cross-file work happens through tabs |
 | Selection playback, metronome, per-staff mute | The page-view player is all-or-nothing |
 | Dynamics affecting playback volume | Notated, not performed |
-| Lyrics, figured bass, percussion maps | Deliberately deferred |
+| Verse 2+, melisma extenders, figured bass, percussion maps | One verse of [lyrics](../../guide/harmony/#lyrics) ships; the rest is deferred |
 | Part extraction, transposed parts | Deliberately deferred |
-| Collaborative editing, plugins | Out of scope |
+| Collaborative editing | Out of scope |
 
 Formerly on this list, now built: session restore and crash recovery, dirty-tab
 close confirmation, the external-change guard at save, import of every
-Verovio-readable format, and MIDI/SVG/Humdrum/Plaine & Easie export — see
-[Files](../../guide/files/).
+Verovio-readable format, MIDI/SVG/Humdrum/Plaine & Easie export — see
+[Files](../../guide/files/) — and, in 0.0.3, [lyrics](../../guide/harmony/#lyrics)
+and [playback through MIDI devices](../../guide/playback/#playing-through-midi-devices).
+Third-party plugins stay out of scope; the first-party extension
+architecture is what 0.1.0 builds.
 
 ## Rough edges
 
@@ -57,12 +60,16 @@ Verovio-readable format, and MIDI/SVG/Humdrum/Plaine & Easie export — see
 
 ## Coming next
 
-**A quality-of-life round (0.0.3)** comes first: the requests users have
-filed since 0.0.2, from small fixes to deeper editor improvements —
+**An extension architecture (0.1.0)** is the next round: features that
+would weigh the editor down become plugins and the editor becomes a host,
+so a capability you don't use costs you nothing. The first extractions are
+existing features — the on-screen keyboard, the lanes, playback, the format
+converters — which should change nothing you can see, followed by a
+**folder view** (open a folder of scores in a side panel, with live file
+watching). Requests are always welcome:
 [file yours](https://github.com/vibetuned/battuta/issues).
 
-The two research phases in the project's plan follow, currently deferred
-in favour of that round:
+The two research features arrive as the first plugins built on that host:
 
 **Reference layers for transcription.** Import MIDI (and the JSON sidecar a
 transcription pipeline emits) as reference tracks, drawn as translucent
