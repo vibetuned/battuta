@@ -108,11 +108,13 @@ describe("registration", () => {
     const { entry } = echoPlugin();
     const host = makeHost([
       { ...entry, manifest: manifest({ id: "test.future", engines: { battuta: "^9.0.0" } }) },
-      { ...entry, manifest: manifest({ id: "test.needy", capabilities: ["midi"], contributes: {} }) },
+      { ...entry, manifest: manifest({ id: "test.needy", capabilities: ["workspace"], contributes: {} }) },
+      { ...entry, manifest: manifest({ id: "test.midi", capabilities: ["midi"], contributes: {} }) },
     ]);
-    const [future, needy] = host.registry.get();
+    const [future, needy, midi] = host.registry.get();
     expect(future?.error).toContain(`needs @battuta/api ^9.0.0, this host has ${API_VERSION}`);
-    expect(needy?.error).toContain('no "midi" capability');
+    expect(needy?.error).toContain('no "workspace" capability');
+    expect(midi?.state).toBe("registered"); // midi is offered since slice 3
   });
 
   it("a second plugin declaring the same command fails; the first keeps it", () => {
@@ -311,6 +313,31 @@ describe("the --no-plugins property", () => {
     expect(adapter.execute).not.toHaveBeenCalled();
     expect(JSON.stringify(doc)).toBe(before);
     expect(host.document.get()).toEqual(doc);
+  });
+});
+
+describe("the MIDI service on the context", () => {
+  it("is the host's own service: a plugin's virtual input reaches the host's note stream and its device list", async () => {
+    const seen: string[] = [];
+    const entry: PluginEntry = {
+      manifest: manifest({ id: "test.pad", activationEvents: ["onStartup"], capabilities: ["midi"], contributes: {} }),
+      load: async () => ({
+        activate: (ctx) => {
+          const pad = ctx.registerCommand ? ctx.midi.registerInput("chord pad") : null;
+          ctx.subscriptions.add(pad!);
+          pad!.noteOn(60);
+          ctx.subscriptions.add(ctx.midi.onNote((e) => seen.push(`plugin:${e.source}`)));
+        },
+      }),
+    };
+    const host = makeHost([entry]);
+    host.midi.onNote((e) => seen.push(`host:${e.source}:${e.note}:${e.on}`));
+    await host.fire("onStartup");
+    expect(seen).toEqual(["host:chord pad:60:true"]);
+    expect(host.midi.inputs.get()).toEqual([{ name: "chord pad", virtual: true }]);
+    // off: the plugin's input disappears with its disposables
+    await host.registry.setEnabled("test.pad", false);
+    expect(host.midi.inputs.get()).toEqual([]);
   });
 });
 

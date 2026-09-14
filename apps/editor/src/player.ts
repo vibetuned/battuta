@@ -9,7 +9,8 @@
 import * as Tone from "tone";
 import { mergeTiedSpans, GATE_DEFAULT } from "@battuta/core";
 import type { PlaybackData } from "./render/renderPool";
-import { MidiSink, NOTE_ON, NOTE_OFF } from "./midiOut";
+import type { MidiOutputs } from "@battuta/api";
+import { NOTE_ON, NOTE_OFF } from "./host/midiSink";
 
 // Vite inlines these as hashed asset URLs — embedded in the app bundle,
 // never a CDN (local-first, and the Tauri custom protocol serves them).
@@ -72,9 +73,9 @@ export class ScorePlayer {
   private factor = 1; // tempo multiplier: 2 = double speed
   /** When set, playback SENDS MIDI here instead of sounding the sampler
    * (the timemap, ties and gates drive both identically). */
-  private midiSink: MidiSink | null = null;
+  private midiSink: MidiOutputs | null = null;
 
-  setMidiSink(sink: MidiSink | null): void {
+  setMidiSink(sink: MidiOutputs | null): void {
     this.midiSink?.panic();
     this.midiSink = sink;
   }

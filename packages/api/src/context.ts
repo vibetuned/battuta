@@ -15,6 +15,7 @@ import type { Disposable, DisposableStore } from "./disposable.js";
 import type { DocumentInfo, DocumentQueries, EditorState } from "./document.js";
 import type { PluginManifest, SlotName } from "./manifest.js";
 import type { CommandMessage } from "./messages.js";
+import type { MidiService } from "./midi.js";
 
 /** A value with change notification. `subscribe` fires on every change with the new value. */
 export interface Store<T> {
@@ -73,6 +74,8 @@ export interface PluginContext {
   confirm(message: string, title?: string): Promise<boolean>;
   readonly settings: SettingsNamespace;
   readonly storage: StorageNamespace;
+  /** The MIDI host service (capability "midi"): inputs, a note stream, virtual inputs, outputs. */
+  readonly midi: MidiService;
   readonly slots: { add(slot: SlotName, item: SlotItem): Disposable };
   readonly panels: { open(panel: PanelSpec): Disposable };
   /** Disposed on deactivate. Add every subscription here; the host disposes what it handed out itself. */

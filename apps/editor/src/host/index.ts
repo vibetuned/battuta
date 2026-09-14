@@ -21,9 +21,10 @@ import { confirmDialog } from "./shell";
 import { createStore, type WritableStore } from "./store";
 import { isPluginEnabled, memorySettings, pluginSettings, pluginStorage, setPluginEnabled, webSettings, webStorage, type Notice, type SettingsIO, type StorageLike } from "./services";
 import { BUILTIN_PLUGINS } from "./plugins";
+import { HostMidiService, detectMidiBackend } from "./midi";
 
-/** Capabilities this host offers. Grows as services are lifted (slice 3: midi). */
-export const OFFERED_CAPABILITIES: readonly HostCapability[] = [];
+/** Capabilities this host offers. `midi` since slice 3; `workspace` and `playback` are still to be lifted. */
+export const OFFERED_CAPABILITIES: readonly HostCapability[] = ["midi"];
 
 const IDLE_EDITOR: EditorState = { caret: null, selection: [], block: null, view: "tiles", entryMode: false };
 
@@ -55,6 +56,8 @@ export interface Host {
   readonly registry: PluginRegistry;
   readonly commands: CommandTable;
   readonly notices: Store<Notice | null>;
+  /** The MIDI host service: devices, the note stream, virtual inputs, outputs. The App starts it. */
+  readonly midi: HostMidiService;
   /** Mirrors the App keeps current; plugins read them through their context. */
   readonly document: WritableStore<DocumentInfo | null>;
   readonly editor: WritableStore<EditorState>;
@@ -80,6 +83,8 @@ export interface HostOptions {
   storage?: StorageLike;
   confirm?: (message: string, title?: string) => Promise<boolean>;
   apiVersion?: string;
+  /** Tests inject a service over a fake backend; the app detects Web MIDI or the shell. */
+  midi?: HostMidiService;
 }
 
 export function createHost(options: HostOptions = {}): Host {
@@ -94,6 +99,7 @@ export function createHost(options: HostOptions = {}): Host {
   const panels = new PanelStore();
   const commands = new CommandTable();
   const notices = createStore<Notice | null>(null);
+  const midi = options.midi ?? new HostMidiService(detectMidiBackend());
   let seq = 0;
   const notice = (text: string) => notices.set({ text, seq: ++seq });
   const document = createStore<DocumentInfo | null>(null);
@@ -120,6 +126,7 @@ export function createHost(options: HostOptions = {}): Host {
     confirm,
     settings: pluginSettings(settings, manifest.id),
     storage: pluginStorage(storage, manifest.id),
+    midi,
     slots: { add: (slot, item) => subscriptions.add(slots.add(slot, item)) },
     panels: { open: (panel) => subscriptions.add(panels.open(panel)) },
     subscriptions,
@@ -156,6 +163,7 @@ export function createHost(options: HostOptions = {}): Host {
     registry,
     commands,
     notices,
+    midi,
     document,
     editor,
     query,
@@ -190,4 +198,7 @@ export { useStore } from "./store";
 export { Slot, Panels } from "./slots";
 export { blockOfEvents } from "./queries";
 export { toCommand } from "./messages";
+export { HostMidiService, webMidiBackend, shellMidiBackend, noMidiBackend, detectMidiBackend, parseNoteMessage } from "./midi";
+export type { MidiBackend } from "./midi";
+export { MidiSink, NOTE_ON, NOTE_OFF } from "./midiSink";
 export { confirmDialog, tauriInvoke } from "./shell";

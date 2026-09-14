@@ -148,8 +148,9 @@ should be judged on its own), and the two lanes become two slices
 path). Ten slices; the estimates are the original ones, shared across
 the split halves. Every slice carries the same six blocks.
 
-**Progress.** Slice 1 closed 2026-09-12 and **slice 2 closed 2026-09-14**
-(their bullets in CHANGELOG.md under 0.1.0 — unreleased); slice 3 is next.
+**Progress.** Slice 1 closed 2026-09-12, **slice 2 closed 2026-09-14**,
+**slice 3 closed 2026-09-14** (their bullets in CHANGELOG.md under
+0.1.0 — unreleased); slice 4 is next.
 From here on slices are
 handed to sessions without the surrounding context, on purpose, to test
 whether the briefs and `packages/plugins/README.md` hold on their own.
@@ -282,8 +283,9 @@ bridge listeners.
 (the Web MIDI entry path) and `verify-phase5.mjs` (the MIDI
 indicator); `verify-tauri.sh` (bridge devices and notes).
 
-**Documents.** DESIGN.md's host-services list; the API version bump
-that adds `midi`; the CHANGELOG bullet.
+**Documents.** DESIGN.md's host-services list; the api surface grows
+`MidiService` (still 0.1.0 — never published; the report is rewritten
+with `--unpublished`); the CHANGELOG bullet.
 
 **Done when.** Hardware entry, the status-bar indicator and the shell
 bridge behave as in 0.0.3, and `App.tsx` no longer imports Web MIDI or

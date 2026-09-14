@@ -15,7 +15,7 @@ import { converter } from "./converter";
 import notoMusicUrl from "./assets/fonts/NotoMusic-Regular.woff2?url";
 import { detectImport, IMPORT_FORMATS, EXPORT_FORMATS, OPEN_EXTENSIONS, type ExportFormat } from "./formats";
 import { playbackToMidi } from "./midiExport";
-import { openMidiSink, type MidiSink } from "./midiOut";
+import type { MidiOutputs, MidiVirtualInput } from "@battuta/api";
 import { saveStoredSession, loadStoredSession, clearStoredSession, type StoredSession } from "./sessionStore";
 
 /** savedMarks sentinel for restored-dirty docs: never equals an editMark,
@@ -490,7 +490,7 @@ export default function App() {
   useEffect(() => {
     scorePlayer.setMidiTranspose(midiTranspose); // live: next attacks use it
   }, [midiTranspose]);
-  const midiSinkRef = useRef<MidiSink | null>(null);
+  const midiSinkRef = useRef<MidiOutputs | null>(null);
   const [playerTempo, setPlayerTempo] = useState(() => {
     const t = loadSettings().tempo;
     return t !== undefined && TEMPO_STEPS.includes(t as (typeof TEMPO_STEPS)[number]) ? t : 1;
@@ -989,14 +989,14 @@ export default function App() {
     // MIDI mode: open the outputs once (kept for the session); if none
     // exist, say so and fall back to the piano rather than playing silence.
     const sink = midiOutOn
-      ? (midiSinkRef.current ? Promise.resolve(midiSinkRef.current) : openMidiSink(tauriInvoke()))
+      ? (midiSinkRef.current ? Promise.resolve(midiSinkRef.current) : host.midi.openOutputs())
       : Promise.resolve(null);
     Promise.all([sink, pool.documentTimemap(xml, expand)])
       .then(([s, data]) => {
         if (midiOutOn && !s) setNotice("no MIDI outputs found — playing through the built-in piano");
         if (midiOutOn && s && !midiSinkRef.current) {
           midiSinkRef.current = s;
-          setNotice(`MIDI playback → ${s.outputs.join(", ")}`);
+          setNotice(`MIDI playback → ${s.names.join(", ")}`);
         }
         scorePlayer.setMidiSink(midiOutOn ? s : null);
         if (data.error) {
@@ -2282,10 +2282,14 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [session, caret, block, editTargets, afterCommand, entryMode, caretId, enterAtCaret, nearestOctave, structural, selection, accidPick, openAccidPicker, harmLane, harmBuffer, saveActive, openScore, zoomStep, keymap, shortcutsOpen, runFromBlock, blockFromSelection, activeId]);
 
-  // --- Web MIDI: note-ons enter at the caret while input mode is active;
-  // keys held together build a CHORD (like MuseScore). Devices hot-plug via
-  // onstatechange, and the HUD shows what is connected.
-  const [midiDevices, setMidiDevices] = useState<string[]>([]);
+  // --- MIDI entry: note-ons enter at the caret while input mode is active;
+  // keys held together build a CHORD (like MuseScore). The devices belong
+  // to the host's MIDI service (Web MIDI or the shell bridge, deduped,
+  // hot-plugged); this is the entry path listening to its note stream.
+  // The indicator counts hardware only — virtual inputs (the on-screen
+  // piano, the e2e hook) are not "a device connected".
+  const midiInputs = useStore(host.midi.inputs);
+  const midiDevices = useMemo(() => midiInputs.filter((p) => !p.virtual).map((p) => p.name), [midiInputs]);
   const [midiPanel, setMidiPanel] = useState(false);
   const [zoomPanel, setZoomPanel] = useState(false);
   const heldNotes = useRef(new Set<number>());
@@ -2385,81 +2389,30 @@ export default function App() {
     [],
   );
 
+  useEffect(() => host.midi.start(), []);
   useEffect(() => {
-    if (import.meta.env.DEV) {
-      (window as unknown as Record<string, unknown>).__MIDI_NOTE__ = (n: number, on = true) => (on ? midiNoteOnRef.current(n) : midiNoteOff(n));
-      (window as unknown as Record<string, unknown>).__MIDI_DEVS__ = (names: string[]) => setMidiDevices(names);
-    }
-    interface MidiInput {
-      name?: string;
-      onmidimessage: ((e: { data: Uint8Array | null }) => void) | null;
-    }
-    interface MidiAccess {
-      inputs: Map<string, MidiInput>;
-      onstatechange: (() => void) | null;
-    }
-    const nav = navigator as Navigator & { requestMIDIAccess?: () => Promise<MidiAccess> };
-    if (!nav.requestMIDIAccess) {
-      // WebKitGTK has no Web MIDI: in the Tauri shell the Rust side bridges
-      // midir over events — same note/device pipeline from here on.
-      const t = (window as unknown as { __TAURI__?: { event?: { listen?: (ev: string, cb: (e: { payload: unknown }) => void) => Promise<() => void> } } }).__TAURI__;
-      if (!t?.event?.listen) return;
-      const subs = [
-        t.event.listen("midi-note", (e) => {
-          const [note, on] = e.payload as [number, boolean];
-          if (on) midiNoteOnRef.current(note);
-          else midiNoteOff(note);
-        }),
-        t.event.listen("midi-devices", (e) => {
-          const names = e.payload as string[];
-          // the bridge re-emits every 2s: only re-render on real changes
-          setMidiDevices((prev) => (prev.length === names.length && prev.every((n, i) => n === names[i]) ? prev : names));
-        }),
-      ];
-      return () => {
-        for (const s of subs) void s.then((un) => un());
-      };
-    }
-    let closed = false;
-    const onMessage = (e: { data: Uint8Array | null }) => {
-      const d = e.data;
-      if (!d) return;
-      const status = (d[0] ?? 0) & 0xf0;
-      const note = d[1] ?? 0;
-      const velocity = d[2] ?? 0;
-      if (status === 0x90 && velocity > 0) midiNoteOnRef.current(note);
-      else if (status === 0x80 || (status === 0x90 && velocity === 0)) midiNoteOff(note);
-    };
-    nav
-      .requestMIDIAccess()
-      .then((access) => {
-        if (closed) return;
-        const attach = () => {
-          // Some drivers (seen on Windows) register the same device as TWO
-          // input ports; attaching both fires every note twice. First port
-          // per name wins; duplicates are detached, not just unlisted.
-          const names: string[] = [];
-          const seen = new Set<string>();
-          for (const input of access.inputs.values()) {
-            const name = input.name || "device";
-            if (seen.has(name)) {
-              input.onmidimessage = null;
-              continue;
-            }
-            seen.add(name);
-            input.onmidimessage = onMessage;
-            names.push(name);
-          }
-          setMidiDevices(names);
-        };
-        attach();
-        access.onstatechange = attach; // hot-plug: (re)attach and update HUD
-      })
-      .catch(() => setMidiDevices([]));
-    return () => {
-      closed = true;
-    };
+    const d = host.midi.onNote((ev) => (ev.on ? midiNoteOnRef.current(ev.note) : midiNoteOff(ev.note)));
+    return () => d.dispose();
   }, [midiNoteOff]);
+  /** The on-screen piano is a virtual input: same door as a hardware controller. */
+  const pianoInput = useRef<MidiVirtualInput | null>(null);
+  useEffect(() => {
+    const piano = host.midi.registerInput("on-screen piano");
+    pianoInput.current = piano;
+    return () => {
+      piano.dispose();
+      pianoInput.current = null;
+    };
+  }, []);
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    // The e2e scripts: notes through a virtual input (so they take the
+    // service's path), the device list through the service's test seam.
+    const e2e = host.midi.registerInput("e2e");
+    (window as unknown as Record<string, unknown>).__MIDI_NOTE__ = (n: number, on = true) => (on ? e2e.noteOn(n) : e2e.noteOff(n));
+    (window as unknown as Record<string, unknown>).__MIDI_DEVS__ = (names: string[]) => host.midi.injectDevices(names);
+    return () => e2e.dispose();
+  }, []);
 
   /** Resolve a pointer event to a (measure, staff) position for block drags. */
   const staffPosFromPoint = useCallback(
@@ -2922,8 +2875,8 @@ export default function App() {
                   const on = e.target.checked;
                   scorePlayer.stop(); // the destination changes: reschedule on next play
                   scorePlayer.setMidiSink(null);
+                  midiSinkRef.current?.close(); // release the ports (the shell retracts its virtual source)
                   midiSinkRef.current = null; // re-enumerate outputs on next play
-                  if (!on) void tauriInvoke()?.("midi_close_outputs").catch(() => undefined); // shell: retract the virtual source
                   setMidiOutOn(on);
                   saveSettings({ midiOut: on });
                 }}
@@ -3113,7 +3066,7 @@ export default function App() {
           </div>
         )}
       </main>
-      {vkOpen && <VirtualKeyboard keymap={keymap} layout={layout} entryMode={entryMode} onNoteOn={midiNoteOn} onNoteOff={midiNoteOff} onClose={() => toggleVk(false)} />}
+      {vkOpen && <VirtualKeyboard keymap={keymap} layout={layout} entryMode={entryMode} onNoteOn={(n) => pianoInput.current?.noteOn(n)} onNoteOff={(n) => pianoInput.current?.noteOff(n)} onClose={() => toggleVk(false)} />}
       <Panels store={host.panels} side="bottom" />
       <Panels store={host.panels} side="side" />
       <footer data-statusbar onKeyDown={onBarKey} style={{ position: "fixed", left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", gap: 12, background: "#1f2733", color: "#aab", fontSize: 12, lineHeight: "20px", padding: "2px 10px", zIndex: 30 }}>

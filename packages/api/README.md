@@ -4,8 +4,9 @@ The plugin contract of the battuta host: the manifest a plugin declares,
 the activation events that load its code, and the context it receives —
 everything a plugin can see or do. **Standalone**: it imports nothing from
 `@battuta/core` or the editor. What a plugin sees is data (`document.ts`:
-snapshots, coordinates, pitches, the query facade), what it does is a
-message (`messages.ts`: `ctx.execute({ type: "core.setPitches", … })`, mapped
+snapshots, coordinates, pitches, the query facade; `midi.ts`: the MIDI
+host service — devices, a note stream, virtual inputs, outputs), what it
+does is a message (`messages.ts`: `ctx.execute({ type: "core.setPitches", … })`, mapped
 to the real core command by the host). Pure types plus four small runtime
 helpers (`validateManifest`, `satisfiesEngine`, `DisposableStore`,
 `resolvePluginModule`); no DOM, no React runtime (React's `ReactNode` type
@@ -32,3 +33,7 @@ type change cannot land unnoticed:
 npm run api:update -w @battuta/api
 #  3. note the change under the unreleased heading in CHANGELOG.md
 ```
+
+While the current version has never been tagged (0.1.0 so far), the
+surface may change under the same number: `npm run api:update -w
+@battuta/api -- --unpublished` rewrites the report without a bump.

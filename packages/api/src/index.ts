@@ -26,5 +26,7 @@ export type { CaretPosition, BlockSelection, Pitch, PitchEvent, ViewMode, Editor
 export type { SetPitchesMessage, CommandMessage, CommandMessageType } from "./messages.js";
 export { COMMAND_MESSAGE_TYPES } from "./messages.js";
 
+export type { MidiPort, MidiNoteEvent, MidiVirtualInput, MidiOutputs, MidiService } from "./midi.js";
+
 export type { Store, SlotItem, PanelSide, PanelSpec, SettingsNamespace, StorageNamespace, CommandHandler, PluginContext, PluginModule, PluginEntry } from "./context.js";
 export { definePlugin, resolvePluginModule } from "./context.js";

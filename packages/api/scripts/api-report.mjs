@@ -9,6 +9,10 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { publicSurface, packageVersion, reportPath, renderReport, parseReport } from "./surface.mjs";
 
 const update = process.argv.includes("--update");
+// --unpublished: the current version has never been tagged or published
+// (only handed to agents), so the surface may change under the same
+// number. Say so in CHANGELOG.md; drop the flag once a version ships.
+const unpublished = process.argv.includes("--unpublished");
 const version = packageVersion();
 const surface = publicSurface();
 const next = renderReport(version, surface);
@@ -25,8 +29,8 @@ if (!update) {
 }
 if (current !== null) {
   const old = parseReport(current);
-  if (old.version === version && old.body !== surface) {
-    console.error(`the public surface changed but package.json is still ${version} — bump the version first (plugins pin engines.battuta against it)`);
+  if (old.version === version && old.body !== surface && !unpublished) {
+    console.error(`the public surface changed but package.json is still ${version} — bump the version first (plugins pin engines.battuta against it), or pass --unpublished if ${version} was never tagged`);
     process.exit(1);
   }
 }

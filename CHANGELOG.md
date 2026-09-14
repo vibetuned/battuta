@@ -16,6 +16,54 @@ is in [PLANNING.md](PLANNING.md). What lands here: each decision as it
 is taken, and each slice as it closes, with the `App.tsx` line count
 (baseline 2026-09-12: 3,330).
 
+- **Slice 3 — MIDI is a host service (2026-09-14).** The first
+  "platform capability with a browser backend and a shell backend,
+  consumed by features" lives in the host: `MidiService` on the api
+  (`packages/api/src/midi.ts`) — `inputs` (a store: hardware ports
+  deduped by name and hot-plugged, then registered virtual inputs),
+  `onNote` (one stream for every input), `registerInput(name)` (a
+  virtual input the service routes like a device), `openOutputs()` (every
+  output at once, or null so the caller falls back to audio) — implemented
+  in `apps/editor/src/host/midi.ts` over two backends that are the old
+  code moved, not rewritten: Web MIDI (inputs deduped with the duplicate
+  port DETACHED, `onstatechange` re-attach, outputs deduped) and the
+  shell bridge (`midi-devices` / `midi-note` events, `midi_open_outputs`
+  / `midi_send` / `midi_close_outputs`). `midiOut.ts` became
+  `host/midiSink.ts`: `MidiSink` implements the api's `MidiOutputs`
+  (`schedule`, `send`, `panic`, `close` = panic then hand the ports back —
+  the shell retracts its virtual "battuta" source). Consumers now: the
+  entry path (subscribes to the note stream), the status-bar indicator
+  (`inputs`, hardware only), the play sink (`openOutputs`). **The
+  on-screen piano is a virtual input** named "on-screen piano" — the same
+  door as a hardware controller, two slices before the panel itself moves
+  — and so is the e2e hook: `__MIDI_NOTE__` feeds a virtual input "e2e",
+  `__MIDI_DEVS__` the service's test seam (`injectDevices`), so
+  `verify-phase4` now exercises the service's path. Decisions: virtual
+  inputs are listed with `virtual: true` and the indicator counts
+  hardware only, so opening the on-screen keyboard never reads as "a
+  device connected" (behaviour-neutral); note events carry their
+  `source` port name (the bridge, which has none, says "shell" with
+  velocity 100); the host offers the `midi` capability
+  (`OFFERED_CAPABILITIES`), so a manifest may require it; the api stays
+  0.1.0 — never published — and `api-report.mjs` gained `--unpublished`
+  to rewrite the report under an unchanged number, documented in the
+  api's README and to be dropped once a version ships. `App.tsx`
+  **3,321 → 3,274** (−47): Web MIDI access, the bridge listeners and the
+  device-list state left; it no longer names `requestMIDIAccess`,
+  `midi-devices` or `midi_close_outputs`. Initial chunk 595.1 →
+  **597.4 kB** (ceiling 605.5): the backend seam costs ~2 kB the inline
+  code did not. Tests: `midiOut.test.ts` grew from 7 to 16 (both
+  backends, hot-plug, detached duplicates, parsing, virtual inputs, the
+  seam), `host.test.ts` 21 (a plugin's virtual input reaches the host's
+  stream and vanishes with the plugin), editor 95 total; api 17, core
+  226, plugin 32. e2e: all five scripts green, 347 checks — phase 4 (the
+  MIDI entry path, now through the virtual input) and phase 5 (the
+  indicator) are the ones this slice touches. **The shell smoke ran on
+  macOS for the first time**: `verify-tauri.sh` needed GNU `timeout`,
+  which macOS lacks (recorded twice as an unfixable gap) — it now falls
+  back to a background run + kill, and all six checks pass: embedded
+  assets, native save, the bridged device list reaching the indicator,
+  the bridged note reaching the editor, the launch argument.
 - **Slice 2 — the reflection cycle is a plugin (2026-09-14).** The first
   real one. `shift+R` on a block — prime → inversion → retrograde →
   retrograde inversion → prime — left `App.tsx` for

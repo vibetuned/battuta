@@ -122,6 +122,10 @@ The api is a data contract. Nothing in it is a live object of the model.
 | the pitched events of a block, per voice | `ctx.query.pitchEventsIn(block)` | `PitchEvent[][]` |
 | the block an event selection covers | `ctx.query.blockOf(ids)` | `BlockSelection` or null |
 | **write** pitch content onto events | `ctx.execute({ type: "core.setPitches", targets, label })` | one undo step |
+| MIDI inputs (hardware, deduped, hot-plugged, then virtual ones) | `ctx.midi.inputs` | `Store<MidiPort[]>` |
+| every note on/off from any input | `ctx.midi.onNote(fn)` | `Disposable` |
+| add an input surface (a piano, a chord pad) | `ctx.midi.registerInput(name)` | `MidiVirtualInput` — dispose to unregister |
+| send to every MIDI output | `ctx.midi.openOutputs()` | `MidiOutputs` (`schedule`, `send`, `panic`, `close`) or null |
 
 Three things to know, each learned the hard way:
 
@@ -134,6 +138,11 @@ Three things to know, each learned the hard way:
   ctx.query.blockOf(ctx.editor.get().selection)` is that rule.
 - **`DocumentInfo.id` is document identity.** A new tab or a reopened
   file gets a new id; key any per-document state on it.
+- **Never touch Web MIDI or the shell bridge.** `ctx.midi` is the one
+  MIDI service (capability `midi`): a plugin that is an input surface
+  registers a virtual input and the host's entry path hears it like a
+  keyboard; a plugin that plays opens the outputs and gets the panic
+  guarantee for free. Declare `capabilities: ["midi"]` in the manifest.
 
 **Adding a message or a query** is an api change, made in the host, never
 worked around in a plugin:
