@@ -16,6 +16,56 @@ is in [PLANNING.md](PLANNING.md). What lands here: each decision as it
 is taken, and each slice as it closes, with the `App.tsx` line count
 (baseline 2026-09-12: 3,330).
 
+- **Slice 5b — the lyrics lane plugin (2026-09-14). CLOSED.**
+  `packages/plugins/lyrics` is the first consumer of the `lanes` point from
+  outside the host, and it needed **no api addition and no host change**:
+  `@battuta/api` stays at **0.1.5**, `api-report.d.ts` unchanged. The
+  manifest DECLARES the lane (`battuta.lyrics.verse1`, listed in the status
+  bar before a byte of the plugin exists; picking it fires
+  `onLane:` and the plugin registers the spec), one command
+  (`battuta.lyrics.open`) and its `l` binding with 0.0.3's label verbatim.
+  `activate` registers a spec with `attachesTo: "note"`, `advance: "note"`
+  and `advanceOn: [" ", "Enter", "-"]` and leaves harmony's four grammar
+  fields (`accepts`, `transform`, `complete`, `suggest`) unset — which is
+  the evidence that 5a's point was not shaped around one lane. The
+  wordpos/con table is `src/syllable.ts`, pure over four values, and
+  `commit` RETURNS a `core.setSyl` message rather than calling
+  `ctx.execute`: null when nothing changed, so crossing a syllable costs no
+  undo step. **The plugin holds no state at all** — the buffer is the
+  host's, the syllables are the document's.
+  - **The union keymap snapshot changes by exactly one entry, deliberately
+    and for the first time**: `lyrics` (core) leaves and
+    `battuta.lyrics.open` (plugin, `l`) arrives, in both layouts, the key
+    itself unchanged. Regenerated with `npm run keymap:snapshot -w
+    @battuta/editor`:
+    `-"lyrics": { "keys": ["l"] }` / `+"battuta.lyrics.open": { "keys":
+    ["l"], "plugin": "battuta.lyrics" }`.
+  - **The caption keyed by an id that moved, for the third slice running.**
+    `onscreen-keyboard/src/keys.ts` had `SHORT.lyrics`, so the panel's
+    button would have quietly read "l" instead of "lyrics" — no test asks
+    whether a caption is the nice one. Re-keyed to the command id, as the
+    reflection cycle was in slice 2. The generated keyboard reference
+    followed on its own (the generator has read plugin manifests since
+    slice 2) and the guide's `<KeymapTable ids={…} />` was pointed at the
+    new id. **When a binding changes id, grep for the old id string.**
+  - **What "leaves entry mode" belongs to.** `l` must do nothing in note
+    entry while the status-bar lane box opens the lane *and* leaves entry
+    mode. The second is the HOST's (`ctx.lanes.open` always leaves it), so
+    the plugin's handler declines on `ctx.editor.get().entryMode` before
+    calling it, rather than making `open` conditional. Two tests, one per
+    path.
+  - `App.tsx` **3,145 → 3,117** (−28) and the `lyrics` row left
+    `keymap.ts`; initial chunk 593.0 → **598.3 kB** (ceiling 605.5 — the
+    lane point itself landed in 5a; this plugin is a **0.9 kB lazy
+    chunk**). Tests: plugin 26 (11 the syllable table, 15 lifecycle),
+    editor 121, api 18, core 226, other plugins 79. **`verify-lyrics.mjs`
+    25/25 with every assertion identical and NEITHER design hook moved** —
+    the lane still renders into the host's `[data-harm-input]` box and the
+    key is still `l`. A plugin test cannot see its own message (the lane
+    store holds the host's executor, not `host.execute`), so the suite
+    asserts the command's label at the session adapter and the message off
+    the registered spec; the account is in
+    `packages/plugins/lyrics/BUILDING.md` §7.2.
 - **Slice 5a — the `lanes` point (2026-09-14, in-house). CLOSED.** The
   harm-lane mechanism left `App.tsx` for `host/lanes.tsx` (added to
   `HOST_MODULES`), and both lanes run on it as INTERNAL specs with their

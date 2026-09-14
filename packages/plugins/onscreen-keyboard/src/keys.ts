@@ -157,7 +157,10 @@ const SHORT: Record<string, string> = {
   merge: "merge",
   split: "split",
   staffGroup: "grp {",
-  lyrics: "lyrics",
+  // Contributed by @battuta/plugin-lyrics since slice 5b: keyed by the
+  // plugin's COMMAND id, as the reflection cycle is. A caption keyed by an
+  // id that moved is how a generated surface silently loses a row.
+  "battuta.lyrics.open": "lyrics",
   contextBar: "ctx bar",
   tuplet: "tuplet",
   "battuta.reflection.cycle": "reflect",

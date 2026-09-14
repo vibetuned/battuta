@@ -220,7 +220,17 @@ closed 2026-09-14** (in-house): `host/lanes.tsx` is the point, both lanes
 run on it as internal specs, `contributes.lanes` + `onLane:` + `ctx.lanes`
 + `core.setSyl` + `lyricAt` are on the api at 0.1.5, and
 `verify-lyrics.mjs` (26 checks) gates the lyrics lane — written first,
-it caught a hyphen-stripping bug in 0.0.3. **5b is next.**
+it caught a hyphen-stripping bug in 0.0.3. **Slice 5b closed
+2026-09-14**: `packages/plugins/lyrics` declares the lane, registers a
+spec that leaves harmony's four grammar fields unset, holds no state at
+all, and needed **no api addition and no host change** — the first slice
+of the phase to hit no gap, because 5a's additions each named 5b as
+their consumer and the list was right. The e2e's assertions and both its
+design hooks are unchanged; the union keymap snapshot changes by exactly
+one entry, the `l` binding moving from core to the plugin. **A point
+designed against two consumers before either leaves costs a plugin slice
+a day instead of a rollback. Slice 6, the harmony lane, is next**, and
+it is the rule of three: the point is frozen after it.
 
 From here on slices are
 handed to sessions without the surrounding context, on purpose, to test

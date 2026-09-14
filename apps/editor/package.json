@@ -16,6 +16,7 @@
   "dependencies": {
     "@battuta/api": "*",
     "@battuta/core": "*",
+    "@battuta/plugin-lyrics": "*",
     "@battuta/plugin-onscreen-keyboard": "*",
     "@battuta/plugin-reflection": "*",
     "react": "^18.3.0",

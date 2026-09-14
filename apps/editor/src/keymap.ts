@@ -61,7 +61,6 @@ export const defaultKeymap = (layout: Layout): Record<string, KeyBinding> => {
     measureRepeat: { keys: az ? ["%"] : ['"'], label: "measure repeat % → %%", group: "repeats" },
     repeatBarlines: { keys: ["r"], alt: true, label: "repeat barlines 𝄆 𝄇 (block) · end repeat 𝄇 at the caret measure", group: "repeats", when: "works in input mode too" },
     staffGroup: { keys: ["G"], label: "staff group cycle: none → brace → bracket", group: "repeats", when: "block selection spanning staves" },
-    lyrics: { keys: ["l"], label: "lyrics lane: type at the caret, space/enter advances, - hyphenates", group: "entry" },
     contextBar: { keys: ["F6"], label: "focus the context bar (←/→ selects · ↑/↓ change · esc back)", group: "system" },
     voltas: { keys: ["⇧1–9"], label: "volta number toggle", group: "repeats", when: "block selection · physical digits", locked: true },
     merge: { keys: ["m"], label: "merge with next · grace cycle (2 pitches)", group: "rhythm" },

@@ -14,7 +14,7 @@ import { converter } from "./converter";
 import notoMusicUrl from "./assets/fonts/NotoMusic-Regular.woff2?url";
 import { detectImport, IMPORT_FORMATS, EXPORT_FORMATS, OPEN_EXTENSIONS, type ExportFormat } from "./formats";
 import { playbackToMidi } from "./midiExport";
-import type { LaneSpec, MidiOutputs, SylValue } from "@battuta/api";
+import type { LaneSpec, MidiOutputs } from "@battuta/api";
 import { saveStoredSession, loadStoredSession, clearStoredSession, type StoredSession } from "./sessionStore";
 
 /** savedMarks sentinel for restored-dirty docs: never equals an editMark,
@@ -1387,9 +1387,9 @@ export default function App() {
       leaveEntryMode: () => setEntryMode(false),
     });
     // The editor's own lanes, as INTERNAL specs on the host's point, until
-    // slices 5b and 6 move their bodies into plugins. Harmony still writes
-    // through the session (its message is slice 6's); lyrics already
-    // commits as the `core.setSyl` message the plugin will send.
+    // slice 6 moves harmony's body into a plugin as slice 5b moved
+    // lyrics'. Harmony still writes through the session (its message is
+    // slice 6's).
     const refuse = (what: string, err: unknown) => ({ refuse: `${what} refused: ${err instanceof Error ? err.message : String(err)}` });
     const harmony = (kind: HarmKind, face: Pick<LaneSpec, "id" | "label" | "name" | "glyph">): LaneSpec => ({
       ...face,
@@ -1414,36 +1414,9 @@ export default function App() {
         }
       },
     });
-    const lyrics: LaneSpec = {
-      id: "lyrics",
-      label: "lyrics (verse 1, l)",
-      name: "lyrics",
-      glyph: "♪",
-      place: "below",
-      attachesTo: "note",
-      advance: "note",
-      advanceOn: [" ", "Enter", "-"],
-      hint: "lyrics: type at the caret · space/enter advances · - hyphenates · esc leaves",
-      read: (id) => session.sylAt(id)?.text ?? "",
-      commit: ({ eventId, buffer, key, prevEventId }) => {
-        const existing = session.sylAt(eventId);
-        const wasHyphen = existing?.con === "d";
-        // `-` states a hyphen; new text states a word end; leaving or
-        // moving over an UNCHANGED syllable keeps its hyphenation (found
-        // by verify-lyrics.mjs: Escape used to strip the hyphen).
-        const textChanged = buffer !== (existing?.text ?? "");
-        const hyphen = key === "-" ? true : textChanged ? false : wasHyphen;
-        if (!textChanged && hyphen === wasHyphen) return null;
-        // continuing a word? the previous note's syllable says so
-        const midWord = prevEventId ? session.sylAt(prevEventId)?.con === "d" : false;
-        const value: SylValue = buffer === "" ? { text: "" } : hyphen ? { text: buffer, con: "d", wordpos: midWord ? "m" : "i" } : midWord ? { text: buffer, wordpos: "t" } : { text: buffer };
-        return { type: "core.setSyl", eventId, value };
-      },
-    };
     const internal = [
       host.lanes.register(harmony("chord", { id: "chord", label: "chord symbols (above)", name: "chords", glyph: "♩" })),
       host.lanes.register(harmony("rna", { id: "rna", label: "roman numerals (below)", name: "numerals", glyph: "RN" })),
-      host.lanes.register(lyrics),
     ];
     return () => {
       for (const d of internal) d.dispose();
@@ -1731,7 +1704,6 @@ export default function App() {
       // suggestion, and the characters the lane admits.
       host.lanes.modalStep(),
 
-      rule("lyrics", (e) => hit("lyrics", e) && !isMod(e) && !e.altKey, () => (host.lanes.open("lyrics") ? "handled" : "declined"), { when: () => !entryMode && !!caretId }),
       rule("slurDoubleSharp", (e) => hit("slurDoubleSharp", e) && !isMod(e), () => {
         // With a selection: slur between its ends. On a single target:
         // DOUBLE SHARP — shift+s, mirroring plain s (tester ask).

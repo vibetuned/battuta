@@ -5,6 +5,12 @@
         ";"
       ]
     },
+    "battuta.lyrics.open": {
+      "keys": [
+        "l"
+      ],
+      "plugin": "battuta.lyrics"
+    },
     "battuta.reflection.cycle": {
       "keys": [
         "R"
@@ -81,11 +87,6 @@
     "intensity": {
       "keys": [
         "I"
-      ]
-    },
-    "lyrics": {
-      "keys": [
-        "l"
       ]
     },
     "marcato": {
@@ -219,6 +220,12 @@
         ";"
       ]
     },
+    "battuta.lyrics.open": {
+      "keys": [
+        "l"
+      ],
+      "plugin": "battuta.lyrics"
+    },
     "battuta.reflection.cycle": {
       "keys": [
         "R"
@@ -296,11 +303,6 @@
     "intensity": {
       "keys": [
         "I"
-      ]
-    },
-    "lyrics": {
-      "keys": [
-        "l"
       ]
     },
     "marcato": {
