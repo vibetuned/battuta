@@ -77,6 +77,8 @@ function fixture(opts: { entryMode?: boolean } = {}): Fixture {
     pitchEventsIn: () => [],
     blockOf: () => null,
     lyricAt: (id) => syllables.get(id) ?? null,
+    harmAt: () => "",
+    harmValid: () => false,
   };
   host.bindSession(session);
 

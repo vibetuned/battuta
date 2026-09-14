@@ -229,8 +229,14 @@ their consumer and the list was right. The e2e's assertions and both its
 design hooks are unchanged; the union keymap snapshot changes by exactly
 one entry, the `l` binding moving from core to the plugin. **A point
 designed against two consumers before either leaves costs a plugin slice
-a day instead of a rollback. Slice 6, the harmony lane, is next**, and
-it is the rule of three: the point is frozen after it.
+a day instead of a rollback.** **Slice 6's host half landed 2026-09-14**
+(api 0.1.6: `core.setHarm`, `harmAt`, `harmValid`; the status bar's
+anchoring rule, the lanes select as its boundary, the `.sbsel` look as a
+class — the CHANGELOG bullet has the account), and the grammar split is
+decided in its brief: validity stays in core and is asked through
+`harmValid`, the editor affordances move into the plugin. **Slice 6, the
+harmony plugin, is next**, and it is the rule of three: the point is
+frozen after it.
 
 From here on slices are
 handed to sessions without the surrounding context, on purpose, to test
@@ -654,11 +660,28 @@ and the lane together; `App.tsx` has no lyrics code.
 #### Slice 6 — Harmony lane (≈2 days)
 
 **Delivers.** `packages/plugins/harmony` on 5a's `lanes` point: two
-declared lanes (chord symbols above, Roman numerals below), the closed
-grammars, charsets and suggestions moved from core's `harm.ts` into the
-plugin as the specs' `accepts` / `transform` / `complete` / `suggest`,
-`SetHarmCommand` reached as the `core.setHarm` message; the two internal
-harmony specs and the last of the lane code deleted from `App.tsx`.
+declared lanes (`{ id: "battuta.harmony.chord", label: "chord symbols
+(above)", name: "chords", glyph: "♩", place: "above" }` and `{ id:
+"battuta.harmony.rna", label: "roman numerals (below)", name:
+"numerals", glyph: "RN", place: "below" }`), activating on `onLane:` of
+each; `activate` registers both specs — `attachesTo: "event"`, `advance:
+"event"`, `advanceOn: ["Enter"]`, the hint text verbatim from `App.tsx`,
+`read` = `ctx.query.harmAt(eventId, kind)`, `commit` = `{ type:
+"core.setHarm", eventId, kind, text }` when the buffer differs from
+`harmAt`, null otherwise. **Where the grammar goes (decided 2026-09-14,
+in-house):** VALIDITY stays in core — `SetHarmCommand` refuses text its
+regexes reject, so core must own them — and the plugin asks through
+`ctx.query.harmValid(kind, text)`: that is `complete`. The editor
+affordances move into the plugin: the charsets (`HARM_CHARS`, →
+`accepts`), the numeral key mapping (`o` → `°`, `0` → `ø`, →
+`transform`), and the suggestion lists with their prefix rule
+(`CHORD_QUALITIES`, `RNA_BASES`, `harmSuggestions`, → `suggest`; its
+"add a `/` continuation once the head is complete" asks `harmValid`
+too). Core's `harm.ts` keeps the regexes, `isHarmText`, `harmTextAt` and
+the command, and loses `HARM_CHARS` and `harmSuggestions` (with their
+core tests moving into the plugin's suite). The two internal harmony
+specs and the last of the lane code leave `App.tsx`, and with them the
+`isHarmText` / `harmSuggestions` / `HARM_CHARS` / `HarmKind` imports.
 
 **Proves.** The rule of three, near enough: a third consumer confirms
 the point's shape. Whatever harmony needs that the internal spec did not
@@ -667,21 +690,42 @@ is the point's last change before it is frozen for the phase.
 **Leaves `App.tsx`.** The two internal harmony specs — the last lane
 code.
 
-**API may grow.** The `core.setHarm` message and
-`ctx.query.harmAt(eventId, kind)`, built in-house BEFORE the slice as 5a
-did for lyrics, so the plugin's own is **None**. The spec fields harmony
-uses are already in the point: 5a ran the internal `chord` / `rna` specs
-on it.
+**API may grow.** **None.** Built in-house on 2026-09-14, api 0.1.5 →
+0.1.6: the `core.setHarm` message (`{ eventId, kind, text }`; the command
+labels itself), `HarmKind` on the api, `ctx.query.harmAt(eventId, kind)`
+and `ctx.query.harmValid(kind, text)`. The internal `chord` / `rna` specs
+already commit through `core.setHarm`, so the message runs end to end
+before the plugin exists, and every spec field harmony uses is in the
+point because 5a ran those specs on it. Also in-house, before the slice,
+the status bar itself: **host controls are anchored; contributions grow
+into the free space to their left.** The `statusBar` slot sits right
+after the bar's spacer, so a plugin item appearing or leaving moves no
+host control; the lanes select is the boundary — first of the host
+group, present only while some lane is on offer (`data-lanes`,
+placeholder "lanes", a title listing the lanes), hiding without shifting
+anything; and the bar's control look is the `.sbsel` class alone, so a
+plugin's own `<select className="sbsel">` matches and joins F6 roving
+focus. No new host module.
 
 **Stop when.** The harmony lane needs a spec field or a query the
-internal spec did not — 5a's rehearsal missed it. Write the gap; do not
-resolve it.
+internal spec did not — 5a's rehearsal missed it — or a grammar helper
+`harmValid` cannot answer. Write the gap; do not resolve it.
 
-**Gates.** `packages/core/test/harm.test.ts`; the harmony checks in
-`verify-phase5.mjs`.
+**Gates.** `packages/core/test/harm.test.ts` minus the two tests that
+move with the suggestions (the command and validity tests stay); the
+harmony section of `verify-phase5.mjs` with exactly its two
+design-dependent hooks changed — the select option VALUES (`chord` /
+`rna` become the plugin's lane ids) and nothing else, since the select is
+already found by `data-lanes` — every assertion identical;
+`verify-lyrics.mjs` unchanged; the union keymap snapshot byte-identical
+(harmony has no key); the boundary tests; the plugin's suite (the
+grammar's charset / transform / suggestion tables as pure tests, and
+`complete` asking `harmValid`).
 
-**Documents.** The plugin's two documents; the CHANGELOG bullet
-recording the point's final shape and the `App.tsx` count now that the
+**Documents.** The plugin's two documents (BUILDING.md §7 starts from
+the lyrics plugin's §7); the guide's harmony page unchanged in content
+plus its plugins-page row; the CHANGELOG bullet recording the point's
+final shape, the grammar split, and the `App.tsx` count now that the
 mechanism is gone.
 
 **Done when.** Both lanes run on the shared point, and `App.tsx` has no

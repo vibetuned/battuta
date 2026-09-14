@@ -9,7 +9,7 @@
  * built-in plugins unless the URL says ?plugins=off); `createHost` is
  * exported for tests, which pass memory-backed settings and storage.
  */
-import { API_VERSION, DisposableStore, type ActionsService, type ActivationEvent, type BlockSelection, type CommandMessage, type DocumentInfo, type DocumentQueries, type EditorState, type HostCapability, type KeymapEntry, type PitchEvent, type PluginContext, type PluginEntry, type PluginManifest, type Store, type SylValue } from "@battuta/api";
+import { API_VERSION, DisposableStore, type ActionsService, type ActivationEvent, type BlockSelection, type CommandMessage, type DocumentInfo, type DocumentQueries, type EditorState, type HostCapability, type KeymapEntry, type PitchEvent, type PluginContext, type PluginEntry, type PluginManifest, type Store, type SylValue, type HarmKind } from "@battuta/api";
 import type { Command } from "@battuta/core";
 import { toCommand } from "./messages";
 import { keyMatches, type Layout } from "../keymap";
@@ -42,6 +42,8 @@ export interface SessionAdapter {
   pitchEventsIn(block: BlockSelection): PitchEvent[][];
   blockOf(eventIds: readonly string[]): BlockSelection | null;
   lyricAt(eventId: string): SylValue | null;
+  harmAt(eventId: string, kind: HarmKind): string;
+  harmValid(kind: HarmKind, text: string): boolean;
 }
 
 export interface Host {
@@ -151,6 +153,8 @@ export function createHost(options: HostOptions = {}): Host {
     pitchEventsIn: (block) => adapter?.pitchEventsIn(block) ?? [],
     blockOf: (ids) => adapter?.blockOf(ids) ?? null,
     lyricAt: (id) => adapter?.lyricAt(id) ?? null,
+    harmAt: (id, kind) => adapter?.harmAt(id, kind) ?? "",
+    harmValid: (kind, text) => adapter?.harmValid(kind, text) ?? false,
   };
   const lanes = new LaneStore({
     execute,

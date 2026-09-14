@@ -156,6 +156,10 @@ The api is a data contract. Nothing in it is a live object of the model.
 | open your lane from your own key | `ctx.lanes.open(id)` | true when it opened; leaves entry mode like the select does — decline on `ctx.editor.get().entryMode` first if your key must not |
 | the verse-1 syllable of a note | `ctx.query.lyricAt(eventId)` | `SylValue` (`text`, `wordpos?`, `con?`) or null |
 | **write** a syllable (empty text clears) | `ctx.execute({ type: "core.setSyl", eventId, value })` | one undo step; refused on a rest |
+| the harmony text of one kind at an event | `ctx.query.harmAt(eventId, kind)` — `kind` is `"chord"` (above) or `"rna"` (below) | `string`, "" when none |
+| would the document accept this harmony text? | `ctx.query.harmValid(kind, text)` | `boolean` — the grammar lives in core because `core.setHarm` refuses what fails it; ask, do not copy |
+| **write** a harmony (empty text clears) | `ctx.execute({ type: "core.setHarm", eventId, kind, text })` | one undo step; refused when `harmValid` would say no |
+| a control in the context bar that looks like the host's | render `<select className="sbsel" data-cycle?>` from a `statusBar` slot item | the look, F6 roving focus and ↑/↓ cycling (`data-cycle`) come with the class; the bar anchors host controls and grows contributions into the free space, so your item never moves them |
 
 Three things to know, each learned the hard way:
 

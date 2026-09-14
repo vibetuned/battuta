@@ -39,6 +39,9 @@ export interface PitchEvent {
 
 export type ViewMode = "tiles" | "pages";
 
+/** The two harmony lanes over one event: chord symbols (`<harm place="above">`) and Roman numerals (`<harm type="rna" place="below">`). */
+export type HarmKind = "chord" | "rna";
+
 /**
  * One verse-1 syllable, as MEI has it: `<syl wordpos con>` inside the
  * note's `<verse n="1">`. `wordpos` i/m/t = word start/middle/end, absent
@@ -91,4 +94,12 @@ export interface DocumentQueries {
   blockOf(eventIds: readonly string[]): BlockSelection | null;
   /** The verse-1 syllable of a note or chord (a chord's sits on its first note), or null when it has none. */
   lyricAt(eventId: string): SylValue | null;
+  /** The harmony text of one kind anchored at an event, "" when none. */
+  harmAt(eventId: string, kind: HarmKind): string;
+  /**
+   * Would the document accept this text as a harmony of this kind? The
+   * grammar that decides lives in core, because `core.setHarm` refuses
+   * what fails it; a lane asks here rather than carrying a second copy.
+   */
+  harmValid(kind: HarmKind, text: string): boolean;
 }

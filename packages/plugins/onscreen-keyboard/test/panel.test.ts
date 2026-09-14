@@ -63,6 +63,9 @@ function fixture(saved?: { open?: boolean; enabled?: boolean }): Fixture {
     execute: (cmd) => executed.push(cmd),
     pitchEventsIn: () => [],
     blockOf: () => null,
+    lyricAt: () => null,
+    harmAt: () => "",
+    harmValid: () => false,
   };
   host.bindSession(adapter);
   host.document.set({ id: "doc-1", version: 1, measureCount: 4, staffCount: 2, title: "", tempo: null });

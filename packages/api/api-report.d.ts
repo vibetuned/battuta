@@ -1,4 +1,4 @@
-// @battuta/api 0.1.5 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
+// @battuta/api 0.1.6 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
 
 // ---- actions.d.ts
 /**
@@ -246,6 +246,8 @@ export interface PitchEvent {
     pitches: Pitch[];
 }
 export type ViewMode = "tiles" | "pages";
+/** The two harmony lanes over one event: chord symbols (`<harm place="above">`) and Roman numerals (`<harm type="rna" place="below">`). */
+export type HarmKind = "chord" | "rna";
 /**
  * One verse-1 syllable, as MEI has it: `<syl wordpos con>` inside the
  * note's `<verse n="1">`. `wordpos` i/m/t = word start/middle/end, absent
@@ -295,6 +297,14 @@ export interface DocumentQueries {
     blockOf(eventIds: readonly string[]): BlockSelection | null;
     /** The verse-1 syllable of a note or chord (a chord's sits on its first note), or null when it has none. */
     lyricAt(eventId: string): SylValue | null;
+    /** The harmony text of one kind anchored at an event, "" when none. */
+    harmAt(eventId: string, kind: HarmKind): string;
+    /**
+     * Would the document accept this text as a harmony of this kind? The
+     * grammar that decides lives in core, because `core.setHarm` refuses
+     * what fails it; a lane asks here rather than carrying a second copy.
+     */
+    harmValid(kind: HarmKind, text: string): boolean;
 }
 
 // ---- index.d.ts
@@ -310,15 +320,15 @@ export interface DocumentQueries {
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export declare const API_VERSION = "0.1.5";
+export declare const API_VERSION = "0.1.6";
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";
 export type { Disposable } from "./disposable.js";
 export { toDisposable, DisposableStore } from "./disposable.js";
 export type { Version } from "./semver.js";
 export { parseVersion, satisfiesEngine } from "./semver.js";
-export type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, ViewMode, EditorState, DocumentInfo, DocumentQueries } from "./document.js";
-export type { SetPitchesMessage, SetSylMessage, CommandMessage, CommandMessageType } from "./messages.js";
+export type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKind, ViewMode, EditorState, DocumentInfo, DocumentQueries } from "./document.js";
+export type { SetPitchesMessage, SetSylMessage, SetHarmMessage, CommandMessage, CommandMessageType } from "./messages.js";
 export { COMMAND_MESSAGE_TYPES } from "./messages.js";
 export type { MidiPort, MidiNoteEvent, MidiVirtualInput, MidiOutputs, MidiService } from "./midi.js";
 export type { KeymapEntry, ActionsService } from "./actions.js";
@@ -568,7 +578,7 @@ export declare function validateManifest(input: unknown): string[];
  * reflection cycle, setSyl for lyrics, setHarm for harmony); a plugin
  * that thinks it needs a NEW command is asking for a core change first.
  */
-import type { PitchEvent, SylValue } from "./document.js";
+import type { HarmKind, PitchEvent, SylValue } from "./document.js";
 /** Write pitch content onto events (notes in child order for chords). Byte-identical revert. */
 export interface SetPitchesMessage {
     type: "core.setPitches";
@@ -586,7 +596,19 @@ export interface SetSylMessage {
     eventId: string;
     value: SylValue;
 }
-export type CommandMessage = SetPitchesMessage | SetSylMessage;
+/**
+ * Set (or, with empty text, clear) the harmony of one kind at an event —
+ * a chord symbol above or a Roman numeral below. Refused when the text is
+ * not one the grammar accepts (`ctx.query.harmValid` asks the same
+ * grammar first). One undo step; byte-identical revert; labels itself.
+ */
+export interface SetHarmMessage {
+    type: "core.setHarm";
+    eventId: string;
+    kind: HarmKind;
+    text: string;
+}
+export type CommandMessage = SetPitchesMessage | SetSylMessage | SetHarmMessage;
 export type CommandMessageType = CommandMessage["type"];
 export declare const COMMAND_MESSAGE_TYPES: readonly CommandMessageType[];
 

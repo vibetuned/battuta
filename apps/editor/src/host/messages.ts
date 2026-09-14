@@ -10,7 +10,7 @@
  * and an API version bump.
  */
 import type { CommandMessage } from "@battuta/api";
-import { SetPitchesCommand, SetSylCommand, type Command } from "@battuta/core";
+import { SetHarmCommand, SetPitchesCommand, SetSylCommand, type Command } from "@battuta/core";
 
 export function toCommand(message: CommandMessage): Command {
   switch (message.type) {
@@ -27,6 +27,11 @@ export function toCommand(message: CommandMessage): Command {
         ...(typeof v.wordpos === "string" ? { wordpos: v.wordpos } : {}),
         ...(typeof v.con === "string" ? { con: v.con } : {}),
       });
+    }
+    case "core.setHarm": {
+      if (message.kind !== "chord" && message.kind !== "rna") throw new Error(`core.setHarm: kind must be chord or rna (got ${JSON.stringify(message.kind)})`);
+      if (typeof message.text !== "string") throw new Error("core.setHarm: text must be a string");
+      return new SetHarmCommand(String(message.eventId), message.text, message.kind);
     }
     default: {
       const unknown = message as { type?: unknown };

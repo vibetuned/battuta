@@ -16,6 +16,45 @@ is in [PLANNING.md](PLANNING.md). What lands here: each decision as it
 is taken, and each slice as it closes, with the `App.tsx` line count
 (baseline 2026-09-12: 3,330).
 
+- **Decision: the status bar anchors its own controls and lets
+  contributions grow into the free space; slice 6's host half
+  (2026-09-14, in-house; api 0.1.5 → 0.1.6).** Two questions asked before
+  handing slice 6 out. *What is left of the "harmony" select once every
+  lane is a plugin?* An empty control named after a former tenant — so
+  the lanes select now exists only while some lane is on offer, is named
+  for the point ("lanes", its title listing the lanes it has, a
+  `data-lanes` hook for the scripts, which `verify-phase5.mjs` now uses
+  in place of the word "harmony"), and hides without moving anything.
+  *How does a plugin put a control in the context bar without everything
+  jumping?* It always could — a declared `statusBar` slot item, or
+  `ctx.slots.add("statusBar", { render })` — but the slot sat after the
+  six host selects in a right-packed bar, so an item appearing pushed
+  them all left. The rule now: **host controls are anchored,
+  contributions grow into the free space to their left.** The slot mounts
+  right after the bar's spacer; the lanes select is the boundary, first
+  of the host group; the DOM and the picture are identical while nothing
+  contributes. And the bar's control look left an App-only style object
+  for the `.sbsel` class, so a plugin's `<select className="sbsel">`
+  matches the host's and joins F6 roving focus (and ↑/↓ cycling with
+  `data-cycle`) — the chevron the class always carried now actually
+  shows, since the inline `background` shorthand no longer paints over
+  it. Not built: a declared select kind in the manifest, left/right
+  alignment — no consumer. **The api half for slice 6:** `HarmKind`, the
+  `core.setHarm` message (`{ eventId, kind, text }`, refused at the door
+  for an unknown kind or a non-string, at apply for text the grammar
+  rejects), `ctx.query.harmAt(eventId, kind)` and
+  `ctx.query.harmValid(kind, text)`. The last one settles where the
+  harmony grammar goes: VALIDITY stays in core, because `SetHarmCommand`
+  refuses what its regexes reject and core must own what it refuses; the
+  plugin asks `harmValid` for `complete` and owns the editor affordances
+  (charsets, the `o` → `°` mapping, the suggestion lists) — no second
+  copy of a regex anywhere. The internal `chord` / `rna` specs commit
+  through `core.setHarm` already, so the message runs end to end before
+  its plugin exists (the `refuse` helper and the session write left
+  `App.tsx` with it). Tests: `host.test.ts` +1 (the mapping and its two
+  refusals) and the query test extended; editor 122, api 18, plugins 105;
+  `verify-phase5` 222 (its two harmony hooks now read `select[data-lanes]`; one flaky voice-navigation check in a back-to-back run passed on its own), `verify-lyrics` 26, `verify-app` 18, the keyboard 25, all green.
+  `App.tsx` **3,117 → 3,109**; initial chunk **599.0 kB** (ceiling 605.5).
 - **Slice 5b — the lyrics lane plugin (2026-09-14). CLOSED.**
   `packages/plugins/lyrics` is the first consumer of the `lanes` point from
   outside the host, and it needed **no api addition and no host change**:

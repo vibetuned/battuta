@@ -17,7 +17,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { API_VERSION, definePlugin, type PluginContext, type PluginEntry, type PluginManifest, type DocumentInfo } from "@battuta/api";
-import { SetPitchesCommand, SetSylCommand } from "@battuta/core";
+import { SetHarmCommand, SetPitchesCommand, SetSylCommand } from "@battuta/core";
 import { createHost, memorySettings, toCommand, type SessionAdapter } from "../src/host";
 import { memoryStorage } from "../src/host/services";
 import { dimsDeclared } from "../src/host/slots";
@@ -74,6 +74,8 @@ function echoPlugin(): { entry: PluginEntry; state: { log: string[]; loads: numb
 
 const fakeAdapter = (execute = vi.fn()): SessionAdapter & { execute: ReturnType<typeof vi.fn> } => ({
   lyricAt: (id) => (id === "n1" ? { text: "hel", wordpos: "i", con: "d" } : null),
+  harmAt: (id, kind) => (id === "n1" && kind === "chord" ? "Cmaj7" : ""),
+  harmValid: (kind, text) => (kind === "chord" ? /^[A-G]/.test(text) : /^[IViv]/.test(text)),
   execute,
   pitchEventsIn: (block) => [[{ eventId: `e-${block.measureFrom}`, pitches: [{ pname: "c", oct: 4 }] }]],
   blockOf: (ids) => (ids.length ? { measureFrom: 0, measureTo: ids.length - 1, staffFrom: 1, staffTo: 1 } : null),
@@ -262,6 +264,15 @@ describe("commands as data", () => {
     expect(cmd.label).toBe('lyric "hel"');
     expect(toCommand({ type: "core.setSyl", eventId: "n1", value: { text: "" } }).label).toBe("lyric removed");
     expect(() => toCommand({ type: "core.setSyl", eventId: "n1", value: { wordpos: "i" } } as never)).toThrow(/value.text must be a string/);
+  });
+
+  it("maps core.setHarm to SetHarmCommand and refuses an unknown kind or a non-string text at the door", () => {
+    const cmd = toCommand({ type: "core.setHarm", eventId: "n1", kind: "rna", text: "V65" });
+    expect(cmd).toBeInstanceOf(SetHarmCommand);
+    expect(cmd.label).toBe('numeral "V65"');
+    expect(toCommand({ type: "core.setHarm", eventId: "n1", kind: "chord", text: "" }).label).toBe('chord ""');
+    expect(() => toCommand({ type: "core.setHarm", eventId: "n1", kind: "figured-bass", text: "6" } as never)).toThrow(/kind must be chord or rna/);
+    expect(() => toCommand({ type: "core.setHarm", eventId: "n1", kind: "chord", text: 7 } as never)).toThrow(/text must be a string/);
   });
 
   it("maps core.setPitches to the core command, copying the plugin's data", () => {
@@ -487,12 +498,18 @@ describe("a runtime slot item replaces the plugin's declared face while it lives
 });
 
 describe("lanes on the context", () => {
-  it("query.lyricAt is answered by the bound adapter, null without a document", () => {
+  it("query.lyricAt / harmAt / harmValid are answered by the bound adapter; empty answers without a document", () => {
     const host = makeHost([]);
     expect(host.query.lyricAt("n1")).toBeNull();
+    expect(host.query.harmAt("n1", "chord")).toBe("");
+    expect(host.query.harmValid("chord", "C")).toBe(false);
     host.bindSession(fakeAdapter());
     expect(host.query.lyricAt("n1")).toEqual({ text: "hel", wordpos: "i", con: "d" });
     expect(host.query.lyricAt("n2")).toBeNull();
+    expect(host.query.harmAt("n1", "chord")).toBe("Cmaj7");
+    expect(host.query.harmAt("n1", "rna")).toBe("");
+    expect(host.query.harmValid("chord", "C7")).toBe(true);
+    expect(host.query.harmValid("rna", "C7")).toBe(false);
   });
 
   it("a declared lane is listed before the plugin loads; picking it fires onLane:<id>, the plugin registers, the lane opens; register() demands a declaration", async () => {

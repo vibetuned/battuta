@@ -133,21 +133,6 @@ ${Array.from({ length: 4 }, (_, i) => `      <measure n="${i + 1}"><staff n="1">
   </score></mdiv></body></music></mei>
 `;
 
-/** Status-bar select chrome (dark, borderless like VSCode indicators). */
-const STATUSBAR_SELECT: React.CSSProperties = {
-  // appearance:none + color-scheme:dark: WebKitGTK renders native select
-  // popups from the GTK side (tauri#11755) — this combination is the
-  // closest CSS gets; the chevron returns via the .sbsel background image.
-  appearance: "none",
-  WebkitAppearance: "none",
-  colorScheme: "dark",
-  background: "#1f2733",
-  color: "#cdd",
-  border: "1px solid #3a4656",
-  borderRadius: 3,
-  fontSize: 12,
-  padding: "0 16px 0 4px",
-};
 
 /** Clefs offered by the status-bar context select. */
 const CLEFS: Record<string, { shape: string; line: number; dis?: number; disPlace?: "above" | "below" }> = {
@@ -1369,6 +1354,8 @@ export default function App() {
       pitchEventsIn: (block) => session.blockPitchEvents(block),
       blockOf: (ids) => blockOfEvents(session.index, ids),
       lyricAt: (id) => session.sylAt(id),
+      harmAt: (id, kind) => session.harmAt(id, kind),
+      harmValid: (kind, text) => isHarmText(kind, text),
     });
     // The lanes' view of this document: the caret path and what sits on it.
     host.lanes.bind({
@@ -1386,11 +1373,10 @@ export default function App() {
       },
       leaveEntryMode: () => setEntryMode(false),
     });
-    // The editor's own lanes, as INTERNAL specs on the host's point, until
-    // slice 6 moves harmony's body into a plugin as slice 5b moved
-    // lyrics'. Harmony still writes through the session (its message is
-    // slice 6's).
-    const refuse = (what: string, err: unknown) => ({ refuse: `${what} refused: ${err instanceof Error ? err.message : String(err)}` });
+    // The editor's own harmony lanes, as INTERNAL specs on the host's point,
+    // until slice 6 moves them into a plugin as slice 5b moved lyrics. They
+    // already commit as the `core.setHarm` message the plugin will send;
+    // the host executes it and turns a refusal into a notice.
     const harmony = (kind: HarmKind, face: Pick<LaneSpec, "id" | "label" | "name" | "glyph">): LaneSpec => ({
       ...face,
       place: kind === "rna" ? "below" : "above",
@@ -1403,16 +1389,7 @@ export default function App() {
       complete: (b) => isHarmText(kind, b),
       suggest: (b) => harmSuggestions(kind, b),
       read: (id) => session.harmAt(id, kind),
-      commit: ({ eventId, buffer }) => {
-        if (buffer === session.harmAt(eventId, kind)) return null; // nothing to do
-        try {
-          session.setHarm(eventId, buffer, kind);
-          afterCommand(session);
-          return null;
-        } catch (err) {
-          return refuse("harmony", err);
-        }
-      },
+      commit: ({ eventId, buffer }) => (buffer === session.harmAt(eventId, kind) ? null : { type: "core.setHarm", eventId, kind, text: buffer }),
     });
     const internal = [
       host.lanes.register(harmony("chord", { id: "chord", label: "chord symbols (above)", name: "chords", glyph: "♩" })),
@@ -2874,7 +2851,12 @@ export default function App() {
         .no-perf .tile .ms { display: none; }
         [data-statusbar] { color-scheme: dark; }
         [data-statusbar] select option { background: #1f2733; color: #cdd; }
-        .sbsel { background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23718096'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 4px center; }
+        /* The status-bar control look, as ONE class so a plugin's own <select className="sbsel"> in the
+           statusBar slot matches the host's and joins F6 roving focus. appearance:none +
+           color-scheme:dark: WebKitGTK renders native select popups from the GTK side
+           (tauri#11755) — this combination is the closest CSS gets; the chevron is the
+           background image. */
+        .sbsel { appearance: none; -webkit-appearance: none; color-scheme: dark; background-color: #1f2733; color: #cdd; border: 1px solid #3a4656; border-radius: 3px; font-size: 12px; padding: 0 16px 0 4px; background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23718096'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 4px center; }
         .tile .placeholder { background: #f6f6f6; border-radius: 4px;
           color: #bbb; font-size: 11px; display: flex; align-items: center; justify-content: center; }
         .pages .page { max-width: 900px; margin: 0 auto 16px; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
@@ -2930,12 +2912,41 @@ export default function App() {
           {caret ? `[ m ${caret.measureIndex + 1}, s ${caret.staffN}, v ${caret.layerN}, n ${caret.eventIndex + 1} ]` : "[ — ]"}
         </span>
         <span style={{ flex: 1 }} />
+        {/* The bar's rule: host controls are anchored, contributions grow into
+            the free space to their LEFT. The slot sits right after the spacer,
+            so a plugin item appearing or leaving moves no host control; the
+            lanes select is the boundary — it exists only while some lane
+            (internal or a plugin's) is on offer, and hides without shifting
+            anything. Plugin selects use className="sbsel" for the same look
+            and join F6 roving focus (and ↑/↓ cycling with data-cycle). */}
+        <Slot store={host.slots} name="statusBar" onCommand={runPluginCommand} plugins={host.registry} />
+        {laneOptions.length > 0 && (
+          <select
+            value=""
+            data-lanes
+            title={`text lanes at the caret: ${laneOptions.map((o) => o.label).join(" · ")}`}
+            className="sbsel"
+            disabled={!session || !caret}
+            onChange={(e) => {
+              const id = e.target.value;
+              e.target.blur();
+              if (id) host.lanes.open(id); // leaves entry mode; a declared plugin lane wakes its plugin first
+            }}
+          >
+            <option value="">{laneState ? laneFace(laneState.spec) : "lanes"}</option>
+            {laneOptions.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        )}
         {/* Current context at the caret; picking a value applies the change
             there. Blur on change: a focused select swallows the keyboard. */}
         <select
           value=""
           title="staves (add below / remove the caret's)"
-          className="sbsel" style={STATUSBAR_SELECT}
+          className="sbsel"
           disabled={!session}
           onChange={(e) => {
             const op = e.target.value;
@@ -2980,7 +2991,7 @@ export default function App() {
         <select
           value=""
           title="voices (caret staff: switch, add, remove)"
-          className="sbsel" style={STATUSBAR_SELECT}
+          className="sbsel"
           disabled={!session || !caret}
           onChange={(e) => {
             const op = e.target.value;
@@ -3028,25 +3039,7 @@ export default function App() {
           <option value="add">{caret && caret.measureIndex > 0 ? `add a voice (from m${caret.measureIndex + 1})` : "add a voice"}</option>
           <option value="remove">{caret && caret.measureIndex > 0 ? `remove this voice (from m${caret.measureIndex + 1})` : "remove this voice"}</option>
         </select>
-        <select
-          value=""
-          title="harmony + lyrics lanes (chords above, numerals and lyrics below)"
-          className="sbsel" style={STATUSBAR_SELECT}
-          disabled={!session || !caret}
-          onChange={(e) => {
-            const id = e.target.value;
-            e.target.blur();
-            if (id) host.lanes.open(id); // leaves entry mode; a declared plugin lane wakes its plugin first
-          }}
-        >
-          <option value="">{laneState ? laneFace(laneState.spec) : "harmony"}</option>
-          {laneOptions.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <select value={shownClef} data-cycle title="clef at caret (staff-local)" className="sbsel" style={STATUSBAR_SELECT} disabled={!session} onChange={(e) => { if (!barNav.current) e.target.blur(); applyContext("clef", e.target.value); }}>
+        <select value={shownClef} data-cycle title="clef at caret (staff-local)" className="sbsel" disabled={!session} onChange={(e) => { if (!barNav.current) e.target.blur(); applyContext("clef", e.target.value); }}>
           {shownClef && !CLEFS[shownClef] && <option value={shownClef}>{shownClef}</option>}
           {!shownClef && <option value="">clef</option>}
           {Object.keys(CLEFS).map((k) => (
@@ -3055,7 +3048,7 @@ export default function App() {
             </option>
           ))}
         </select>
-        <select value={shownKeysig} data-cycle title="key signature at caret (score-wide)" className="sbsel" style={STATUSBAR_SELECT} disabled={!session} onChange={(e) => { if (!barNav.current) e.target.blur(); applyContext("key", e.target.value); }}>
+        <select value={shownKeysig} data-cycle title="key signature at caret (score-wide)" className="sbsel" disabled={!session} onChange={(e) => { if (!barNav.current) e.target.blur(); applyContext("key", e.target.value); }}>
           {!shownKeysig && <option value="">key</option>}
           {["7f", "6f", "5f", "4f", "3f", "2f", "1f", "0", "1s", "2s", "3s", "4s", "5s", "6s", "7s"].map((k) => (
             <option key={k} value={k}>
@@ -3063,14 +3056,13 @@ export default function App() {
             </option>
           ))}
         </select>
-        <select value={shownMeter} data-cycle title="meter at caret (score-wide; refuses if content no longer fits)" className="sbsel" style={STATUSBAR_SELECT} disabled={!session} onChange={(e) => { if (!barNav.current) e.target.blur(); applyContext("meter", e.target.value); }}>
+        <select value={shownMeter} data-cycle title="meter at caret (score-wide; refuses if content no longer fits)" className="sbsel" disabled={!session} onChange={(e) => { if (!barNav.current) e.target.blur(); applyContext("meter", e.target.value); }}>
           {shownMeter && !["4/4", "3/4", "2/4", "2/2", "3/2", "6/4", "6/8", "9/8", "12/8", "5/4", "7/8", "5/8", "3/8"].includes(shownMeter) && <option value={shownMeter}>{shownMeter}</option>}
           {!shownMeter && <option value="">meter</option>}
           {["4/4", "3/4", "2/4", "2/2", "3/2", "6/4", "6/8", "9/8", "12/8", "5/4", "7/8", "5/8", "3/8"].map((m) => (
             <option key={m}>{m}</option>
           ))}
         </select>
-        <Slot store={host.slots} name="statusBar" onCommand={runPluginCommand} plugins={host.registry} />
         <span style={{ position: "relative" }}>
           {zoomPanel && (
             <div data-zoom-panel style={{ position: "absolute", right: 0, bottom: 26, background: "#233040", color: "#dde", padding: "6px 8px", borderRadius: 4, whiteSpace: "nowrap", boxShadow: "0 2px 10px rgba(0,0,0,.4)", display: "flex", gap: 6, alignItems: "center" }}>
