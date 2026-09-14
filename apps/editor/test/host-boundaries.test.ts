@@ -33,7 +33,7 @@ const PLUGINS = join(REPO, "packages/plugins");
  * built a key-forging service in it.
  */
 // actions.ts: slice 4a (2026-09-14), the key dispatcher as a table — approved in the PLANNING.md brief.
-const HOST_MODULES = ["actions.ts", "index.ts", "keymapStore.ts", "messages.ts", "midi.ts", "midiSink.ts", "plugins.ts", "queries.ts", "registry.ts", "services.ts", "shell.ts", "slots.tsx", "store.ts"];
+const HOST_MODULES = ["actions.ts", "index.ts", "keymapStore.ts", "lanes.tsx", "messages.ts", "midi.ts", "midiSink.ts", "plugins.ts", "queries.ts", "registry.ts", "services.ts", "shell.ts", "slots.tsx", "store.ts"];
 
 const codeOnly = (source: string): string =>
   source

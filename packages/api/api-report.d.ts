@@ -1,4 +1,4 @@
-// @battuta/api 0.1.4 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
+// @battuta/api 0.1.5 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
 
 // ---- actions.d.ts
 /**
@@ -83,6 +83,7 @@ import type { ActivationEvent, PluginManifest, SlotName } from "./manifest.js";
 import type { CommandMessage } from "./messages.js";
 import type { MidiService } from "./midi.js";
 import type { ActionsService, KeymapEntry } from "./actions.js";
+import type { LanesService } from "./lanes.js";
 /** A value with change notification. `subscribe` fires on every change with the new value. */
 export interface Store<T> {
     get(): T;
@@ -161,6 +162,8 @@ export interface PluginContext {
     readonly panels: {
         open(panel: PanelSpec): Disposable;
     };
+    /** Text lanes at the caret: register the spec of a lane you declared; open it from your own key. */
+    readonly lanes: LanesService;
     /** Disposed on deactivate. Add every subscription here; the host disposes what it handed out itself. */
     readonly subscriptions: DisposableStore;
 }
@@ -243,6 +246,16 @@ export interface PitchEvent {
     pitches: Pitch[];
 }
 export type ViewMode = "tiles" | "pages";
+/**
+ * One verse-1 syllable, as MEI has it: `<syl wordpos con>` inside the
+ * note's `<verse n="1">`. `wordpos` i/m/t = word start/middle/end, absent
+ * for a whole word; `con: "d"` draws the hyphen to the next syllable.
+ */
+export interface SylValue {
+    text: string;
+    wordpos?: string;
+    con?: string;
+}
 /** Caret and selections, in model coordinates. */
 export interface EditorState {
     readonly caret: CaretPosition | null;
@@ -280,6 +293,8 @@ export interface DocumentQueries {
     pitchEventsIn(block: BlockSelection): PitchEvent[][];
     /** The measure × staff rectangle an event selection covers (the editor's own rule), or null when empty. */
     blockOf(eventIds: readonly string[]): BlockSelection | null;
+    /** The verse-1 syllable of a note or chord (a chord's sits on its first note), or null when it has none. */
+    lyricAt(eventId: string): SylValue | null;
 }
 
 // ---- index.d.ts
@@ -295,20 +310,128 @@ export interface DocumentQueries {
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export declare const API_VERSION = "0.1.4";
+export declare const API_VERSION = "0.1.5";
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";
 export type { Disposable } from "./disposable.js";
 export { toDisposable, DisposableStore } from "./disposable.js";
 export type { Version } from "./semver.js";
 export { parseVersion, satisfiesEngine } from "./semver.js";
-export type { CaretPosition, BlockSelection, Pitch, PitchEvent, ViewMode, EditorState, DocumentInfo, DocumentQueries } from "./document.js";
-export type { SetPitchesMessage, CommandMessage, CommandMessageType } from "./messages.js";
+export type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, ViewMode, EditorState, DocumentInfo, DocumentQueries } from "./document.js";
+export type { SetPitchesMessage, SetSylMessage, CommandMessage, CommandMessageType } from "./messages.js";
 export { COMMAND_MESSAGE_TYPES } from "./messages.js";
 export type { MidiPort, MidiNoteEvent, MidiVirtualInput, MidiOutputs, MidiService } from "./midi.js";
 export type { KeymapEntry, ActionsService } from "./actions.js";
+export type { LanePlace, LaneContribution, LaneCommit, LaneCommitResult, LaneSpec, LanesService } from "./lanes.js";
 export type { Store, SlotItem, PanelSide, PanelSpec, SettingsNamespace, StorageNamespace, CommandHandler, PluginContext, PluginModule, PluginEntry } from "./context.js";
 export { definePlugin, resolvePluginModule } from "./context.js";
+
+// ---- lanes.d.ts
+/**
+ * Lanes — a typed text lane at the caret. The host owns the MECHANISM
+ * (one buffer, one modal key protocol, the floating editor, the status-bar
+ * entry, the advance over the caret path); a lane contributes only what
+ * differs between lanes: what it attaches to, how the caret advances, which
+ * keys commit, which characters it admits, what "complete" and
+ * "suggestions" mean, how to read the current value and how to turn the
+ * buffer into ONE command message.
+ *
+ * Read off the two lanes the editor had before the point existed
+ * (harmony's chord symbols and Roman numerals, and lyrics), so each field
+ * exists because one of them needed it: `accepts` / `transform` /
+ * `complete` / `suggest` are harmony's closed grammar, `advance: "note"`
+ * and `-` among the advance keys are lyrics'. The host knows nothing about
+ * the TEXT of any lane — no grammar, no MEI shape.
+ *
+ * The protocol, for every open lane:
+ *   Escape        commit, then leave the lane
+ *   an advance key   commit, then move the caret on (`advance` says how far)
+ *   ← →           commit, then step one event
+ *   Backspace     delete the last character
+ *   Tab           take the first suggestion (only when the lane suggests)
+ *   a character   admitted when `accepts` says so (or always, when absent),
+ *                 mapped by `transform` first; never with ctrl/meta/alt
+ * A commit that returns null changes nothing and the key proceeds; one that
+ * returns `{ refuse }` shows the reason and the key stops there.
+ */
+import type { Disposable } from "./disposable.js";
+import type { CommandMessage } from "./messages.js";
+export type LanePlace = "above" | "below";
+/**
+ * A lane DECLARED in the manifest (`contributes.lanes`): the host lists it
+ * in the status bar before the plugin's code loads, and picking it fires
+ * `onLane:<id>` — the plugin then registers the spec and the lane opens.
+ * Lane ids are global, like command ids: `<pluginId>.<name>`.
+ */
+export interface LaneContribution {
+    id: string;
+    /** The status-bar option, e.g. "lyrics (verse 1, l)". */
+    label: string;
+    /** The short name shown while the lane is open and in its notices, e.g. "lyrics". */
+    name: string;
+    /** Prefix of the floating editor, e.g. "♪". */
+    glyph?: string;
+    /** Above or below the staff: where the floating editor sits. */
+    place: LanePlace;
+}
+/** What the host hands `commit`: everything a lane may need to build its message. */
+export interface LaneCommit {
+    /** The event under the caret. */
+    eventId: string;
+    buffer: string;
+    /** The key that committed: "Escape", an advance key, "ArrowLeft" / "ArrowRight". */
+    key: string;
+    /**
+     * The previous event of the lane's kind along the caret path (a NOTE
+     * for `advance: "note"`, any event otherwise), or null at the start.
+     * Lyrics read the previous syllable's continuation off it.
+     */
+    prevEventId: string | null;
+}
+/** Nothing to write (null), a message to execute, or a refusal the host shows as a notice. */
+export type LaneCommitResult = CommandMessage | null | {
+    refuse: string;
+};
+export interface LaneSpec extends LaneContribution {
+    /**
+     * What the lane's value hangs on. A commit on anything else is refused
+     * with a notice — except an EMPTY buffer, which the caret may carry past
+     * a rest without complaint.
+     */
+    attachesTo: "note" | "event";
+    /** Where an advance key moves the caret: the next event, or the next NOTE with rests skipped. */
+    advance: "event" | "note";
+    /** Keys that commit and advance, e.g. ["Enter"] or [" ", "Enter", "-"]. */
+    advanceOn: readonly string[];
+    /** The notice shown when the lane opens (how to use it). */
+    hint?: string;
+    /** Which single characters may extend the buffer. Absent: any printable character. */
+    accepts?(ch: string): boolean;
+    /** Map a typed character before it is admitted (e.g. "o" → "°"). */
+    transform?(ch: string): string;
+    /** Is the buffer a complete value? Drives the editor's valid/invalid colour; absent: always complete. */
+    complete?(buffer: string): boolean;
+    /** Completions for the buffer, shown beside it; Tab takes the first. */
+    suggest?(buffer: string): readonly string[];
+    /** The current value at an event, as the buffer should show it ("" when none). */
+    read(eventId: string): string;
+    commit(c: LaneCommit): LaneCommitResult;
+}
+export interface LanesService {
+    /**
+     * Register the spec for a lane this plugin DECLARED in its manifest.
+     * Disposed with the plugin (or by hand): the declared face returns to the
+     * status bar and the lane, if open, closes.
+     */
+    register(spec: LaneSpec): Disposable;
+    /**
+     * Open a lane by id at the caret — for a plugin's own key. False when the
+     * lane is unknown or there is no caret. Opening leaves entry mode, as the
+     * status-bar select does; a key that must NOT do that in entry mode
+     * declines on `ctx.editor.get().entryMode` first.
+     */
+    open(id: string): boolean;
+}
 
 // ---- manifest.d.ts
 /**
@@ -318,6 +441,7 @@ export { definePlugin, resolvePluginModule } from "./context.js";
  * when one of the activation events fires. A disabled or never-triggered
  * plugin therefore costs exactly one manifest object.
  */
+import type { LaneContribution } from "./lanes.js";
 /** Events the host fires; a plugin's code loads on the first one it declares. */
 export type ActivationEvent = "onStartup" | `onCommand:${string}` | `onLane:${string}` | `onFormat:${string}` | `onDocument:${string}` | `onView:${string}` | "onPlay" | `onPointer:${string}`
 /**
@@ -407,6 +531,8 @@ export interface PluginContributions {
     commands?: CommandContribution[];
     keybindings?: KeybindingContribution[];
     slotItems?: SlotItemContribution[];
+    /** Text lanes at the caret, listed in the status bar before the plugin loads; see lanes.ts. */
+    lanes?: LaneContribution[];
 }
 export interface PluginManifest {
     /** Dotted lowercase id, e.g. `battuta.reflection`. Unique across the registry. */
@@ -442,7 +568,7 @@ export declare function validateManifest(input: unknown): string[];
  * reflection cycle, setSyl for lyrics, setHarm for harmony); a plugin
  * that thinks it needs a NEW command is asking for a core change first.
  */
-import type { PitchEvent } from "./document.js";
+import type { PitchEvent, SylValue } from "./document.js";
 /** Write pitch content onto events (notes in child order for chords). Byte-identical revert. */
 export interface SetPitchesMessage {
     type: "core.setPitches";
@@ -450,7 +576,17 @@ export interface SetPitchesMessage {
     /** Undo-stack label, shown nowhere yet but recorded. */
     label: string;
 }
-export type CommandMessage = SetPitchesMessage;
+/**
+ * Set (or, with empty text, clear) the verse-1 syllable of a note or
+ * chord. Refused on a rest. One undo step; byte-identical revert. The
+ * command labels itself (`lyric "hel"`, `lyric removed`).
+ */
+export interface SetSylMessage {
+    type: "core.setSyl";
+    eventId: string;
+    value: SylValue;
+}
+export type CommandMessage = SetPitchesMessage | SetSylMessage;
 export type CommandMessageType = CommandMessage["type"];
 export declare const COMMAND_MESSAGE_TYPES: readonly CommandMessageType[];
 

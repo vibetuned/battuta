@@ -146,8 +146,11 @@ needs it before the on-screen keyboard, and a host-service extraction
 should be judged on its own), and the two lanes become two slices
 (lyrics defines the point, harmony confirms it and deletes the old
 path). The keyboard slice split again after its first attempt (below):
-a host slice, *core actions by id*, precedes the plugin. Every slice
-carries the same six blocks plus two added on 2026-09-14:
+a host slice, *core actions by id*, precedes the plugin — and from
+slice 5 on that is the pattern: the host half of a plugin slice (the
+point, the message, the query) is an in-house *a* slice that lands
+first, the plugin is the *b* slice with *API may grow: none*. Every
+slice carries the same six blocks plus two added on 2026-09-14:
 
 - **API may grow.** The exact api exports the slice may add — and, for
   a host slice, the host modules. Anything not listed is not the
@@ -162,10 +165,11 @@ carries the same six blocks plus two added on 2026-09-14:
   compliant action.
 
 **Who does which slice.** Host slices — the skeleton (1), the MIDI
-service (3), core actions by id (4a), and any future host module — are
-done in-house, with the user. Plugin slices (2, 4b, 5–10) are handed to
-context-free sessions on purpose, to test the briefs; a plugin slice
-never adds a host module or a host service.
+service (3), core actions by id (4a), the `lanes` point (5a), and the
+host halves built before 6–10 — are done in-house, with the user.
+Plugin slices (2, 4b, 5b, 6–10) are handed to context-free sessions on
+purpose, to test the briefs; a plugin slice never adds a host module or
+a host service.
 
 **Progress.** Slice 1 closed 2026-09-12, **slice 2 closed 2026-09-14**,
 **slice 3 closed 2026-09-14** (their bullets in CHANGELOG.md under
@@ -203,7 +207,20 @@ unchanged, `App.tsx` 3,248 → 3,227, the initial chunk 601.4 → 593.0 kB.
 **A slice that stops with a precise gap and a slice that closes are the
 same slice, one day apart; a slice that invents its way past the gap is a
 rollback.**
-**Slice 5, the lyrics lane, is next.**
+**Slice 5 was split on 2026-09-14 into 5a and 5b**, the 4a/4b pattern:
+5a (in-house) lifts the harm-lane mechanism into the host as the `lanes`
+point with both lanes running on it as internal specs, and builds the
+host halves 5b needs (`contributes.lanes`, `onLane:` firing,
+`ctx.lanes.register` / `open`, the `core.setSyl` message,
+`ctx.query.lyricAt`), after writing the lyrics e2e the plan said was
+missing; 5b (a context-free agent) moves the lyrics body into
+`packages/plugins/lyrics` with *API may grow: none*. Slice 6 follows the
+same pattern, its two halves built in-house before it runs. **Slice 5a
+closed 2026-09-14** (in-house): `host/lanes.tsx` is the point, both lanes
+run on it as internal specs, `contributes.lanes` + `onLane:` + `ctx.lanes`
++ `core.setSyl` + `lyricAt` are on the api at 0.1.5, and
+`verify-lyrics.mjs` (26 checks) gates the lyrics lane — written first,
+it caught a hyphen-stripping bug in 0.0.3. **5b is next.**
 
 From here on slices are
 handed to sessions without the surrounding context, on purpose, to test
@@ -460,43 +477,195 @@ the CHANGELOG bullet.
 turning the plugin off removes the panel and the 🎹 live; touch entry is
 byte-identical to 0.0.3.
 
-#### Slice 5 — Lyrics lane (≈3 days)
+#### Slice 5a — The `lanes` point (host, in-house; ≈2 days)
 
-**Delivers.** The `lanes` point in the host — a typed text lane at the
-caret with a grammar, suggestions, a commit → command step and an
-advance rule, generalised from the harm-lane mechanism — and
-`packages/plugins/lyrics` as its first consumer (`l`, `SetSylCommand`,
-space/enter advance, hyphenation). The harmony lane keeps running on
-the old internal path for one more slice.
+**Delivers.** The harm-lane mechanism becomes a host module, `lanes.ts`
+(added to `HOST_MODULES`), with both existing lanes running on it as
+INTERNAL specs and their bodies still in `App.tsx` — the 4a move,
+applied to lanes. What the mechanism is, read off the two modals: a
+buffer at the caret, (re)loaded from the document when the caret or the
+version moves; one modal step that owns the keyboard while a lane is
+open — Escape commits and leaves, the lane's *advance keys* commit and
+move the caret on (to the next event, or to the next NOTE with rests
+skipped), arrows commit and step, Backspace edits, Tab takes the first
+suggestion when the lane suggests, a printable character is admitted by
+the lane's charset and mapped by its transform (`o` → `°` in numerals) —
+and a commit that turns the buffer into ONE command, refusing with a
+notice when the lane says the text is incomplete or the caret is not on
+what the lane attaches to. A `LaneSpec` is exactly those fields: `id`,
+`label`, `place: "above" | "below"`, `attachesTo: "note" | "event"`,
+`advance: "event" | "note"`, `advanceOn: string[]`, optional
+`accepts(ch)`, `transform(ch)`, `complete(buffer)`, `suggest(buffer)`,
+and `read(eventId)` / `commit({ eventId, buffer, key, prevEventId })` —
+the last returning a `CommandMessage` (or null for "nothing changed") and
+throwing a string to refuse. The floating editor (`data-harm-input`,
+`data-valid`, the ♪ / ♩ / RN prefix, the suggestions) becomes a host
+component fed from the lane store; the status-bar select lists the
+internal lanes and every lane DECLARED in a manifest (`contributes.lanes:
+[{ id, label, place }]`) — the slot-item lesson applied: the entry point
+renders before the plugin's code loads, and picking a declared lane
+whose plugin is not active fires `onLane:<id>` (the prefix has existed
+since slice 1, unfired), waits for the plugin to register the spec, then
+opens it. `ctx.lanes.register(spec)` (the id must be declared, as
+`registerCommand` demands a declared command) and `ctx.lanes.open(id)`
+(for a plugin's own key) are the door. In-house too, the host halves 5b
+will need and could not add: the `core.setSyl` message (`{ eventId,
+value: SylValue, label }` → `SetSylCommand`) and
+`ctx.query.lyricAt(eventId)`. Slice 6's halves (`core.setHarm`,
+`harmAt`) wait for slice 6.
 
-**Proves.** `lanes` by extraction: the point is shaped by what lyrics
-actually needs, nothing more.
+Before any of it: a lyrics e2e, `spikes/verify-lyrics.mjs`, written
+against the App as it is — `l` at a note opens the lane below the
+staff; "hel" then `-` writes `<syl wordpos="i" con="d">` and advances to
+the next NOTE over a rest; "lo" then space writes `wordpos="t"`; a whole
+word writes neither; an empty commit on a rest is allowed and on a note
+clears; Escape commits and leaves; the buffer reloads when the caret
+returns to a note that has a syllable; undo unwinds every step and the
+MEI is byte-identical; save and re-parse. Green first, then the
+extraction keeps it green.
 
-**Leaves `App.tsx`.** The lyrics branch of the lane code and the `l`
-binding.
+**Proves.** `lanes` by extraction with two consumers already on it, so
+5b and 6 find the shape and move bodies — and that a text lane needs
+the host to know nothing about the text: no grammar, no MEI shape, no
+`HarmKind` in `lanes.ts`.
 
-**Gates.** `packages/core/test/lyrics.test.ts`. No committed e2e types
-lyrics today: the slice adds one first (open the lane, two syllables
-and a hyphen, save, re-parse).
+**Leaves `App.tsx`.** The two modals' key protocol, the `harmLane` /
+`harmBuffer` state with its ref and its reload effect, the floating
+editor, the select's option list. Stays for now: `commitSyl`'s value
+logic and the harmony grammar calls, as the two internal specs.
 
-**Documents.** The plugin's two documents; the guide's harmony page
-(lyrics section) unchanged; the CHANGELOG bullet, noting what the point
-had to grow beyond the lyrics case.
+**API may grow.** `LaneContribution` (`contributes.lanes`, validated:
+ids unique across plugins, `place` one of two), `LaneSpec` and
+`LaneCommit`, `ctx.lanes: { register, open }`, `onLane:<id>` fired;
+`SetSylMessage` + `SylValue`; `DocumentQueries.lyricAt`; host module
+`lanes.ts`. Consumers named: every one is 5b's, except the `chord` /
+`rna` internal specs, which are slice 6's rehearsal. Nothing else: no
+`ctx.lanes.active` store (no consumer), no navigation query (the host
+hands `commit` the previous event of the lane's kind), no `when`
+evaluation for plugin bindings (a handler declines on `ctx.editor`
+state — the slice-2 convention). api 0.1.4 → 0.1.5.
 
-**Done when.** Typing lyrics behaves byte-identically to 0.0.3 through
-the new point.
+**Stop when.** A lane needs the host to know what KIND of text it holds
+— a grammar, a validator or an MEI shape in `lanes.ts` is the harmony
+lane not leaving. (A spec field only one lane uses is expected and is
+not this: `accepts` / `transform` / `suggest` are harmony's, `advance:
+"note"` and `-` are lyrics'.)
+
+**Gates.** `verify-lyrics.mjs` green before and after, assertions
+unchanged; `verify-phase5.mjs` §7i unchanged (`data-harm-input`,
+`data-valid` and the select's option values `chord` / `rna` / `lyrics`
+keep their names — they are the internal ids); every other e2e script;
+host tests for `lanes.ts` on a fake adapter (register demands a
+declaration; every key of the protocol; advance over a rest for
+`"note"`; a refusal is a notice and no command; `onLane:` fires for a
+declared lane and the lane opens once registered; a declared lane
+leaves the select when its plugin is off); the union keymap snapshot
+byte-identical (no binding moves); the boundary tests with `lanes.ts`
+allowed; the budget.
+
+**Documents.** CHANGELOG bullet with the point's final field list and
+why each field exists; DESIGN.md note; the conventions' data-contract
+rows (`contributes.lanes`, `ctx.lanes.register` / `open`, `core.setSyl`,
+`ctx.query.lyricAt`, `onLane:`); the api doc comments.
+
+**Done when.** Both lanes run through `host.lanes` with their bodies in
+`App.tsx`, every harmony and lyrics check green, `App.tsx` down by the
+mechanism.
+
+**Closed 2026-09-14.** Both hold; all six e2e scripts green, the keymap
+snapshot unchanged, `App.tsx` 3,227 → 3,145, api 0.1.5. *As built,
+beyond the brief:* the spec carries `name`, `glyph` and `hint` (the UI
+strings the two lanes kept in three places), `commit` returns `{ refuse }`
+rather than throwing, and the internal lyrics spec already commits
+through `core.setSyl`. The lyrics e2e found and the slice fixed one 0.0.3
+bug (Escape over a hyphenated syllable dropped its hyphen). The CHANGELOG
+bullet has the field-by-field account.
+
+#### Slice 5b — Lyrics lane (plugin; ≈2 days)
+
+**Delivers.** `packages/plugins/lyrics`: a manifest declaring one lane
+(`{ id: "battuta.lyrics.verse1", label: "lyrics (verse 1, l)", name:
+"lyrics", glyph: "♪", place: "below" }`), one command
+(`battuta.lyrics.open`) and its keybinding (`l`, group `entry`, the
+existing label), activating on `onLane:battuta.lyrics.verse1` and
+`onCommand:battuta.lyrics.open`; `activate` registers the spec —
+`attachesTo: "note"`, `advance: "note"`, `advanceOn: [" ", "Enter",
+"-"]`, `read` = `ctx.query.lyricAt(eventId)?.text ?? ""`, `commit` =
+today's `commitSyl` as a pure function: unchanged text and hyphen state
+→ null; `-` → `con: "d"` with `wordpos` `m` when the previous note's
+syllable continues (`lyricAt(prevEventId)?.con === "d"`), else `i`; a
+plain commit after a continuing syllable → `wordpos: "t"`; otherwise a
+whole word; `""` clears — returned as `{ type: "core.setSyl", eventId,
+value }` (the command labels itself); unchanged text keeps its
+hyphenation (5a's fix — `hyphen = key === "-" ? true : textChanged ?
+false : wasHyphen`). The command handler is `ctx.lanes.open(…)`, declining
+when `ctx.editor.get().entryMode` (in 0.0.3 `l` does nothing in entry
+mode; the select still opens the lane from entry mode because the HOST
+leaves entry mode first — do not copy that into the key). The internal
+lyrics spec and `commitSyl` leave `App.tsx`; the `lyrics` entry leaves
+`keymap.ts` as `reflect` did in slice 2.
+
+**Proves.** The point holds for a plugin with no access to the model:
+the wordpos/con table — the only logic lyrics has — is computed from two
+`lyricAt` answers and the key that committed.
+
+**Leaves `App.tsx`.** The lyrics spec, `commitSyl`, the `lyrics` rule
+and its notice text; the `lyrics` binding from `keymap.ts`.
+
+**API may grow.** **None.** Everything is in 5a.
+
+**Stop when.** The lane needs anything beyond `ctx.lanes.register` /
+`open`, `core.setSyl`, `ctx.query.lyricAt`, `ctx.editor`, `ctx.notice`,
+the declared lane and the keybinding. Write the gap in BUILDING.md §7
+and the CHANGELOG; do not resolve it. (5a's spec fields exist because
+two lanes ran on them; a third state of a field is a gap, not a tweak.)
+
+**Gates.** `verify-lyrics.mjs` with only its design-dependent hooks
+changed (the select option's value, if the lane id replaces `lyrics`) —
+every assertion identical; `verify-phase5.mjs` unchanged; the union
+keymap snapshot changes by exactly one entry — `lyrics` (core) leaves,
+`battuta.lyrics.open` (plugin, `l`) arrives: regenerate with `npm run
+keymap:snapshot -w @battuta/editor` and put the diff in the CHANGELOG
+bullet; the boundary tests; the plugin's suite (the wordpos/con table as
+pure tests over `lyricAt` fakes, the refusal on a rest, `l` declining in
+entry mode); `packages/core/test/lyrics.test.ts` unchanged.
+
+**Documents.** The plugin's two documents (BUILDING.md §7 starts from
+`onscreen-keyboard/BUILDING.md` §7's traps); the guide's harmony page:
+lyrics section unchanged in content, `<KeymapTable ids={["lyrics"]} />`
+following the binding to its new id — the reflection plugin's
+BUILDING.md §7 records the generated reference silently losing a moved
+binding; the plugins-page row; the CHANGELOG bullet.
+
+**Done when.** Typing lyrics is byte-identical to 0.0.3 through the
+point; turning the plugin off removes the `l` key, the select's option
+and the lane together; `App.tsx` has no lyrics code.
 
 #### Slice 6 — Harmony lane (≈2 days)
 
-**Delivers.** `packages/plugins/harmony` on the same `lanes` point
-(chord symbols and Roman numerals, `SetHarmCommand`,
-`harmSuggestions`); the old lane mechanism deleted from `App.tsx`.
+**Delivers.** `packages/plugins/harmony` on 5a's `lanes` point: two
+declared lanes (chord symbols above, Roman numerals below), the closed
+grammars, charsets and suggestions moved from core's `harm.ts` into the
+plugin as the specs' `accepts` / `transform` / `complete` / `suggest`,
+`SetHarmCommand` reached as the `core.setHarm` message; the two internal
+harmony specs and the last of the lane code deleted from `App.tsx`.
 
-**Proves.** The rule of three, near enough: a second consumer confirms
-the point's shape. Whatever harmony needed that lyrics did not is the
-point's last change before it is frozen for the phase.
+**Proves.** The rule of three, near enough: a third consumer confirms
+the point's shape. Whatever harmony needs that the internal spec did not
+is the point's last change before it is frozen for the phase.
 
-**Leaves `App.tsx`.** The whole harm-lane mechanism.
+**Leaves `App.tsx`.** The two internal harmony specs — the last lane
+code.
+
+**API may grow.** The `core.setHarm` message and
+`ctx.query.harmAt(eventId, kind)`, built in-house BEFORE the slice as 5a
+did for lyrics, so the plugin's own is **None**. The spec fields harmony
+uses are already in the point: 5a ran the internal `chord` / `rna` specs
+on it.
+
+**Stop when.** The harmony lane needs a spec field or a query the
+internal spec did not — 5a's rehearsal missed it. Write the gap; do not
+resolve it.
 
 **Gates.** `packages/core/test/harm.test.ts`; the harmony checks in
 `verify-phase5.mjs`.

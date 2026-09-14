@@ -9,7 +9,7 @@
  * built-in plugins unless the URL says ?plugins=off); `createHost` is
  * exported for tests, which pass memory-backed settings and storage.
  */
-import { API_VERSION, DisposableStore, type ActionsService, type ActivationEvent, type BlockSelection, type CommandMessage, type DocumentInfo, type DocumentQueries, type EditorState, type HostCapability, type KeymapEntry, type PitchEvent, type PluginContext, type PluginEntry, type PluginManifest, type Store } from "@battuta/api";
+import { API_VERSION, DisposableStore, type ActionsService, type ActivationEvent, type BlockSelection, type CommandMessage, type DocumentInfo, type DocumentQueries, type EditorState, type HostCapability, type KeymapEntry, type PitchEvent, type PluginContext, type PluginEntry, type PluginManifest, type Store, type SylValue } from "@battuta/api";
 import type { Command } from "@battuta/core";
 import { toCommand } from "./messages";
 import { keyMatches, type Layout } from "../keymap";
@@ -24,6 +24,7 @@ import { ActionTable } from "./actions";
 import { isPluginEnabled, memorySettings, pluginSettings, pluginStorage, setPluginEnabled, webSettings, webStorage, type Notice, type SettingsIO, type StorageLike } from "./services";
 import { BUILTIN_PLUGINS } from "./plugins";
 import { HostMidiService, detectMidiBackend } from "./midi";
+import { LaneStore } from "./lanes";
 
 /** Capabilities this host offers. `midi` since slice 3; `workspace` and `playback` are still to be lifted. */
 export const OFFERED_CAPABILITIES: readonly HostCapability[] = ["midi"];
@@ -40,6 +41,7 @@ export interface SessionAdapter {
   execute(command: Command): void;
   pitchEventsIn(block: BlockSelection): PitchEvent[][];
   blockOf(eventIds: readonly string[]): BlockSelection | null;
+  lyricAt(eventId: string): SylValue | null;
 }
 
 export interface Host {
@@ -53,6 +55,8 @@ export interface Host {
   readonly actions: ActionTable;
   readonly slots: SlotStore;
   readonly panels: PanelStore;
+  /** Text lanes at the caret: the App binds its adapter and registers its internal lanes; plugins declare and register theirs. */
+  readonly lanes: LaneStore;
   readonly registry: PluginRegistry;
   readonly commands: CommandTable;
   readonly notices: Store<Notice | null>;
@@ -134,6 +138,8 @@ export function createHost(options: HostOptions = {}): Host {
   const midi = options.midi ?? new HostMidiService(detectMidiBackend());
   let seq = 0;
   const notice = (text: string) => notices.set({ text, seq: ++seq });
+  /** An empty text clears the notice (the App maps "" to none). */
+  const noticeOrClear = (text: string | null) => notices.set({ text: text ?? "", seq: ++seq });
   const document = createStore<DocumentInfo | null>(null);
   const editor = createStore<EditorState>(IDLE_EDITOR);
   let adapter: SessionAdapter | null = null;
@@ -144,7 +150,14 @@ export function createHost(options: HostOptions = {}): Host {
   const query: DocumentQueries = {
     pitchEventsIn: (block) => adapter?.pitchEventsIn(block) ?? [],
     blockOf: (ids) => adapter?.blockOf(ids) ?? null,
+    lyricAt: (id) => adapter?.lyricAt(id) ?? null,
   };
+  const lanes = new LaneStore({
+    execute,
+    notice: noticeOrClear,
+    activate: (laneId, pluginId) => registryRef?.activate(pluginId, `onLane:${laneId}`) ?? Promise.resolve(false),
+  });
+  lanes.watch(editor, document);
 
   const createContext = (manifest: PluginManifest, subscriptions: DisposableStore, activatedBy: ActivationEvent | null): PluginContext => ({
     manifest,
@@ -164,6 +177,13 @@ export function createHost(options: HostOptions = {}): Host {
     actions: actionsService,
     slots: { add: (slot, item) => subscriptions.add(slots.add(slot, item, manifest.id)) },
     panels: { open: (panel) => subscriptions.add(panels.open(panel)) },
+    lanes: {
+      register: (spec) => {
+        if (!manifest.contributes?.lanes?.some((l) => l.id === spec.id)) throw new Error(`plugin ${manifest.id} did not declare lane ${spec.id} in its manifest`);
+        return subscriptions.add(lanes.register(spec, manifest.id));
+      },
+      open: (id) => lanes.open(id),
+    },
     subscriptions,
   });
 
@@ -176,6 +196,11 @@ export function createHost(options: HostOptions = {}): Host {
     declareSlotItems: (pluginId, items) => {
       const store = new DisposableStore();
       for (const item of items) store.add(slots.declare({ ...item, pluginId }));
+      return store;
+    },
+    declareLanes: (pluginId, contributed) => {
+      const store = new DisposableStore();
+      for (const lane of contributed) store.add(lanes.declare({ ...lane, pluginId }));
       return store;
     },
     commands,
@@ -218,6 +243,7 @@ export function createHost(options: HostOptions = {}): Host {
     actions,
     slots,
     panels,
+    lanes,
     registry,
     commands,
     notices,
@@ -264,6 +290,8 @@ export { memorySettings };
 export type { PluginInfo, PluginState } from "./registry";
 export { useStore } from "./store";
 export { Slot, Panels } from "./slots";
+export { LaneStore, LaneInput, laneFace } from "./lanes";
+export type { LaneAdapter, LaneState, LaneOption, DeclaredLane } from "./lanes";
 export { blockOfEvents } from "./queries";
 export { toCommand } from "./messages";
 export { HostMidiService, webMidiBackend, shellMidiBackend, noMidiBackend, detectMidiBackend, parseNoteMessage } from "./midi";

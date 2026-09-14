@@ -151,6 +151,11 @@ The api is a data contract. Nothing in it is a live object of the model.
 | an entry point the user can click BEFORE your code loads (a 🎹 that opens your panel) | `contributes.slotItems: [{ id, slot, label, title?, command, order?, dimUntilActive? }]` in the manifest | the host renders a button; the click runs your command and activates you. `dimUntilActive` draws that face de-emphasised until you are running — for a button that OPENS something, "not active" means "not showing"; leave it unset for one that just runs a command |
 | a slot item that needs live state — or the declared entry point once you are active | `ctx.slots.add(slot, { id, order?, render })` at runtime; the same `id` as a declared item REPLACES its face while the item lives | `Disposable` — dispose (or deactivate) and the declared face is back |
 | a panel | `ctx.panels.open({ id, side: "bottom" \| "side", title, render })` | `Disposable` |
+| a text lane at the caret, listed in the status bar BEFORE your code loads | `contributes.lanes: [{ id, label, name, glyph?, place }]` in the manifest; activate on `onLane:<id>` | picking it wakes you; register the spec in `activate` |
+| the lane's behaviour | `ctx.lanes.register(spec)` — `LaneSpec`: `attachesTo`, `advance`, `advanceOn`, optional `accepts` / `transform` / `complete` / `suggest` / `hint`, `read(eventId)`, `commit({ eventId, buffer, key, prevEventId })` → a message, null (unchanged) or `{ refuse }` | `Disposable`; the host owns the buffer, the keys, the editor box and the advance — you never see a key event |
+| open your lane from your own key | `ctx.lanes.open(id)` | true when it opened; leaves entry mode like the select does — decline on `ctx.editor.get().entryMode` first if your key must not |
+| the verse-1 syllable of a note | `ctx.query.lyricAt(eventId)` | `SylValue` (`text`, `wordpos?`, `con?`) or null |
+| **write** a syllable (empty text clears) | `ctx.execute({ type: "core.setSyl", eventId, value })` | one undo step; refused on a rest |
 
 Three things to know, each learned the hard way:
 
@@ -283,6 +288,7 @@ for s in app phase2 phase3 phase4 phase5; do
   BATTUTA_ROOT=$PWD CHROME=bundled SCRATCH=/tmp/battuta-e2e node spikes/verify-$s.mjs || echo "FAILED: $s"
 done
 BATTUTA_ROOT=$PWD CHROME=bundled SCRATCH=/tmp/battuta-e2e node spikes/verify-onscreen-keyboard.mjs   # the panel, by tapping (24)
+BATTUTA_ROOT=$PWD CHROME=bundled SCRATCH=/tmp/battuta-e2e node spikes/verify-lyrics.mjs              # the lyrics lane, by typing (26)
 sh spikes/verify-tauri.sh                     # the shell smoke; needs a display and Rust
 ```
 

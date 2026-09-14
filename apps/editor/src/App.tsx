@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent a
 import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, isHarmText, harmSuggestions, HARM_CHARS, type HarmKind, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
 import { RenderPool, type TileResult } from "./render/renderPool";
 import { keyMatches, type Keymap, type Layout } from "./keymap";
-import { host, useStore, Slot, Panels, confirmDialog, tauriInvoke, blockOfEvents, rule, gate, modal, isMod, type ActionStep, type KeyEvent, type Outcome } from "./host";
+import { host, useStore, Slot, Panels, LaneInput, laneFace, confirmDialog, tauriInvoke, blockOfEvents, rule, gate, modal, isMod, type ActionStep, type KeyEvent, type Outcome } from "./host";
 import { ShortcutEditor } from "./ShortcutEditor";
 import { loadSettings, saveSettings, detectLayout } from "./settings";
 import { scorePlayer, type PlayerState } from "./player";
@@ -14,7 +14,7 @@ import { converter } from "./converter";
 import notoMusicUrl from "./assets/fonts/NotoMusic-Regular.woff2?url";
 import { detectImport, IMPORT_FORMATS, EXPORT_FORMATS, OPEN_EXTENSIONS, type ExportFormat } from "./formats";
 import { playbackToMidi } from "./midiExport";
-import type { MidiOutputs } from "@battuta/api";
+import type { LaneSpec, MidiOutputs, SylValue } from "@battuta/api";
 import { saveStoredSession, loadStoredSession, clearStoredSession, type StoredSession } from "./sessionStore";
 
 /** savedMarks sentinel for restored-dirty docs: never equals an editMark,
@@ -532,18 +532,9 @@ export default function App() {
   const [titleOpen, setTitleOpen] = useState<string | null>(null);
   /** Tempo editor buffer — same open/closed convention as the title. */
   const [tempoOpen, setTempoOpen] = useState<string | null>(null);
-  /** Harmony lane: typed chord symbols / roman numerals at the caret. */
-  const [harmLane, setHarmLane] = useState<HarmKind | "lyrics" | null>(null);
-  // The buffer state renders the floating editor; the REF is what the key
-  // handler reads and writes. The window listener re-attaches only after
-  // effects re-run, so a closure read races fast key sequences (Tab then
-  // Enter committed the PRE-completion buffer); the ref cannot go stale.
-  const [harmBuffer, _setHarmBuffer] = useState("");
-  const harmBufRef = useRef("");
-  const setHarmBuffer = useCallback((v: string | ((prev: string) => string)) => {
-    harmBufRef.current = typeof v === "function" ? v(harmBufRef.current) : v;
-    _setHarmBuffer(harmBufRef.current);
-  }, []);
+  /** The open text lane (harmony, lyrics) is the host's (host/lanes.tsx); the App renders its face and its floating editor. */
+  const laneState = useStore(host.lanes.state);
+  const laneOptions = useStore(host.lanes.options);
 
   /** Keyboard navigation of the context bar (F6): while true, a select's
    * onChange must NOT blur — the roving focus stays in the bar. */
@@ -1120,14 +1111,6 @@ export default function App() {
     [session, block, caret, afterCommand, blockFromSelection],
   );
 
-  // A harmony lane edits the harm at the caret: (re)load its text whenever
-  // the caret moves (click, arrows, commit-advance).
-  useEffect(() => {
-    if (!harmLane || !session || !caretId) return;
-    setHarmBuffer(harmLane === "lyrics" ? (session.sylAt(caretId)?.text ?? "") : session.harmAt(caretId, harmLane));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [harmLane, caretId, session, version]);
-
   /** Chord accidentals are per-note (an all-notes sharp is rarely meant):
    * for a chord target, open a picker near the glyph instead of applying. */
   const openAccidPicker = useCallback(
@@ -1359,7 +1342,7 @@ export default function App() {
   // step, the same afterCommand as every core edit. Their notices land in
   // the same toast.
   useEffect(() => {
-    const d = host.notices.subscribe((n) => n && setNotice(n.text));
+    const d = host.notices.subscribe((n) => n && setNotice(n.text || null)); // "" = clear (a lane's successful commit)
     return () => d.dispose();
   }, []);
   useEffect(() => {
@@ -1385,8 +1368,88 @@ export default function App() {
       },
       pitchEventsIn: (block) => session.blockPitchEvents(block),
       blockOf: (ids) => blockOfEvents(session.index, ids),
+      lyricAt: (id) => session.sylAt(id),
     });
-    return () => host.bindSession(null);
+    // The lanes' view of this document: the caret path and what sits on it.
+    host.lanes.bind({
+      caret: () => caretRef.current,
+      eventAt: (pos) => {
+        const id = session.index.eventIdAt(pos);
+        if (!id) return null;
+        const tag = session.index.byId.get(id)?.tag;
+        return { id, kind: tag === "note" || tag === "chord" ? "note" : tag === "rest" ? "rest" : "other" };
+      },
+      step: (pos, dir) => (dir === 1 ? caretRight(session.index, session.score, pos) : caretLeft(session.index, session.score, pos)),
+      setCaret: (pos) => {
+        lastEntered.current = null;
+        setCaret(pos);
+      },
+      leaveEntryMode: () => setEntryMode(false),
+    });
+    // The editor's own lanes, as INTERNAL specs on the host's point, until
+    // slices 5b and 6 move their bodies into plugins. Harmony still writes
+    // through the session (its message is slice 6's); lyrics already
+    // commits as the `core.setSyl` message the plugin will send.
+    const refuse = (what: string, err: unknown) => ({ refuse: `${what} refused: ${err instanceof Error ? err.message : String(err)}` });
+    const harmony = (kind: HarmKind, face: Pick<LaneSpec, "id" | "label" | "name" | "glyph">): LaneSpec => ({
+      ...face,
+      place: kind === "rna" ? "below" : "above",
+      attachesTo: "event",
+      advance: "event",
+      advanceOn: ["Enter"],
+      hint: `${kind === "rna" ? "roman numerals" : "chord symbols"}: type at the caret · enter commits + advances · tab completes · esc leaves`,
+      accepts: (ch) => HARM_CHARS[kind].test(ch),
+      ...(kind === "rna" ? { transform: (ch: string) => (ch === "o" ? "°" : ch === "0" ? "ø" : ch) } : {}),
+      complete: (b) => isHarmText(kind, b),
+      suggest: (b) => harmSuggestions(kind, b),
+      read: (id) => session.harmAt(id, kind),
+      commit: ({ eventId, buffer }) => {
+        if (buffer === session.harmAt(eventId, kind)) return null; // nothing to do
+        try {
+          session.setHarm(eventId, buffer, kind);
+          afterCommand(session);
+          return null;
+        } catch (err) {
+          return refuse("harmony", err);
+        }
+      },
+    });
+    const lyrics: LaneSpec = {
+      id: "lyrics",
+      label: "lyrics (verse 1, l)",
+      name: "lyrics",
+      glyph: "♪",
+      place: "below",
+      attachesTo: "note",
+      advance: "note",
+      advanceOn: [" ", "Enter", "-"],
+      hint: "lyrics: type at the caret · space/enter advances · - hyphenates · esc leaves",
+      read: (id) => session.sylAt(id)?.text ?? "",
+      commit: ({ eventId, buffer, key, prevEventId }) => {
+        const existing = session.sylAt(eventId);
+        const wasHyphen = existing?.con === "d";
+        // `-` states a hyphen; new text states a word end; leaving or
+        // moving over an UNCHANGED syllable keeps its hyphenation (found
+        // by verify-lyrics.mjs: Escape used to strip the hyphen).
+        const textChanged = buffer !== (existing?.text ?? "");
+        const hyphen = key === "-" ? true : textChanged ? false : wasHyphen;
+        if (!textChanged && hyphen === wasHyphen) return null;
+        // continuing a word? the previous note's syllable says so
+        const midWord = prevEventId ? session.sylAt(prevEventId)?.con === "d" : false;
+        const value: SylValue = buffer === "" ? { text: "" } : hyphen ? { text: buffer, con: "d", wordpos: midWord ? "m" : "i" } : midWord ? { text: buffer, wordpos: "t" } : { text: buffer };
+        return { type: "core.setSyl", eventId, value };
+      },
+    };
+    const internal = [
+      host.lanes.register(harmony("chord", { id: "chord", label: "chord symbols (above)", name: "chords", glyph: "♩" })),
+      host.lanes.register(harmony("rna", { id: "rna", label: "roman numerals (below)", name: "numerals", glyph: "RN" })),
+      host.lanes.register(lyrics),
+    ];
+    return () => {
+      for (const d of internal) d.dispose();
+      host.lanes.bind(null);
+      host.bindSession(null);
+    };
   }, [session, afterCommand]);
 
   // Keyboard: navigation, selection, edits, undo/redo — as an ACTION TABLE.
@@ -1662,147 +1725,13 @@ export default function App() {
           }
         }
       }),
-      // The lyrics lane owns the keyboard, MuseScore-style: type the
-      // syllable, space/enter commits and advances to the NEXT NOTE (rests
-      // skipped), "-" commits with a continuation hyphen, and word position
-      // (i/m/t) follows from the previous note's state.
-      modal(() => harmLane === "lyrics", (e) => {
-        e.preventDefault();
-        if (!caret || !caretId) {
-          if (e.key === "Escape") setHarmLane(null);
-          return;
-        }
-        const buf = harmBufRef.current;
-        const step = (from: CaretPosition, dir: 1 | -1): CaretPosition | null => (dir === 1 ? caretRight(session.index, session.score, from) : caretLeft(session.index, session.score, from));
-        const noteAt = (pos: CaretPosition): string | null => {
-          const id = session.index.eventIdAt(pos);
-          const t = id ? session.index.byId.get(id)?.tag : undefined;
-          return t === "note" || t === "chord" ? id! : null;
-        };
-        const nearestNote = (dir: 1 | -1): { pos: CaretPosition; id: string } | null => {
-          for (let pos = step(caret, dir); pos; pos = step(pos, dir)) {
-            const id = noteAt(pos);
-            if (id) return { pos, id };
-          }
-          return null;
-        };
-        const commitSyl = (hyphen: boolean): boolean => {
-          const ref = session.index.byId.get(caretId);
-          if (!ref || (ref.tag !== "note" && ref.tag !== "chord")) {
-            setNotice("lyrics attach to notes — move the caret to one");
-            return buf === ""; // an empty buffer on a rest is fine to leave
-          }
-          const existing = session.sylAt(caretId);
-          if (buf === (existing?.text ?? "") && (existing?.con === "d") === hyphen) return true; // unchanged
-          // continuing a word? the previous note's syllable says so
-          const midWord = (() => {
-            const prev = nearestNote(-1);
-            return prev ? session.sylAt(prev.id)?.con === "d" : false;
-          })();
-          const value = buf === "" ? { text: "" } : hyphen ? { text: buf, con: "d", ...(midWord ? { wordpos: "m" } : { wordpos: "i" }) } : midWord ? { text: buf, wordpos: "t" } : { text: buf };
-          try {
-            session.setSyl(caretId, value);
-            afterCommand(session);
-            setNotice(null);
-            return true;
-          } catch (err) {
-            refused("lyric", err);
-            return false;
-          }
-        };
-        if (e.key === "Escape") {
-          if (commitSyl(false)) setHarmLane(null);
-          return;
-        }
-        if (e.key === " " || e.key === "Enter" || e.key === "-") {
-          if (!commitSyl(e.key === "-")) return;
-          const next = nearestNote(1);
-          if (next) {
-            lastEntered.current = null;
-            setCaret(next.pos);
-          } else setNotice("last note — esc leaves the lyrics lane");
-          return;
-        }
-        if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-          if (!commitSyl(false)) return;
-          const next = step(caret, e.key === "ArrowRight" ? 1 : -1);
-          if (next) {
-            lastEntered.current = null;
-            setCaret(next);
-          }
-          return;
-        }
-        if (e.key === "Backspace") {
-          setHarmBuffer((b) => b.slice(0, -1));
-          return;
-        }
-        if (e.key.length === 1 && !isMod(e) && !e.altKey) setHarmBuffer((b) => b + e.key);
-      }),
-      // The harmony lane owns the keyboard: a closed grammar of chord
-      // symbols / numerals, Enter commits + advances, Tab autocompletes,
-      // arrows commit + move, Escape leaves the lane.
-      modal(() => !!harmLane, (e) => {
-        e.preventDefault();
-        const lane = harmLane as HarmKind;
-        if (!caret || !caretId) {
-          if (e.key === "Escape") setHarmLane(null);
-          return;
-        }
-        const buf = harmBufRef.current; // ref, not closure: see declaration
-        const commit = (): boolean => {
-          const existing = session.harmAt(caretId, lane);
-          if (buf === existing) return true; // nothing to do
-          if (buf !== "" && !isHarmText(lane, buf)) {
-            setNotice(`incomplete ${lane === "rna" ? "numeral" : "chord symbol"}: "${buf}"`);
-            return false;
-          }
-          try {
-            session.setHarm(caretId, buf, lane);
-            afterCommand(session);
-            setNotice(null);
-            return true;
-          } catch (err) {
-            refused("harmony", err);
-            return false;
-          }
-        };
-        if (e.key === "Escape") {
-          if (commit()) setHarmLane(null);
-          return;
-        }
-        if (e.key === "Enter" || e.key === "ArrowRight" || e.key === "ArrowLeft") {
-          if (!commit()) return;
-          const next = e.key === "ArrowLeft" ? caretLeft(session.index, session.score, caret) : caretRight(session.index, session.score, caret);
-          if (next) {
-            lastEntered.current = null;
-            setCaret(next);
-          }
-          return;
-        }
-        if (e.key === "Backspace") {
-          setHarmBuffer((b) => b.slice(0, -1));
-          return;
-        }
-        if (e.key === "Tab") {
-          const s = harmSuggestions(lane, buf)[0];
-          if (s) setHarmBuffer(s);
-          return;
-        }
-        if (e.key.length === 1) {
-          let ch = e.key;
-          if (lane === "rna") {
-            if (ch === "o") ch = "°";
-            if (ch === "0") ch = "ø";
-          }
-          if (HARM_CHARS[lane].test(ch)) setHarmBuffer((b) => b + ch);
-        }
-      }),
+      // A text lane (harmony, lyrics) owns the keyboard while it is open —
+      // the host's protocol (host/lanes.tsx): Escape and the lane's advance
+      // keys commit, arrows commit and step, Backspace, Tab for a
+      // suggestion, and the characters the lane admits.
+      host.lanes.modalStep(),
 
-      rule("lyrics", (e) => hit("lyrics", e) && !isMod(e) && !e.altKey, () => {
-        setHarmLane("lyrics");
-        setNotice("lyrics: type at the caret · space/enter advances · - hyphenates · esc leaves");
-        return "handled";
-      }, { when: () => !entryMode && !!caretId }),
+      rule("lyrics", (e) => hit("lyrics", e) && !isMod(e) && !e.altKey, () => (host.lanes.open("lyrics") ? "handled" : "declined"), { when: () => !entryMode && !!caretId }),
       rule("slurDoubleSharp", (e) => hit("slurDoubleSharp", e) && !isMod(e), () => {
         // With a selection: slur between its ends. On a single target:
         // DOUBLE SHARP — shift+s, mirroring plain s (tester ask).
@@ -2245,7 +2174,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [session, caret, block, editTargets, afterCommand, entryMode, caretId, enterAtCaret, nearestOctave, structural, selection, accidPick, openAccidPicker, harmLane, harmBuffer, saveActive, openScore, zoomStep, keymap, shortcutsOpen, runFromBlock, blockFromSelection, activeId]);
+  }, [session, caret, block, editTargets, afterCommand, entryMode, caretId, enterAtCaret, nearestOctave, structural, selection, accidPick, openAccidPicker, saveActive, openScore, zoomStep, keymap, shortcutsOpen, runFromBlock, blockFromSelection, activeId]);
 
   // --- MIDI entry: note-ons enter at the caret while input mode is active;
   // keys held together build a CHORD (like MuseScore). The devices belong
@@ -3012,13 +2941,7 @@ export default function App() {
         {session && pool && view === "tiles" && <TileGrid key={activeId ?? -1} session={session} version={version} pool={pool} zoom={zoom} onRendered={onRendered} onSettled={onSettled} onLayout={onLayout} />}
         {session && pool && view === "pages" && <PageView key={`${activeId}-${version}`} session={session} pool={pool} />}
         {caretRect && view === "tiles" && <div className="caret" style={caretRect} />}
-        {harmLane && caretRect && view === "tiles" && (
-          <div data-harm-input data-valid={harmLane === "lyrics" || harmBuffer === "" || isHarmText(harmLane, harmBuffer) ? "1" : "0"} style={{ position: "absolute", left: caretRect.left, top: harmLane === "rna" || harmLane === "lyrics" ? caretRect.top + caretRect.height + 6 : caretRect.top - 30, background: "#233", borderRadius: 4, fontSize: 13, zIndex: 40, padding: "2px 8px", whiteSpace: "nowrap", boxShadow: "0 2px 8px rgba(0,0,0,.35)", color: harmLane === "lyrics" || harmBuffer === "" || isHarmText(harmLane, harmBuffer) ? "#8f8" : "#f88" }}>
-            {harmLane === "rna" ? "RN " : harmLane === "lyrics" ? "♪ " : "♩ "}
-            <strong>{harmBuffer || "…"}</strong>
-            {harmLane !== "lyrics" && <span style={{ color: "#89a", marginLeft: 8 }}>{harmSuggestions(harmLane, harmBuffer).join("  ")}</span>}
-          </div>
-        )}
+        {view === "tiles" && <LaneInput store={host.lanes} caretRect={caretRect} />}
       </main>
       <Panels store={host.panels} side="bottom" />
       <Panels store={host.panels} side="side" />
@@ -3139,22 +3062,17 @@ export default function App() {
           className="sbsel" style={STATUSBAR_SELECT}
           disabled={!session || !caret}
           onChange={(e) => {
-            const kind = e.target.value as HarmKind | "lyrics" | "";
+            const id = e.target.value;
             e.target.blur();
-            if (!kind) return;
-            setEntryMode(false);
-            setHarmLane(kind);
-            setNotice(
-              kind === "lyrics"
-                ? "lyrics: type at the caret · space/enter advances · - hyphenates · esc leaves"
-                : `${kind === "rna" ? "roman numerals" : "chord symbols"}: type at the caret · enter commits + advances · tab completes · esc leaves`,
-            );
+            if (id) host.lanes.open(id); // leaves entry mode; a declared plugin lane wakes its plugin first
           }}
         >
-          <option value="">{harmLane ? (harmLane === "rna" ? "♩ numerals" : harmLane === "lyrics" ? "♪ lyrics" : "♩ chords") : "harmony"}</option>
-          <option value="chord">chord symbols (above)</option>
-          <option value="rna">roman numerals (below)</option>
-          <option value="lyrics">lyrics (verse 1, l)</option>
+          <option value="">{laneState ? laneFace(laneState.spec) : "harmony"}</option>
+          {laneOptions.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
+            </option>
+          ))}
         </select>
         <select value={shownClef} data-cycle title="clef at caret (staff-local)" className="sbsel" style={STATUSBAR_SELECT} disabled={!session} onChange={(e) => { if (!barNav.current) e.target.blur(); applyContext("clef", e.target.value); }}>
           {shownClef && !CLEFS[shownClef] && <option value={shownClef}>{shownClef}</option>}

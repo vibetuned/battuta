@@ -17,7 +17,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { API_VERSION, definePlugin, type PluginContext, type PluginEntry, type PluginManifest, type DocumentInfo } from "@battuta/api";
-import { SetPitchesCommand } from "@battuta/core";
+import { SetPitchesCommand, SetSylCommand } from "@battuta/core";
 import { createHost, memorySettings, toCommand, type SessionAdapter } from "../src/host";
 import { memoryStorage } from "../src/host/services";
 import { dimsDeclared } from "../src/host/slots";
@@ -73,6 +73,7 @@ function echoPlugin(): { entry: PluginEntry; state: { log: string[]; loads: numb
 }
 
 const fakeAdapter = (execute = vi.fn()): SessionAdapter & { execute: ReturnType<typeof vi.fn> } => ({
+  lyricAt: (id) => (id === "n1" ? { text: "hel", wordpos: "i", con: "d" } : null),
   execute,
   pitchEventsIn: (block) => [[{ eventId: `e-${block.measureFrom}`, pitches: [{ pname: "c", oct: 4 }] }]],
   blockOf: (ids) => (ids.length ? { measureFrom: 0, measureTo: ids.length - 1, staffFrom: 1, staffTo: 1 } : null),
@@ -255,6 +256,14 @@ describe("off and on again", () => {
 });
 
 describe("commands as data", () => {
+  it("maps core.setSyl to SetSylCommand, copying only the string fields of the value", () => {
+    const cmd = toCommand({ type: "core.setSyl", eventId: "n1", value: { text: "hel", wordpos: "i", con: "d", extra: 1 } as never });
+    expect(cmd).toBeInstanceOf(SetSylCommand);
+    expect(cmd.label).toBe('lyric "hel"');
+    expect(toCommand({ type: "core.setSyl", eventId: "n1", value: { text: "" } }).label).toBe("lyric removed");
+    expect(() => toCommand({ type: "core.setSyl", eventId: "n1", value: { wordpos: "i" } } as never)).toThrow(/value.text must be a string/);
+  });
+
   it("maps core.setPitches to the core command, copying the plugin's data", () => {
     const targets = [{ eventId: "n1", pitches: [{ pname: "e", oct: 4, accid: "s" }] }];
     const cmd = toCommand({ type: "core.setPitches", targets, label: "inversion" });
@@ -474,6 +483,52 @@ describe("a runtime slot item replaces the plugin's declared face while it lives
     // another plugin's "toggle" is a different item
     host.slots.add("header", { id: "toggle", render: () => null }, "test.other");
     expect(face()).toEqual(["declared:test.echo:toggle", "live:test.other:toggle"]);
+  });
+});
+
+describe("lanes on the context", () => {
+  it("query.lyricAt is answered by the bound adapter, null without a document", () => {
+    const host = makeHost([]);
+    expect(host.query.lyricAt("n1")).toBeNull();
+    host.bindSession(fakeAdapter());
+    expect(host.query.lyricAt("n1")).toEqual({ text: "hel", wordpos: "i", con: "d" });
+    expect(host.query.lyricAt("n2")).toBeNull();
+  });
+
+  it("a declared lane is listed before the plugin loads; picking it fires onLane:<id>, the plugin registers, the lane opens; register() demands a declaration", async () => {
+    const seen: (string | null)[] = [];
+    const entry: PluginEntry = {
+      manifest: manifest({ id: "test.lyrics", activationEvents: ["onLane:test.lyrics.verse1"], contributes: { lanes: [{ id: "test.lyrics.verse1", label: "lyrics (plugin)", name: "lyrics", glyph: "♪", place: "below" }] } }),
+      load: async () => ({
+        activate: (ctx) => {
+          seen.push(ctx.activatedBy);
+          expect(() => ctx.lanes.register({ id: "test.lyrics.other", label: "x", name: "x", place: "below", attachesTo: "note", advance: "note", advanceOn: ["Enter"], read: () => "", commit: () => null })).toThrow(/did not declare lane test.lyrics.other/);
+          ctx.lanes.register({ id: "test.lyrics.verse1", label: "lyrics (plugin)", name: "lyrics", glyph: "♪", place: "below", attachesTo: "note", advance: "note", advanceOn: ["Enter"], read: () => "", commit: () => null });
+        },
+      }),
+    };
+    const host = makeHost([entry]);
+    expect(host.lanes.options.get()).toEqual([{ id: "test.lyrics.verse1", label: "lyrics (plugin)" }]);
+    expect(host.registry.info("test.lyrics")?.state).toBe("registered");
+    const caret = { measureIndex: 0, staffN: 1, layerN: 1, eventIndex: 0 };
+    host.lanes.bind({ caret: () => caret, eventAt: () => ({ id: "n1", kind: "note" }), step: () => null, setCaret: () => undefined, leaveEntryMode: () => undefined });
+    expect(host.lanes.open("test.lyrics.verse1")).toBe(true);
+    await flush();
+    expect(seen).toEqual(["onLane:test.lyrics.verse1"]);
+    expect(host.lanes.state.get()?.id).toBe("test.lyrics.verse1");
+    await host.registry.setEnabled("test.lyrics", false);
+    expect(host.lanes.state.get()).toBeNull();
+    expect(host.lanes.options.get()).toEqual([]);
+  });
+
+  it("two plugins declaring the same lane id: the second fails registration", () => {
+    const lane = { id: "test.shared.lane", label: "l", name: "l", place: "below" as const };
+    const a: PluginEntry = { manifest: manifest({ id: "test.a", activationEvents: [], contributes: { lanes: [lane] } }), load: async () => ({ activate: () => undefined }) };
+    const b: PluginEntry = { manifest: manifest({ id: "test.b", activationEvents: [], contributes: { lanes: [lane] } }), load: async () => ({ activate: () => undefined }) };
+    const host = makeHost([a, b]);
+    expect(host.registry.info("test.a")?.state).toBe("registered");
+    expect(host.registry.info("test.b")?.state).toBe("failed");
+    expect(host.registry.info("test.b")?.error).toMatch(/already declared by test.a/);
   });
 });
 

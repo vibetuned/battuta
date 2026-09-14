@@ -10,7 +10,7 @@
  * and an API version bump.
  */
 import type { CommandMessage } from "@battuta/api";
-import { SetPitchesCommand, type Command } from "@battuta/core";
+import { SetPitchesCommand, SetSylCommand, type Command } from "@battuta/core";
 
 export function toCommand(message: CommandMessage): Command {
   switch (message.type) {
@@ -18,6 +18,15 @@ export function toCommand(message: CommandMessage): Command {
       if (!Array.isArray(message.targets)) throw new Error("core.setPitches: targets must be an array");
       const targets = message.targets.map((t) => ({ eventId: String(t.eventId), pitches: t.pitches.map((p) => ({ ...p })) }));
       return new SetPitchesCommand(targets, String(message.label ?? "plugin edit"));
+    }
+    case "core.setSyl": {
+      const v = message.value as { text?: unknown; wordpos?: unknown; con?: unknown } | undefined;
+      if (!v || typeof v.text !== "string") throw new Error("core.setSyl: value.text must be a string");
+      return new SetSylCommand(String(message.eventId), {
+        text: v.text,
+        ...(typeof v.wordpos === "string" ? { wordpos: v.wordpos } : {}),
+        ...(typeof v.con === "string" ? { con: v.con } : {}),
+      });
     }
     default: {
       const unknown = message as { type?: unknown };

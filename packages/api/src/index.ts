@@ -10,7 +10,7 @@
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export const API_VERSION = "0.1.4";
+export const API_VERSION = "0.1.5";
 
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";
@@ -21,14 +21,16 @@ export { toDisposable, DisposableStore } from "./disposable.js";
 export type { Version } from "./semver.js";
 export { parseVersion, satisfiesEngine } from "./semver.js";
 
-export type { CaretPosition, BlockSelection, Pitch, PitchEvent, ViewMode, EditorState, DocumentInfo, DocumentQueries } from "./document.js";
+export type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, ViewMode, EditorState, DocumentInfo, DocumentQueries } from "./document.js";
 
-export type { SetPitchesMessage, CommandMessage, CommandMessageType } from "./messages.js";
+export type { SetPitchesMessage, SetSylMessage, CommandMessage, CommandMessageType } from "./messages.js";
 export { COMMAND_MESSAGE_TYPES } from "./messages.js";
 
 export type { MidiPort, MidiNoteEvent, MidiVirtualInput, MidiOutputs, MidiService } from "./midi.js";
 
 export type { KeymapEntry, ActionsService } from "./actions.js";
+
+export type { LanePlace, LaneContribution, LaneCommit, LaneCommitResult, LaneSpec, LanesService } from "./lanes.js";
 
 export type { Store, SlotItem, PanelSide, PanelSpec, SettingsNamespace, StorageNamespace, CommandHandler, PluginContext, PluginModule, PluginEntry } from "./context.js";
 export { definePlugin, resolvePluginModule } from "./context.js";

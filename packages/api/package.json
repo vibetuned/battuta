@@ -1,6 +1,6 @@
 {
   "name": "@battuta/api",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "license": "AGPL-3.0-only",
   "description": "The plugin contract of the battuta host: manifest, activation, context, command messages. Standalone \u2014 depends on nothing of the editor or the core.",
   "type": "module",

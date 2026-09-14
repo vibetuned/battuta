@@ -12,7 +12,7 @@
  * reflection cycle, setSyl for lyrics, setHarm for harmony); a plugin
  * that thinks it needs a NEW command is asking for a core change first.
  */
-import type { PitchEvent } from "./document.js";
+import type { PitchEvent, SylValue } from "./document.js";
 
 /** Write pitch content onto events (notes in child order for chords). Byte-identical revert. */
 export interface SetPitchesMessage {
@@ -22,8 +22,19 @@ export interface SetPitchesMessage {
   label: string;
 }
 
-export type CommandMessage = SetPitchesMessage;
+/**
+ * Set (or, with empty text, clear) the verse-1 syllable of a note or
+ * chord. Refused on a rest. One undo step; byte-identical revert. The
+ * command labels itself (`lyric "hel"`, `lyric removed`).
+ */
+export interface SetSylMessage {
+  type: "core.setSyl";
+  eventId: string;
+  value: SylValue;
+}
+
+export type CommandMessage = SetPitchesMessage | SetSylMessage;
 
 export type CommandMessageType = CommandMessage["type"];
 
-export const COMMAND_MESSAGE_TYPES: readonly CommandMessageType[] = ["core.setPitches"];
+export const COMMAND_MESSAGE_TYPES: readonly CommandMessageType[] = ["core.setPitches", "core.setSyl"];

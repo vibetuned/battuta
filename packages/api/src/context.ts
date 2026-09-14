@@ -17,6 +17,7 @@ import type { ActivationEvent, PluginManifest, SlotName } from "./manifest.js";
 import type { CommandMessage } from "./messages.js";
 import type { MidiService } from "./midi.js";
 import type { ActionsService, KeymapEntry } from "./actions.js";
+import type { LanesService } from "./lanes.js";
 
 /** A value with change notification. `subscribe` fires on every change with the new value. */
 export interface Store<T> {
@@ -99,6 +100,8 @@ export interface PluginContext {
    */
   readonly slots: { add(slot: SlotName, item: SlotItem): Disposable };
   readonly panels: { open(panel: PanelSpec): Disposable };
+  /** Text lanes at the caret: register the spec of a lane you declared; open it from your own key. */
+  readonly lanes: LanesService;
   /** Disposed on deactivate. Add every subscription here; the host disposes what it handed out itself. */
   readonly subscriptions: DisposableStore;
 }

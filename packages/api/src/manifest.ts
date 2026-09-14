@@ -6,6 +6,8 @@
  * plugin therefore costs exactly one manifest object.
  */
 
+import type { LaneContribution } from "./lanes.js";
+
 /** Events the host fires; a plugin's code loads on the first one it declares. */
 export type ActivationEvent =
   | "onStartup"
@@ -110,6 +112,8 @@ export interface PluginContributions {
   commands?: CommandContribution[];
   keybindings?: KeybindingContribution[];
   slotItems?: SlotItemContribution[];
+  /** Text lanes at the caret, listed in the status bar before the plugin loads; see lanes.ts. */
+  lanes?: LaneContribution[];
 }
 
 export interface PluginManifest {
@@ -169,6 +173,15 @@ export function validateManifest(input: unknown): string[] {
         if (!it || typeof it.label !== "string" || !it.label.trim()) problems.push(`slot item ${it?.id ?? "?"} needs a label`);
         if (!it || !SLOT_NAMES.includes(it.slot)) problems.push(`slot item ${it?.id ?? "?"} needs a slot of ${SLOT_NAMES.join(", ")} (got ${JSON.stringify(it?.slot)})`);
         if (!it || typeof it.command !== "string" || !commandIds.has(it.command)) problems.push(`slot item ${it?.id ?? "?"} must name one of the plugin's own commands`);
+      }
+      const laneIds = new Set<string>();
+      for (const l of contributes.lanes ?? []) {
+        if (!l || typeof l.id !== "string" || !l.id.trim()) problems.push("every lane needs an id");
+        else if (laneIds.has(l.id)) problems.push(`duplicate lane id ${l.id}`);
+        else laneIds.add(l.id);
+        if (!l || typeof l.label !== "string" || !l.label.trim()) problems.push(`lane ${l?.id ?? "?"} needs a label`);
+        if (!l || typeof l.name !== "string" || !l.name.trim()) problems.push(`lane ${l?.id ?? "?"} needs a name`);
+        if (!l || (l.place !== "above" && l.place !== "below")) problems.push(`lane ${l?.id ?? "?"} needs a place of above or below (got ${JSON.stringify(l?.place)})`);
       }
       for (const k of contributes.keybindings ?? []) {
         if (!k || typeof k.command !== "string" || !commandIds.has(k.command)) problems.push(`keybinding ${JSON.stringify(k?.command)} must name one of the plugin's own commands`);

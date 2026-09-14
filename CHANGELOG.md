@@ -16,6 +16,83 @@ is in [PLANNING.md](PLANNING.md). What lands here: each decision as it
 is taken, and each slice as it closes, with the `App.tsx` line count
 (baseline 2026-09-12: 3,330).
 
+- **Slice 5a — the `lanes` point (2026-09-14, in-house). CLOSED.** The
+  harm-lane mechanism left `App.tsx` for `host/lanes.tsx` (added to
+  `HOST_MODULES`), and both lanes run on it as INTERNAL specs with their
+  bodies still in the App — the 4a move, applied to lanes. Written first,
+  against the App as it was: `spikes/verify-lyrics.mjs`, 26 checks, the
+  lyrics e2e the plan said was missing — and it found a bug in 0.0.3
+  before any extraction: leaving the lane (Escape, an arrow) over an
+  unchanged hyphenated syllable rewrote it without its hyphen, because
+  "unchanged" compared the hyphen state to the key just pressed. Fixed in
+  the commit rule (`-` states a hyphen, new text states a word end, an
+  unchanged syllable keeps what it has), then the script went green and
+  the extraction kept it green. **The point, as built** — a `LaneSpec` on
+  the api, each field owed to one of the two lanes: `attachesTo: "note" |
+  "event"` (lyrics refuse a rest; harmony hangs on anything), `advance:
+  "event" | "note"` (harmony steps one event; lyrics skip rests), `advanceOn`
+  (`["Enter"]`; `[" ", "Enter", "-"]`), `accepts` / `transform` /
+  `complete` / `suggest` (harmony's closed grammar, charset, `o` → `°`,
+  Tab completion — the host calls them and knows nothing of what they
+  say), `read(eventId)` and `commit({ eventId, buffer, key, prevEventId })`
+  returning a `CommandMessage`, null for "nothing changed", or `{ refuse }`
+  (a returned refusal, not a throw as the brief said — a plugin API should
+  not ask for exceptions), plus the UI strings the two lanes carried in
+  three places (`label` for the status-bar option, `name` and `glyph` for
+  the open face and the floating editor, `hint` for the notice on open).
+  The host: one modal step (`host.lanes.modalStep()`) replaces the two
+  modals in the action table; the buffer is a store, so the key handler
+  reads it live (the ref the App needed is gone) and it reloads from the
+  document through the host's own editor and document mirrors (the App's
+  reload effect is gone); the floating editor is `<LaneInput>` with the
+  `data-harm-input` / `data-valid` hooks unchanged; the status-bar select
+  renders `host.lanes.options` — internal lanes first, then every lane a
+  manifest DECLARES (`contributes.lanes: [{ id, label, name, glyph?,
+  place }]`), the slot-item lesson applied: the entry point renders before
+  the plugin's code loads, and picking it fires `onLane:<id>` (reserved
+  since slice 1, fired for the first time), waits for the plugin to
+  register, then opens. `ctx.lanes.register(spec)` demands a declared id
+  (two locks: the context checks the manifest, the store checks
+  ownership; two plugins declaring one id → the second fails
+  registration); `ctx.lanes.open(id)` is for a plugin's own key. Also
+  built here, for 5b: the `core.setSyl` message (`{ eventId, value:
+  SylValue }` → `SetSylCommand`, which labels itself, so no `label`) and
+  `ctx.query.lyricAt(eventId)` — and the INTERNAL lyrics spec already
+  commits through `core.setSyl`, so the message runs end to end before
+  its plugin exists; harmony still writes through the session (its message
+  is slice 6's). `@battuta/api` 0.1.4 → **0.1.5**. Behaviour differences
+  accepted and recorded: the numeral lane's open face reads "RN numerals"
+  (was "♩ numerals"), the incomplete-text notice says "incomplete numerals
+  / chords" (was "numeral / chord symbol"), Enter on the last event of a
+  harmony lane now says so (lyrics always did), and ctrl/alt chords no
+  longer type into the harmony buffer. Tests: `test/lanes.test.ts` (14: the
+  protocol key by key over a fake document, advance over rests, refusals,
+  the grammar hooks, declared lanes waking their plugin, ownership),
+  `host.test.ts` +4 (the `setSyl` mapping, `lyricAt`, a declared lane
+  through `onLane:`, duplicate declaration), the api's lane validation;
+  editor 120, api 18, plugins 79. All six e2e scripts green — `verify-
+  lyrics` 26, `verify-phase5` 222 with its harmony section untouched, the
+  keyboard 25, phase4 67, app 18 — the union keymap snapshot byte-identical
+  (no binding moved). `App.tsx` **3,227 → 3,145** (−82); initial chunk
+  **593.0 → 598.4 kB** (the mechanism moved, it did not leave; ceiling
+  605.5). 5b is next.
+- **Decision: slice 5 splits into 5a and 5b, the 4a/4b pattern
+  (2026-09-14).** The host half of a plugin slice is in-house and lands
+  first, with the api growth the plugin will need; the plugin half then
+  runs with *API may grow: none*. 4b showed why: a plugin slice that
+  finds a door missing must stop, every stop costs a day, and the
+  decision behind the door was the host's anyway — so open the doors
+  where the decisions belong. 5a: the harm-lane mechanism becomes the
+  host's `lanes` point (module `lanes.ts`), both lanes run on it as
+  internal specs with their bodies still in `App.tsx`, the status-bar
+  select lists lanes declared in manifests before their code loads
+  (`onLane:<id>`, reserved since slice 1, finally fires), plus
+  `ctx.lanes.register` / `open`, the `core.setSyl` message and
+  `ctx.query.lyricAt`; the lyrics e2e the plan said was missing is
+  written first, against the App as it is. 5b: `packages/plugins/lyrics`,
+  the wordpos/con table as a pure commit over two `lyricAt` answers and
+  the key. Slice 6 gets `core.setHarm` and `harmAt` in-house before it
+  runs. The briefs are in PLANNING.md.
 - **Decision: UI slots belong to the host; a plugin's entry point is a
   manifest-declared slot item; the second header row gets a slot
   (2026-09-14).** The question slice 4b's brief left open is closed: the

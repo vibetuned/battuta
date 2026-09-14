@@ -59,6 +59,27 @@ describe("validateManifest", () => {
     expect(withPatch({ capabilities: ["network"] })).toEqual(['unknown capability "network"']);
   });
 
+  it("validates declared lanes: id, label, name, place; unique ids", () => {
+    const ok = withPatch({ contributes: { lanes: [{ id: "battuta.lyrics.verse1", label: "lyrics (verse 1, l)", name: "lyrics", glyph: "♪", place: "below" }] } });
+    expect(ok).toEqual([]);
+    const problems = withPatch({
+      contributes: {
+        lanes: [
+          { id: "battuta.lyrics.verse1", label: "", name: "lyrics", place: "sideways" },
+          { id: "battuta.lyrics.verse1", label: "again", name: "", place: "above" },
+          { id: "", label: "x", name: "x", place: "below" },
+        ],
+      },
+    } as never);
+    expect(problems).toEqual([
+      "lane battuta.lyrics.verse1 needs a label",
+      'lane battuta.lyrics.verse1 needs a place of above or below (got "sideways")',
+      "duplicate lane id battuta.lyrics.verse1",
+      "lane battuta.lyrics.verse1 needs a name",
+      "every lane needs an id",
+    ]);
+  });
+
   it("ties keybindings to the plugin's own commands", () => {
     const problems = withPatch({ contributes: { keybindings: [{ command: "core.rest", keys: ["r"], label: "x", group: "entry" }] } });
     expect(problems).toEqual(['keybinding "core.rest" must name one of the plugin\'s own commands']);

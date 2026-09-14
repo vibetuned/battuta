@@ -39,6 +39,17 @@ export interface PitchEvent {
 
 export type ViewMode = "tiles" | "pages";
 
+/**
+ * One verse-1 syllable, as MEI has it: `<syl wordpos con>` inside the
+ * note's `<verse n="1">`. `wordpos` i/m/t = word start/middle/end, absent
+ * for a whole word; `con: "d"` draws the hyphen to the next syllable.
+ */
+export interface SylValue {
+  text: string;
+  wordpos?: string;
+  con?: string;
+}
+
 /** Caret and selections, in model coordinates. */
 export interface EditorState {
   readonly caret: CaretPosition | null;
@@ -78,4 +89,6 @@ export interface DocumentQueries {
   pitchEventsIn(block: BlockSelection): PitchEvent[][];
   /** The measure × staff rectangle an event selection covers (the editor's own rule), or null when empty. */
   blockOf(eventIds: readonly string[]): BlockSelection | null;
+  /** The verse-1 syllable of a note or chord (a chord's sits on its first note), or null when it has none. */
+  lyricAt(eventId: string): SylValue | null;
 }
