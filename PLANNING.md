@@ -99,15 +99,20 @@ permanently; they carry no assets, so the weight budget is unaffected.
 ### The host API (`@battuta/api`)
 
 One package, semver'd separately from the app, `engines.battuta`
-declared by every plugin. Read side: the active document (read-only
-`CoreScore`, `EventIndex`, resolved contexts, effective context at a
-position), caret and selections with a subscribe, tile geometry by id,
-timemap per tile. Write side: `execute(command)` — the only mutation
-path, so undo integrity and the byte-identical-revert property hold
-for plugin commands exactly as for core ones — plus `notice()`,
-`confirm()`, a settings namespace, a storage namespace (persisted with
-the session), and an `activate(ctx)` / `deactivate()` lifecycle with
-disposables. No render-pool access in v1 (plugins draw on the overlay
+declared by every plugin, **standalone — it imports nothing from core
+or the editor** (decided 2026-09-14 after the first slice-2 attempt
+imported core; see the CHANGELOG). Read side: a document snapshot
+(`id`, `version`, counts, title, tempo), caret and selections with a
+subscribe, and a **query facade** answered by the host as data
+(`pitchEventsIn(block)`, `blockOf(ids)`; tile geometry and timemaps
+join it when the overlay slice needs them). Write side:
+`execute(message)` — **commands as data**: a serializable message the
+host maps to the real core command, the only mutation path, so undo
+integrity and the byte-identical-revert property hold for plugin edits
+exactly as for core ones (and a plugin cannot mutate in any way the
+host has not published) — plus `notice()`, `confirm()`, a settings
+namespace, a storage namespace (persisted with the session), and an
+`activate(ctx)` / `deactivate()` lifecycle with disposables. No render-pool access in v1 (plugins draw on the overlay
 or contribute MEI; they never engrave — DESIGN.md's rule extends to
 them).
 
@@ -152,6 +157,15 @@ fixture, UI removed in 0.0.2) and repaired the same day: five scripts,
 347 checks, green — run them one at a time, after
 `sh spikes/fetch-fixtures.sh`; `packages/plugins/README.md` has the
 commands. They gate every extraction from here on.
+
+Slice 2 was attempted by a context-free agent on 2026-09-12 and rolled
+back: the plugin worked but imported `@battuta/core`, and the rule
+against it — a README sentence — was rewritten twice to fit the code
+(`packages/plugins/reflection/POSTMORTEM-2026-09-12.md`). Hardened on
+2026-09-14 before the second attempt: `@battuta/api` (still 0.1.0,
+never published) is standalone, commands are messages, reads are a query facade, and the
+boundary test fails the build on any core import. Slice 2 reopens on
+that footing.
 
 #### Slice 1 — Host skeleton (≈4 days)
 
@@ -199,12 +213,17 @@ three new CI checks run; the plugins tab reads "no plugins installed".
 #### Slice 2 — Reflection cycle (days)
 
 **Delivers.** `packages/plugins/reflection`: the smallest
-self-contained feature — one binding (`shift+R`), one command path
-(`SetPitchesCommand` over `reflectionForm`), one notice. The cycle's
-base form and step, which `App.tsx` holds in a ref today, become the
-plugin's transient state — the first example of state a plugin may own
-(nothing document-shaped). The apply-then-revert fuzz harness is
-exported from core so the plugin's own suite runs it.
+self-contained feature — one binding (`shift+R`), one message
+(`core.setPitches`, already in the api), one notice. The serial-form
+maths (`reflectionForm`, `REFLECTION_CYCLE`, `REFLECTION_LABELS`,
+`arityPalindromic`) has no MEI knowledge and **moves out of core into
+the plugin** with its tests; core keeps `SetPitchesCommand` and
+`collectPitchEvents` (reached as `core.setPitches` and
+`query.pitchEventsIn`). The cycle's base form and step, which `App.tsx`
+holds in a ref today, become the plugin's transient state — the first
+example of state a plugin may own (nothing document-shaped), keyed on
+`DocumentInfo.id`. No fuzz harness leaves core: plugins define no
+commands, the mapped core command is covered by core's own tests.
 
 **Proves.** `commands` + `keybindings`, and the whole plugin lifecycle
 end to end: manifest → activation on `onCommand:` → binding in the
@@ -214,19 +233,21 @@ removes it live.
 **Leaves `App.tsx`.** The `reflect` branch of the key dispatcher and
 the `reflectCycle` ref.
 
-**Gates.** `packages/core/test/reflect.test.ts` unchanged; the
-reflection checks in `verify-phase5.mjs`; the plugin suite runs the
-fuzzer over its command path; the `--no-plugins` property now has a
-plugin to be off.
+**Gates.** `packages/core/test/reflect.test.ts` keeps the
+`SetPitchesCommand` and `collectPitchEvents` cases, the form tests move
+with the maths into the plugin's suite; the reflection checks in
+`verify-phase5.mjs`; the boundary test scans the new package; the
+`--no-plugins` property now has a plugin to be off.
 
 **Documents.** The plugin's `README.md` and `BUILDING.md` — the worked
-example every later plugin copies. `BUILDING.md` records the phase's
-first precedent: whether plugin code imports `@battuta/core` directly
-for pure helpers and `Command` classes (a build-time library) or
-reaches everything through `@battuta/api`, and why. A **Writing a
-plugin** guide in the docs site walks through this plugin; the drift
-check grows a rule that every `packages/plugins/*/BUILDING.md` carries
-the fixed headings.
+example every later plugin copies (the two precedents are already
+decided and enforced: `exports` at `src/`, no core import — the
+boundary test in `apps/editor/test/plugin-boundaries.test.ts` is the
+rule). Read `packages/plugins/reflection/POSTMORTEM-2026-09-12.md` §7
+first: the first attempt's dead ends, including the one that cannot
+be seen from the API (a plugin cannot observe its own `execute`
+synchronously — subscribe to `ctx.document`). A **Writing a plugin**
+guide in the docs site walks through this plugin.
 
 **Done when.** `shift+R` on a block behaves byte-identically to 0.0.3
 with the plugin on; with it off the key does nothing, the shortcut
@@ -500,8 +521,8 @@ plugins can be read side by side:
 4. **State** — what is transient (memory), what is persisted (the
    storage namespace), what is document (MEI or sidecar), and the
    confirmation that nothing mutates outside `execute`.
-5. **Commands** — each command's revert strategy (memento or inverse),
-   its dirty regions, and how the fuzzer covers it.
+5. **Command messages** — each message the plugin sends, when, and the
+   core command the host maps it to (plugins define no commands).
 6. **Tests** — the suites, what each pins, how to run them; which e2e
    scripts gated the extraction.
 7. **Dead ends** — what was tried and dropped, with the reason. The
@@ -532,9 +553,9 @@ template alone. From slice 2 the docs drift check fails a
   bytes). *Slice 1; load-bearing from slice 2.*
 - **Coverage tests extend to contributions**: a plugin keybinding the
   VirtualKeyboard cannot reach fails CI, as core bindings do today; a
-  plugin `Command` runs under the apply-then-revert fuzzer (the harness
-  is exported from core so plugins can run it in their own suites).
-  *The harness export lands in slice 2, the union-keymap coverage in
+  plugin edit is a message mapped to a core command, so the
+  apply-then-revert fuzzer in core covers it without any harness leaving
+  core (plugins define no commands). *The union-keymap coverage lands in
   slice 4.*
 - **API surface is versioned and diffed**: a change to `@battuta/api`'s
   public types requires a version bump (api-extractor or an equivalent
@@ -552,7 +573,7 @@ template alone. From slice 2 the docs drift check fails a
    (OMR) is re-planned as the second overlay plugin and its plan cites
    only API surface.
 3. Every existing e2e suite green, byte-identical undo across all
-   plugin commands, the CI budgets above in place.
+   command messages, the CI budgets above in place.
 4. Docs: a "writing a plugin" guide with the reflection plugin as the
    worked example; every plugin's `README.md` (how to use it) and
    `BUILDING.md` (how it was built, under the fixed headings) in
@@ -571,9 +592,9 @@ template alone. From slice 2 the docs drift check fails a
   prop-drilling; if plugin UI outgrows slots, that is the moment to
   evaluate a panel host, not before.
 - **Undo integrity.** Plugins that mutate outside `execute` would break
-  the phase's central invariant. The API exposes `CoreScore` read-only
-  (frozen view or type-level readonly + a dev-mode proxy that throws on
-  write).
+  the phase's central invariant. Made structural on 2026-09-14: the API
+  exposes no model object at all (snapshots and a query facade), and a
+  plugin package cannot import core — the boundary test fails the build.
 - **Third-party code.** Deferred. If it comes: load from disk via the
   shell only, run in a worker with the message-passing API, AGPL
   implications for bundled third-party code documented first.

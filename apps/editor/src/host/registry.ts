@@ -10,13 +10,16 @@
  * event it declared — or when one of its keybindings is pressed, which
  * fires `onCommand:<id>` implicitly.
  *
+ * `load` is a dynamic import and resolves to a module NAMESPACE; the
+ * registry unwraps the default export (`resolvePluginModule`).
+ *
  * Turning a plugin off deactivates it (its `deactivate()` runs, then
  * every disposable it was handed fires) and withdraws its contributions:
  * bindings leave the keymap store, slot items and panels vanish. No
  * document change, no reload. The user's keymap overrides for its
  * bindings are untouched, so turning it back on restores them.
  */
-import { API_VERSION, DisposableStore, satisfiesEngine, toDisposable, validateManifest, type ActivationEvent, type CommandHandler, type Disposable, type HostCapability, type KeybindingContribution, type PluginContext, type PluginEntry, type PluginManifest, type PluginModule, type Store } from "@battuta/api";
+import { API_VERSION, DisposableStore, resolvePluginModule, satisfiesEngine, toDisposable, validateManifest, type ActivationEvent, type CommandHandler, type Disposable, type HostCapability, type KeybindingContribution, type PluginContext, type PluginEntry, type PluginManifest, type PluginModule, type Store } from "@battuta/api";
 
 export type PluginState = "registered" | "active" | "disabled" | "failed";
 
@@ -150,7 +153,7 @@ export class PluginRegistry implements Store<readonly PluginInfo[]> {
     if (rec.state !== "registered" || !rec.enabled) return rec.state === "active";
     rec.activating = (async () => {
       try {
-        const mod = rec.module ?? (await rec.entry.load());
+        const mod = rec.module ?? resolvePluginModule(await rec.entry.load());
         rec.module = mod;
         rec.subscriptions = new DisposableStore();
         await mod.activate(this.deps.createContext(rec.entry.manifest, rec.subscriptions));

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent a
 import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, isHarmText, harmSuggestions, HARM_CHARS, reflectionForm, REFLECTION_CYCLE, REFLECTION_LABELS, type ReflectionForm, type PitchEvent, type HarmKind, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
 import { RenderPool, type TileResult } from "./render/renderPool";
 import { keyMatches, type Keymap, type Layout } from "./keymap";
-import { host, useStore, Slot, Panels, confirmDialog, tauriInvoke } from "./host";
+import { host, useStore, Slot, Panels, confirmDialog, tauriInvoke, blockOfEvents } from "./host";
 import { ShortcutEditor } from "./ShortcutEditor";
 import { loadSettings, saveSettings, detectLayout } from "./settings";
 import { scorePlayer, type PlayerState } from "./player";
@@ -874,16 +874,8 @@ export default function App() {
   const blockFromSelection = useCallback((): BlockSelection | null => {
     const sel = selectionRef.current;
     if (!session || sel.length === 0) return null;
-    let mFrom = Infinity, mTo = -1, sFrom = Infinity, sTo = -1;
-    for (const id of sel) {
-      const r = session.index.byId.get(id);
-      if (!r) continue;
-      mFrom = Math.min(mFrom, r.measureIndex);
-      mTo = Math.max(mTo, r.measureIndex);
-      sFrom = Math.min(sFrom, r.staffN);
-      sTo = Math.max(sTo, r.staffN);
-    }
-    return mTo < 0 ? null : { measureFrom: mFrom, measureTo: mTo, staffFrom: sFrom, staffTo: sTo };
+    // One rule, one place: the same function answers plugins' query.blockOf.
+    return blockOfEvents(session.index, sel);
   }, [session, selection]);
 
   /** Event run of a single-staff block: the caret's voice when it sits
@@ -1376,21 +1368,30 @@ export default function App() {
     return () => d.dispose();
   }, []);
   useEffect(() => {
-    host.document.set(session ? { score: session.score, index: session.index, contexts: session.contexts, version: session.version } : null);
-  }, [session, version]);
+    // A snapshot, not the model: plugins get data, never CoreScore.
+    host.document.set(
+      session && activeId !== null
+        ? { id: `doc-${activeId}`, version: session.version, measureCount: session.score.measures.length, staffCount: session.staffCount, title: session.title(), tempo: session.tempo() ?? null }
+        : null,
+    );
+  }, [session, version, activeId]);
   useEffect(() => {
     host.editor.set({ caret, selection, block, view, entryMode });
   }, [caret, selection, block, view, entryMode]);
   useEffect(() => {
     if (!session) {
-      host.bindExecutor(null);
+      host.bindSession(null);
       return;
     }
-    host.bindExecutor((cmd) => {
-      session.execute(cmd);
-      afterCommand(session);
+    host.bindSession({
+      execute: (cmd) => {
+        session.execute(cmd);
+        afterCommand(session);
+      },
+      pitchEventsIn: (block) => session.blockPitchEvents(block),
+      blockOf: (ids) => blockOfEvents(session.index, ids),
     });
-    return () => host.bindExecutor(null);
+    return () => host.bindSession(null);
   }, [session, afterCommand]);
 
   // Keyboard: navigation, selection, edits, undo/redo.

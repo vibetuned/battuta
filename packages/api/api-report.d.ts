@@ -3,46 +3,25 @@
 // ---- context.d.ts
 /**
  * What a plugin sees at runtime. Read side: stores (get + subscribe) over
- * the active document and the editor state. Write side: `execute` — the
- * ONLY mutation path, so undo integrity and byte-identical revert hold
- * for plugin commands exactly as for core ones — plus notices, confirm,
- * a settings namespace, a storage namespace, UI slots and panels.
+ * the document snapshot and the editor state, plus the query facade.
+ * Write side: `execute(message)` — the ONLY mutation path, so undo
+ * integrity and byte-identical revert hold for plugin edits exactly as
+ * for core ones — plus notices, confirm, a settings namespace, a storage
+ * namespace, UI slots and panels.
  *
- * Plugins never touch the DOM, the SVG, the React tree or CoreScore
- * mutably. Anything document-shaped a plugin wants to keep goes in MEI
- * (through a command) or a declared sidecar; everything else in storage.
+ * Plugins never touch the DOM, the SVG, the React tree or the document
+ * model. Anything document-shaped a plugin wants to keep goes into MEI
+ * through a message; everything else into storage.
  */
 import type { ReactNode } from "react";
-import type { BlockSelection, CaretPosition, Command, CoreScore, EventIndex, MeasureContext } from "@battuta/core";
 import type { Disposable, DisposableStore } from "./disposable.js";
+import type { DocumentInfo, DocumentQueries, EditorState } from "./document.js";
 import type { PluginManifest, SlotName } from "./manifest.js";
+import type { CommandMessage } from "./messages.js";
 /** A value with change notification. `subscribe` fires on every change with the new value. */
 export interface Store<T> {
     get(): T;
     subscribe(listener: (value: T) => void): Disposable;
-}
-/**
- * The active document, read-only. `version` bumps on every executed
- * command, undo and redo; a plugin that cached anything derived from the
- * score re-derives when it changes. The score is typed read-only; the
- * host does not (yet) freeze it — mutate it and you break undo.
- */
-export interface ReadonlyDocument {
-    readonly score: Readonly<CoreScore>;
-    readonly index: EventIndex;
-    readonly contexts: readonly MeasureContext[];
-    readonly version: number;
-}
-export type ViewMode = "tiles" | "pages";
-/** Caret and selections in model coordinates — never pixels. */
-export interface EditorState {
-    readonly caret: CaretPosition | null;
-    /** Event selection: ordered event ids within one layer. */
-    readonly selection: readonly string[];
-    /** Block selection: a measure-range × staff-range rectangle. */
-    readonly block: BlockSelection | null;
-    readonly view: ViewMode;
-    readonly entryMode: boolean;
 }
 /** An item rendered inside a host slot (header row, status bar, battuta menu). */
 export interface SlotItem {
@@ -74,10 +53,13 @@ export interface PluginContext {
     readonly manifest: PluginManifest;
     /** The host's `@battuta/api` version. */
     readonly apiVersion: string;
-    readonly document: Store<ReadonlyDocument | null>;
+    /** The active document as a snapshot, null when none is open. Republished after every edit — see DocumentInfo. */
+    readonly document: Store<DocumentInfo | null>;
     readonly editor: Store<EditorState>;
-    /** Runs a core Command against the active document as one undo step. Throws when no document is open. */
-    execute(command: Command): void;
+    /** Questions about the active document, answered as data. */
+    readonly query: DocumentQueries;
+    /** Runs a command message against the active document as one undo step. Throws when no document is open. */
+    execute(message: CommandMessage): void;
     /** Provides the handler for one of the plugin's declared commands; keybindings reach it through here. */
     registerCommand(id: string, handler: CommandHandler): Disposable;
     /** Bottom-right toast, same as the host's own notices. */
@@ -95,22 +77,29 @@ export interface PluginContext {
     /** Disposed on deactivate. Add every subscription here; the host disposes what it handed out itself. */
     readonly subscriptions: DisposableStore;
 }
-/** What a plugin's entry module exports. */
+/** What a plugin's entry module exports (as its default export). */
 export interface PluginModule {
     activate(ctx: PluginContext): void | Promise<void>;
     deactivate?(): void | Promise<void>;
 }
 /**
  * What the host registers: the manifest eagerly (declarative
- * contributions take effect at once), the code lazily (`load` is a
- * dynamic import, run on the first activation event).
+ * contributions take effect at once), the code lazily. `load` is a
+ * dynamic import — `() => import("@battuta/plugin-x")` — which resolves
+ * to the module NAMESPACE; the host unwraps its default export.
  */
 export interface PluginEntry {
     manifest: PluginManifest;
-    load: () => Promise<PluginModule>;
+    load: () => Promise<PluginModule | {
+        default: PluginModule;
+    }>;
 }
 /** Identity helper that types a plugin module; `export default definePlugin({ activate })`. */
 export declare const definePlugin: (plugin: PluginModule) => PluginModule;
+/** Unwraps what `PluginEntry.load` resolved to — a module namespace or the module itself. */
+export declare function resolvePluginModule(loaded: PluginModule | {
+    default: PluginModule;
+}): PluginModule;
 
 // ---- disposable.d.ts
 /**
@@ -131,9 +120,88 @@ export declare class DisposableStore implements Disposable {
     dispose(): void;
 }
 
+// ---- document.d.ts
+/**
+ * What a plugin may know about the document — as DATA. Every type here
+ * is plain JSON: no classes, no live objects, no core imports. That is
+ * what keeps the API message-passing-friendly (a worker host or
+ * third-party loading stays a deferral, not a rewrite) and what makes
+ * "everything through @battuta/api" true rather than aspirational: there
+ * is nothing of the document model here to reach into.
+ */
+/** Caret position in model coordinates — never pixels. */
+export interface CaretPosition {
+    measureIndex: number;
+    staffN: number;
+    layerN: number;
+    eventIndex: number;
+}
+/** Block selection: inclusive measure-index range × inclusive staff-number range. */
+export interface BlockSelection {
+    measureFrom: number;
+    measureTo: number;
+    staffFrom: number;
+    staffTo: number;
+}
+/** One written pitch (MEI @pname/@oct, with the accidental attributes when present). */
+export interface Pitch {
+    pname: string;
+    oct: number;
+    accid?: string;
+    accidGes?: string;
+}
+/** A pitched event (note or chord): its id and its pitches in child order. */
+export interface PitchEvent {
+    eventId: string;
+    pitches: Pitch[];
+}
+export type ViewMode = "tiles" | "pages";
+/** Caret and selections, in model coordinates. */
+export interface EditorState {
+    readonly caret: CaretPosition | null;
+    /** Event selection: ordered event ids within one layer. */
+    readonly selection: readonly string[];
+    /** Block selection: the dragged rectangle, or null. */
+    readonly block: BlockSelection | null;
+    readonly view: ViewMode;
+    readonly entryMode: boolean;
+}
+/**
+ * The active document, as a snapshot. `version` bumps on every executed
+ * command, undo and redo. The host publishes a new snapshot AFTER its own
+ * render cycle, so a plugin cannot observe the result of its own
+ * `execute` synchronously — learn it from `ctx.document.subscribe`.
+ */
+export interface DocumentInfo {
+    /** Stable for the life of an open tab; reopening a file yields a new id. */
+    id: string;
+    version: number;
+    measureCount: number;
+    staffCount: number;
+    title: string;
+    /** `@midi.bpm` on the scoreDef; null when the score sets none. */
+    tempo: number | null;
+}
+/**
+ * Questions a plugin may ask the active document. Answered by the host
+ * from the live model; every answer is data. With no document open the
+ * answers are empty (`[]`, `null`). Grows one question at a time, when a
+ * plugin being built needs it — never speculatively.
+ */
+export interface DocumentQueries {
+    /** Pitched events of a block, one sequence per (staff, layer) voice, in measure order. Rests are skipped. */
+    pitchEventsIn(block: BlockSelection): PitchEvent[][];
+    /** The measure × staff rectangle an event selection covers (the editor's own rule), or null when empty. */
+    blockOf(eventIds: readonly string[]): BlockSelection | null;
+}
+
 // ---- index.d.ts
 /**
  * @battuta/api — the plugin contract of the battuta host.
+ *
+ * Standalone: no dependency on @battuta/core or the editor. Everything a
+ * plugin can see is data (document.ts), everything it can do is a
+ * message (messages.ts) or a context call (context.ts).
  *
  * Semver'd separately from the app; a plugin declares the range it was
  * built against in its manifest's `engines.battuta`. A change to any
@@ -147,8 +215,11 @@ export type { Disposable } from "./disposable.js";
 export { toDisposable, DisposableStore } from "./disposable.js";
 export type { Version } from "./semver.js";
 export { parseVersion, satisfiesEngine } from "./semver.js";
-export type { Store, ReadonlyDocument, ViewMode, EditorState, SlotItem, PanelSide, PanelSpec, SettingsNamespace, StorageNamespace, CommandHandler, PluginContext, PluginModule, PluginEntry } from "./context.js";
-export { definePlugin } from "./context.js";
+export type { CaretPosition, BlockSelection, Pitch, PitchEvent, ViewMode, EditorState, DocumentInfo, DocumentQueries } from "./document.js";
+export type { SetPitchesMessage, CommandMessage, CommandMessageType } from "./messages.js";
+export { COMMAND_MESSAGE_TYPES } from "./messages.js";
+export type { Store, SlotItem, PanelSide, PanelSpec, SettingsNamespace, StorageNamespace, CommandHandler, PluginContext, PluginModule, PluginEntry } from "./context.js";
+export { definePlugin, resolvePluginModule } from "./context.js";
 
 // ---- manifest.d.ts
 /**
@@ -221,6 +292,33 @@ export interface PluginManifest {
 }
 /** Every problem with a manifest, in plain words; empty means valid. */
 export declare function validateManifest(input: unknown): string[];
+
+// ---- messages.d.ts
+/**
+ * Commands as data. A plugin mutates the document by handing the host a
+ * serializable message; the host owns the mapping from message to the
+ * real core command (`apps/editor/src/host/messages.ts`) and runs it as
+ * one undo step. A plugin therefore cannot mutate in any way the host has
+ * not published here — and cannot construct a command at all, because
+ * `@battuta/core` is not reachable from a plugin package.
+ *
+ * Adding a message = one member of this union + one case in the host's
+ * `toCommand` + a mapping test + an API version bump. Every planned slice
+ * maps onto a command that already exists in core (setPitches for the
+ * reflection cycle, setSyl for lyrics, setHarm for harmony); a plugin
+ * that thinks it needs a NEW command is asking for a core change first.
+ */
+import type { PitchEvent } from "./document.js";
+/** Write pitch content onto events (notes in child order for chords). Byte-identical revert. */
+export interface SetPitchesMessage {
+    type: "core.setPitches";
+    targets: PitchEvent[];
+    /** Undo-stack label, shown nowhere yet but recorded. */
+    label: string;
+}
+export type CommandMessage = SetPitchesMessage;
+export type CommandMessageType = CommandMessage["type"];
+export declare const COMMAND_MESSAGE_TYPES: readonly CommandMessageType[];
 
 // ---- semver.d.ts
 /**

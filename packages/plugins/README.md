@@ -4,8 +4,28 @@ Everything a person or an agent needs to build a battuta plugin — or to
 extract an existing feature into one — without having read the rest of
 the repository. The architecture is in `PLANNING.md` (Phase 9); this file
 is the practical side: where things are, what a plugin package looks
-like, the rules the host enforces, how to verify, and the two documents
+like, the rules the build enforces, how to verify, and the two documents
 every plugin must carry.
+
+## Read this first: two sentences that were misread once
+
+The first slice-2 attempt (2026-09-12) was rolled back. Its post-mortem is
+`reflection/POSTMORTEM-2026-09-12.md`; read §7 before building anything.
+Two things in the plan were misunderstood, so here they are plainly:
+
+1. **"No extension-host process yet" does NOT mean "no command messages".**
+   It means the host and the plugins share one JavaScript realm today.
+   Commands ARE messages regardless: a plugin mutates the document with
+   `ctx.execute({ type: "core.setPitches", targets, label })`, plain data,
+   and the host turns the message into the real core command. That is
+   what keeps a worker host a deferral instead of a rewrite.
+2. **"Everything through `@battuta/api`" is a hard rule, enforced by the
+   build.** `@battuta/core` is not a dependency a plugin may have, its
+   import fails `apps/editor/test/plugin-boundaries.test.ts` in CI, and
+   the api exposes nothing of the document model to reach into — reads
+   are the `ctx.query` facade, writes are messages. A plugin that seems
+   to need core is asking for an api addition (below), not an import. Do
+   not edit this file to permit the code; change the api.
 
 ## Where things are
 
@@ -28,14 +48,26 @@ every plugin must carry.
 
 ```
 packages/plugins/<name>/
-  package.json        "@battuta/plugin-<name>"; exports "." and "./manifest"
+  package.json        "@battuta/plugin-<name>"; dependencies: { "@battuta/api": "*" } and NOTHING else
+                      of the workspace; exports "." → ./src/index.ts and "./manifest" → ./src/manifest.ts
+                      (sources, not a dist: Vite and tsc both consume linked TypeScript, so no build step
+                      and no prepare)
   tsconfig.json       strict TS; "jsx": "react-jsx" if the plugin renders panels
-  src/manifest.ts     export const manifest: PluginManifest = { … }   (no imports of plugin code!)
+  src/manifest.ts     export const manifest: PluginManifest = { … }   — imports @battuta/api and nothing else
   src/index.ts(x)     export default definePlugin({ activate, deactivate })
-  test/*.test.ts      vitest, against createHost() with memory settings/storage
+  src/<feature>.ts    the feature's own logic (the reflection forms, a lane grammar): pure TS over api data
+  test/*.test.ts      vitest, against createHost() with memory settings/storage and a fake session adapter
   README.md           how to use it          (template below)
   BUILDING.md         how it was built       (template below)
 ```
+
+**What belongs in the plugin, what stays in core.** If a function has no
+MEI knowledge — it transforms `PitchEvent[]`, parses a chord symbol,
+decides a cycle — it is the plugin's, even if it sat in core before
+(the reflection forms in `packages/core/src/reflect.ts` move with their
+plugin; their tests move too). If it touches the document tree — a
+`Command`, a collector over the event index — it stays in core and the
+plugin reaches it through a message or a query.
 
 The manifest module must stay tiny and import nothing from the plugin's
 code: the host imports it statically to know your commands and bindings
@@ -57,51 +89,83 @@ Vite names your code's chunk `plugin-<name>`; the bundle-budget check
 is reachable from the initial chunk — i.e. someone imported your package
 statically from the host.
 
-Whether plugin packages point `exports` at `src/` (Vite and `tsc` both
-consume TypeScript sources of linked workspace packages, so no build step)
-or at a built `dist/` like core and api do, and whether plugin code may
-import `@battuta/core` directly for pure helpers and `Command` classes,
-are the first plugin's decisions to make and record in its `BUILDING.md`.
-Later plugins follow the precedent.
+Two decisions are already taken, so no plugin re-decides them: packages
+point `exports` at `src/` (no build, no prepare), and plugin code never
+imports `@battuta/core` — the boundary test fails the build.
 
-## The rules the host enforces (and the ones it cannot)
+## Reading and writing the document
 
-1. **Everything through `@battuta/api`.** No imports from `apps/editor`,
-   no DOM or SVG access, no reaching into the React tree. UI only through
-   `ctx.slots.add(...)` and `ctx.panels.open(...)`, which take render
-   functions.
-2. **Mutation only through `ctx.execute(command)`.** One undo step, same
-   invalidation as a core edit. A command is a core `Command` (apply /
-   revert / dirty regions) — byte-identical revert is the invariant the
-   fuzzer checks. The host never mutates the document on a plugin's behalf.
-3. **No document state outside the document.** Transient state lives in
-   memory; small values in `ctx.settings`; larger ones in `ctx.storage`.
-   Anything about the SCORE goes into MEI through a command (or a declared
-   sidecar file). "All plugins off" must leave every document byte-identical.
-4. **Declare before you use.** Commands in the manifest; handlers in
-   `activate` via `ctx.registerCommand` (the host refuses a handler for an
-   undeclared command). Keybindings may only name your own commands. A
-   binding whose id collides with a core action id is ignored — core wins.
-5. **Dispose everything.** What the context hands back is tracked for
-   you; anything else you create (timers, listeners) goes into
-   `ctx.subscriptions`. Off = `deactivate()` then every disposable fires;
-   the user sees no reload and nothing of yours remains.
-6. **Activate as late as possible.** Keybindings activate you implicitly
-   (`onCommand:<id>` fires when the key is pressed); declare `onStartup`
-   only if you must run before any interaction — it costs every user your
-   code at launch.
-7. **Pin the API.** `engines.battuta: "^<API_VERSION>"`. If the API has to
-   grow for you: change `packages/api/src`, bump its version, run
-   `npm run api:update -w @battuta/api`, and write the change under the
-   unreleased heading in `CHANGELOG.md`.
-8. **Extractions are behaviour-neutral.** Every existing e2e script passes
-   unchanged; if none drives the feature you are extracting, add one
-   FIRST, then extract.
-9. **Plugin keys come after core keys.** `host.dispatchKey` runs only when
-   every core branch of the key handler fell through, and never while a
-   text lane or the shortcut editor owns the keyboard.
-10. **Two documents, always** — README.md and BUILDING.md, below. A slice
-    is not closed without them.
+The api is a data contract. Nothing in it is a live object of the model.
+
+| Need | Call | Returns |
+| --- | --- | --- |
+| which document, how many measures, its version | `ctx.document.get()` | `DocumentInfo` (`id`, `version`, `measureCount`, `staffCount`, `title`, `tempo`) or null |
+| caret, event selection, block, view, input mode | `ctx.editor.get()` | `EditorState` |
+| the pitched events of a block, per voice | `ctx.query.pitchEventsIn(block)` | `PitchEvent[][]` |
+| the block an event selection covers | `ctx.query.blockOf(ids)` | `BlockSelection` or null |
+| **write** pitch content onto events | `ctx.execute({ type: "core.setPitches", targets, label })` | one undo step |
+
+Three things to know, each learned the hard way:
+
+- **You cannot observe your own `execute` synchronously.** The host
+  republishes `ctx.document` after its render cycle; the version you read
+  right after `execute` is the one from before your edit. Subscribe and
+  adopt the next published version as yours.
+- **The editor acts on the drag block when there is one, else on the
+  rectangle the event selection covers.** `ctx.editor.get().block ??
+  ctx.query.blockOf(ctx.editor.get().selection)` is that rule.
+- **`DocumentInfo.id` is document identity.** A new tab or a reopened
+  file gets a new id; key any per-document state on it.
+
+**Adding a message or a query** is an api change, made in the host, never
+worked around in a plugin:
+
+1. `packages/api/src/messages.ts` (a union member) or `document.ts` (a
+   `DocumentQueries` method); every planned slice maps onto a command that
+   already exists in core (`SetSylCommand` for lyrics, `SetHarmCommand` for
+   harmony) — a message for a NEW command means a core change first.
+2. `apps/editor/src/host/messages.ts` (`toCommand` case) or the
+   `SessionAdapter` in `apps/editor/src/host/index.ts` plus its binding in
+   `App.tsx`.
+3. A test in `apps/editor/test/host.test.ts` ("commands as data").
+4. Bump the api version, `npm run api:update -w @battuta/api`, a line
+   under the unreleased heading in `CHANGELOG.md`.
+
+## Hard rules — each one has a failing test
+
+| Rule | Enforced by |
+| --- | --- |
+| Only `@battuta/api`, `react` and the package's own files are imported — never `@battuta/core`, `apps/editor`, Verovio, Tone; relative imports stay inside the package | `apps/editor/test/plugin-boundaries.test.ts` (static, type-only, re-export and dynamic imports alike) |
+| `package.json` depends on `@battuta/api` and nothing else of the workspace; the name is `@battuta/plugin-<name>` | same test |
+| `src/manifest.ts` imports nothing but `@battuta/api` | same test |
+| No DOM: `window`, `document`, `navigator`, `localStorage`, `sessionStorage` never appear as globals | same test |
+| `README.md` and `BUILDING.md` exist, the latter with the eight headings | same test |
+| No plugin code in the initial chunk; plugin manifests, core and api live in the `battuta-shared` chunk | `npm run budget -w @battuta/editor` |
+| A handler for a command the manifest did not declare is refused | the registry throws (plugin marked failed) |
+| A plugin binding never shadows a core action id | the keymap store drops it |
+| Mutation only through `ctx.execute(message)`; only published message types | `toCommand` throws on anything else; there is no other door — core is unreachable |
+| API surface changes are visible and versioned | `api-report.d.ts` snapshot test |
+| Byte-identical undo for every message | core's command tests and fuzzer cover the mapped commands; the mapping is tested in the host |
+
+Conventions the tests cannot see, still binding:
+
+- **No document state outside the document.** Transient state lives in
+  memory; small values in `ctx.settings`; larger ones in `ctx.storage`.
+  Anything about the SCORE goes into MEI through a message. "All plugins
+  off" must leave every document byte-identical.
+- **Dispose everything.** What the context hands back is tracked for
+  you; anything else you create (timers, listeners) goes into
+  `ctx.subscriptions`. Off = `deactivate()` then every disposable fires.
+- **Activate as late as possible.** Keybindings activate you implicitly
+  (`onCommand:<id>` fires when the key is pressed); `onStartup` costs
+  every user your code at launch.
+- **Extractions are behaviour-neutral.** Every e2e script passes
+  unchanged (`spikes/verify-*.mjs`); if none drives the feature you are
+  extracting, add one FIRST.
+- **Plugin keys come after core keys.** `host.dispatchKey` runs only when
+  every core branch of the key handler fell through, and never while a
+  text lane or the shortcut editor owns the keyboard.
+- **Pin the API.** `engines.battuta: "^<API_VERSION>"`.
 
 ## Verifying
 
@@ -126,17 +190,31 @@ Verovio worker pools make the render waits flaky. The scripts open the
 committed fixture `fixtures/synthetic-context-changes.mei` and address
 its notes by id (`cc-m2n1`) — never resave that file from the app.
 
-Plugin tests run against a real host in memory:
+Plugin tests run against a real host in memory, with a fake session
+adapter standing in for the document (the only imports a test may add
+beyond the api are vitest, `node:*` and the host):
 
 ```ts
-import { createHost, memorySettings } from "../../../../apps/editor/src/host";
+import { createHost, memorySettings, type SessionAdapter } from "../../../../apps/editor/src/host";
 import { memoryStorage } from "../../../../apps/editor/src/host/services";
+const executed: unknown[] = [];
+const adapter: SessionAdapter = {
+  execute: (cmd) => executed.push(cmd),                         // the core command the host built from your message
+  pitchEventsIn: () => [[{ eventId: "n1", pitches: [{ pname: "c", oct: 4 }] }]],
+  blockOf: (ids) => (ids.length ? { measureFrom: 0, measureTo: 0, staffFrom: 1, staffTo: 1 } : null),
+};
 const host = createHost({ layout: "qwerty", plugins: [entry], settings: memorySettings(), storage: memoryStorage(), confirm: async () => true });
+host.bindSession(adapter);
+host.document.set({ id: "doc-1", version: 1, measureCount: 10, staffCount: 2, title: "", tempo: null });
+host.editor.set({ ...host.editor.get(), block: { measureFrom: 0, measureTo: 1, staffFrom: 1, staffTo: 1 } });
 host.dispatchKey({ key: "R", shiftKey: true, altKey: false });   // presses your binding
 ```
 
-`apps/editor/test/host.test.ts` shows the full pattern (a fixture plugin
-that contributes one of everything, then every guarantee asserted).
+Remember the host republishes `ctx.document` only when the App's effect
+runs; in a test you play the App: after an execute, `host.document.set`
+the next version yourself. `apps/editor/test/host.test.ts` shows the full
+pattern (a fixture plugin that contributes one of everything, then every
+guarantee asserted).
 
 ## Closing a slice
 
@@ -220,11 +298,11 @@ the API had to grow for this plugin, and the version that carried it.>
 elements/attributes, through which commands. Then the sentence: "Nothing
 mutates the document outside `ctx.execute`," and how you know.>
 
-## 5. Commands
+## 5. Command messages
 
-<Each command: what it changes, its revert strategy (memento or inverse),
-its dirty regions, and how the apply-then-revert fuzzer covers it (or why
-it cannot yet).>
+<Each message the plugin sends (`ctx.execute({ type })`): what it changes,
+when it is sent, and which core command the host maps it to. If the api
+had to grow a message or a query for this plugin, say so here and in §3.>
 
 ## 6. Tests
 

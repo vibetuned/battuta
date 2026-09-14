@@ -2,7 +2,7 @@
   "name": "@battuta/api",
   "version": "0.1.0",
   "license": "AGPL-3.0-only",
-  "description": "The plugin contract of the battuta host: manifest, activation, context. Everything a plugin can see or do.",
+  "description": "The plugin contract of the battuta host: manifest, activation, context, command messages. Standalone — depends on nothing of the editor or the core.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -11,18 +11,15 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "prepare": "node scripts/prepare.mjs",
+    "prepare": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "api:update": "node scripts/api-report.mjs --update"
   },
   "//": [
-    "prepare is LOAD-BEARING (same as @battuta/core): the editor and every plugin resolve @battuta/api via dist/, and npm install/ci runs prepare in workspaces. It goes through scripts/prepare.mjs because npm does not order workspace prepares by dependency: on a fresh clone this package can be prepared before core, whose dist/ our declarations import — the script builds core first when it is missing.",
+    "prepare is LOAD-BEARING (same as @battuta/core): the editor and every plugin resolve @battuta/api via dist/, and npm install/ci runs prepare in workspaces. The package imports nothing from other workspaces, so the order npm prepares them in does not matter.",
     "The version is the API version plugins declare in engines.battuta. Any change to the public types (api-report.d.ts) requires bumping it — the surface test refuses otherwise."
   ],
-  "dependencies": {
-    "@battuta/core": "*"
-  },
   "peerDependencies": {
     "react": "^18.3.0"
   },

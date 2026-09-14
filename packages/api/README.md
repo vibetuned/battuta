@@ -2,9 +2,14 @@
 
 The plugin contract of the battuta host: the manifest a plugin declares,
 the activation events that load its code, and the context it receives —
-everything a plugin can see or do. Pure types plus three small runtime
-helpers (`validateManifest`, `satisfiesEngine`, `DisposableStore`); no DOM,
-no React runtime (React's `ReactNode` type is used for slot items).
+everything a plugin can see or do. **Standalone**: it imports nothing from
+`@battuta/core` or the editor. What a plugin sees is data (`document.ts`:
+snapshots, coordinates, pitches, the query facade), what it does is a
+message (`messages.ts`: `ctx.execute({ type: "core.setPitches", … })`, mapped
+to the real core command by the host). Pure types plus four small runtime
+helpers (`validateManifest`, `satisfiesEngine`, `DisposableStore`,
+`resolvePluginModule`); no DOM, no React runtime (React's `ReactNode` type
+is used for slot items).
 
 The host implementation lives in `apps/editor/src/host/`; the conventions
 and templates for writing a plugin are in

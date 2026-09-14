@@ -22,10 +22,20 @@ export default defineConfig(({ command }) => ({
     rollupOptions: {
       output: {
         // Every plugin's code becomes its own `plugin-<name>` chunk, so a
-        // plugin leaking into the initial chunk is visible by name.
+        // plugin leaking into the initial chunk is visible by name. Three
+        // things are in the host's initial closure BY DESIGN and get one
+        // named `battuta-shared` chunk: core, the api, and every plugin's
+        // manifest (imported statically so bindings exist before the code
+        // loads). Naming them matters twice over: Rollup would otherwise
+        // settle core inside the first plugin chunk that imports it, and
+        // it folds a tiny unassigned manifest module into its neighbour's
+        // chunk — `undefined` here means "no opinion", not "keep it out".
         manualChunks(id) {
-          const m = /packages\/plugins\/([^/]+)\//.exec(id.replace(/\\/g, "/"));
-          return m ? `plugin-${m[1]}` : undefined;
+          const f = id.replace(/\\/g, "/");
+          const plugin = /packages\/plugins\/([^/]+)\/(.*)$/.exec(f);
+          if (plugin) return /(^|\/)manifest\.(ts|js|mjs)$/.test(plugin[2]) ? "battuta-shared" : `plugin-${plugin[1]}`;
+          if (/\/packages\/(core|api)\//.test(f)) return "battuta-shared";
+          return undefined;
         },
       },
     },

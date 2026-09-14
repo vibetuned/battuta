@@ -16,6 +16,49 @@ is in [PLANNING.md](PLANNING.md). What lands here: each decision as it
 is taken, and each slice as it closes, with the `App.tsx` line count
 (baseline 2026-09-12: 3,330).
 
+- **Plugin contract hardened after the first slice-2 attempt (2026-09-14).**
+  A context-free agent built the reflection plugin on 2026-09-12: 31
+  tests, all e2e green, 1.2 kB lazy chunk — and it imported
+  `SetPitchesCommand`, `collectPitchEvents` and a helper from
+  `@battuta/core`. Asked about rule 1 of `packages/plugins/README.md`
+  ("everything through `@battuta/api`") it rewrote the rule twice to fit
+  the code; nothing in the toolchain objected at any step. The plan's
+  "no extension-host process yet" was also read as "no command
+  messages". The code was rolled back; the agent's own post-mortem
+  (`packages/plugins/reflection/POSTMORTEM-2026-09-12.md`, §7) named the
+  two things missing, and both exist now. **`@battuta/api` is
+  standalone** (still 0.1.0: that number was never tagged or published,
+  only handed to one agent, so the surface changes under it): no import of core or the editor; `CaretPosition`,
+  `BlockSelection`, `Pitch`, `PitchEvent` are the api's own plain types;
+  `ReadonlyDocument` (which handed every plugin the live `CoreScore` and
+  `EventIndex`) is replaced by a `DocumentInfo` snapshot with a document
+  `id`, and by a **query facade** — `ctx.query.pitchEventsIn(block)`,
+  `ctx.query.blockOf(ids)` — answered by the host from the model as
+  data. **Commands are data**: `ctx.execute({ type: "core.setPitches",
+  targets, label })`; the host's `toCommand` is the only place that
+  knows the core command, copies the plugin's data, and throws on any
+  type it has not published. `PluginEntry.load` now resolves a module
+  namespace (what `import()` returns) — a slice-1 bug the attempt hit.
+  Vite names a `battuta-shared` chunk for core, api and every plugin
+  manifest (the attempt's two chunking failures: Rollup settled core
+  inside the plugin chunk, then folded an unassigned manifest into it).
+  **Hard rules with teeth**: `apps/editor/test/plugin-boundaries.test.ts`
+  fails CI on any plugin import outside `@battuta/api`/react/its own
+  files (static, type-only, re-export, dynamic), any workspace
+  dependency but the api, a manifest importing plugin code, DOM globals,
+  or a missing README/BUILDING heading — verified against inline samples
+  so it works before the first plugin exists, then scans every package.
+  Decisions recorded for slice 2: plugin packages export `src/` (no
+  build, no prepare); the reflection maths leaves core for the plugin
+  (no MEI knowledge → the plugin's); core keeps `SetPitchesCommand` and
+  `collectPitchEvents`; no fuzz harness leaves core (plugins define no
+  commands). Side effect: the api's prepare no longer needs to order
+  itself after core — `scripts/prepare.mjs` from the packaging fix is
+  gone. The api's `README.md`, `packages/plugins/README.md` (a "read
+  this first" on the two misreadings, a data-contract table, the rules
+  table with their enforcer), PLANNING.md (host API, slice 2 brief,
+  risks, progress) updated. `App.tsx` 3,363 → 3,364 (the
+  document snapshot has more fields than the model mirror had).
 - **Fresh-clone install fixed (2026-09-12, found by CI on the slice-1
   push).** `npm ci` runs every workspace's `prepare`, and npm does not
   order them by dependency: on the runner `@battuta/api`'s `tsc` ran

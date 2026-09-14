@@ -1,20 +1,24 @@
 /**
- * The host skeleton's guarantees, without a browser:
+ * The host's guarantees, without a browser:
  *
  *  - registration validates (manifest, API range, capabilities, duplicate
  *    commands) and a failed plugin is listed but contributes nothing;
  *  - contributed keybindings appear in the keymap store at registration,
- *    a keypress activates the owner lazily and runs the handler;
+ *    a keypress activates the owner lazily (a real dynamic import resolves
+ *    to a module NAMESPACE — unwrapped) and runs the handler;
  *  - off = deactivate + every disposable fires (bindings, slot items,
- *    panels gone) with no reload, and the user's rebind survives the
- *    round trip;
+ *    panels gone) with no reload, and the user's rebind survives;
+ *  - commands are DATA: execute takes a message, the host maps it to the
+ *    core command, an unknown message is refused, and without a document
+ *    nothing runs; the query facade answers from the bound adapter;
  *  - the --no-plugins property: with plugins on or off, nothing reaches
- *    the document except through execute — the host never calls it on
- *    its own, and ?plugins=off registers nothing at all.
+ *    the document except through execute, and ?plugins=off registers
+ *    nothing at all.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { API_VERSION, definePlugin, type PluginContext, type PluginEntry, type PluginManifest } from "@battuta/api";
-import { createHost, memorySettings } from "../src/host";
+import { API_VERSION, definePlugin, type PluginContext, type PluginEntry, type PluginManifest, type DocumentInfo } from "@battuta/api";
+import { SetPitchesCommand } from "@battuta/core";
+import { createHost, memorySettings, toCommand, type SessionAdapter } from "../src/host";
 import { memoryStorage } from "../src/host/services";
 
 // keymap.ts persists overrides in localStorage; give node one.
@@ -36,34 +40,42 @@ const manifest = (patch: Partial<PluginManifest> = {}): PluginManifest => ({
   ...patch,
 });
 
-/** A plugin that records what happened to it and contributes one of everything. */
+/** A plugin that records what happened to it and contributes one of everything. Loads as a module NAMESPACE, like a real import(). */
 function echoPlugin(): { entry: PluginEntry; state: { log: string[]; loads: number } } {
   const state = { log: [] as string[], loads: 0 };
   const entry: PluginEntry = {
     manifest: manifest(),
     load: async () => {
       state.loads++;
-      return definePlugin({
-        activate(ctx: PluginContext) {
-          state.log.push("activate");
-          ctx.registerCommand("test.echo.say", () => {
-            state.log.push(`say:${ctx.editor.get().caret ? "caret" : "no caret"}`);
-            ctx.notice("hello");
-          });
-          ctx.slots.add("header", { id: "echo-btn", render: () => null });
-          ctx.panels.open({ id: "echo-panel", side: "bottom", title: "Echo", render: () => null });
-          ctx.subscriptions.add({ dispose: () => state.log.push("disposed") });
-          ctx.storage.set("count", (ctx.storage.get<number>("count") ?? 0) + 1);
-          ctx.settings.set("greeting", "hi");
-        },
-        deactivate() {
-          state.log.push("deactivate");
-        },
-      });
+      return {
+        default: definePlugin({
+          activate(ctx: PluginContext) {
+            state.log.push("activate");
+            ctx.registerCommand("test.echo.say", () => {
+              state.log.push(`say:${ctx.editor.get().caret ? "caret" : "no caret"}`);
+              ctx.notice("hello");
+            });
+            ctx.slots.add("header", { id: "echo-btn", render: () => null });
+            ctx.panels.open({ id: "echo-panel", side: "bottom", title: "Echo", render: () => null });
+            ctx.subscriptions.add({ dispose: () => state.log.push("disposed") });
+            ctx.storage.set("count", (ctx.storage.get<number>("count") ?? 0) + 1);
+            ctx.settings.set("greeting", "hi");
+          },
+          deactivate() {
+            state.log.push("deactivate");
+          },
+        }),
+      };
     },
   };
   return { entry, state };
 }
+
+const fakeAdapter = (execute = vi.fn()): SessionAdapter & { execute: ReturnType<typeof vi.fn> } => ({
+  execute,
+  pitchEventsIn: (block) => [[{ eventId: `e-${block.measureFrom}`, pitches: [{ pname: "c", oct: 4 }] }]],
+  blockOf: (ids) => (ids.length ? { measureFrom: 0, measureTo: ids.length - 1, staffFrom: 1, staffTo: 1 } : null),
+});
 
 const makeHost = (plugins: PluginEntry[], opts: { noPlugins?: boolean; settings?: ReturnType<typeof memorySettings>; storage?: ReturnType<typeof memoryStorage> } = {}) =>
   createHost({ layout: "qwerty", plugins, settings: opts.settings ?? memorySettings(), storage: opts.storage ?? memoryStorage(), confirm: async () => true, ...(opts.noPlugins !== undefined ? { noPlugins: opts.noPlugins } : {}) });
@@ -126,7 +138,7 @@ describe("registration", () => {
 });
 
 describe("activation and commands", () => {
-  it("loads the code only when the binding is pressed, then runs the handler and notices", async () => {
+  it("loads the code only when the binding is pressed, unwraps the module namespace, runs the handler and notices", async () => {
     const plugin = echoPlugin();
     const host = makeHost([plugin.entry]);
     const notices: string[] = [];
@@ -144,6 +156,16 @@ describe("activation and commands", () => {
     await flush();
     expect(plugin.state.loads).toBe(1);
     expect(plugin.state.log).toEqual(["activate", "say:no caret", "say:no caret"]);
+  });
+
+  it("accepts a module exported directly too, and refuses one without activate()", async () => {
+    const direct: PluginEntry = { manifest: manifest({ id: "test.direct", activationEvents: ["onStartup"], contributes: {} }), load: async () => ({ activate: () => undefined }) };
+    const broken: PluginEntry = { manifest: manifest({ id: "test.broken", activationEvents: ["onStartup"], contributes: {} }), load: async () => ({ default: {} }) as never };
+    const host = makeHost([direct, broken]);
+    await host.fire("onStartup");
+    expect(host.registry.info("test.direct")?.state).toBe("active");
+    expect(host.registry.info("test.broken")?.state).toBe("failed");
+    expect(host.registry.info("test.broken")?.error).toMatch(/no activate\(\)/);
   });
 
   it("ignores keys no plugin bound, and core keys", () => {
@@ -195,7 +217,6 @@ describe("off and on again", () => {
     expect(host.commands.ownerOf("test.echo.say")).toBeUndefined();
     expect(host.registry.info("test.echo")).toMatchObject({ state: "disabled", enabled: false });
     expect(settings.load().plugins?.["test.echo"]?.enabled).toBe(false);
-    // its key now does nothing
     expect(host.dispatchKey({ key: "Q", shiftKey: true, altKey: false })).toBe(false);
 
     await host.registry.setEnabled("test.echo", true);
@@ -212,7 +233,6 @@ describe("off and on again", () => {
     await host.registry.setEnabled("test.echo", true);
     expect(host.keymap.get()["test.echo.say"]?.keys).toEqual(["W"]);
     await host.registry.setEnabled("test.echo", false);
-    // a fresh host reading the same settings starts it disabled
     const next = makeHost([echoPlugin().entry], { settings: memorySettings(settings.load()) });
     expect(next.registry.info("test.echo")).toMatchObject({ state: "disabled", enabled: false });
     expect(next.keymap.get()["test.echo.say"]).toBeUndefined();
@@ -231,6 +251,43 @@ describe("off and on again", () => {
   });
 });
 
+describe("commands as data", () => {
+  it("maps core.setPitches to the core command, copying the plugin's data", () => {
+    const targets = [{ eventId: "n1", pitches: [{ pname: "e", oct: 4, accid: "s" }] }];
+    const cmd = toCommand({ type: "core.setPitches", targets, label: "inversion" });
+    expect(cmd).toBeInstanceOf(SetPitchesCommand);
+    expect((cmd as SetPitchesCommand).label).toBe("inversion");
+    targets[0]!.pitches[0]!.pname = "z"; // a plugin mutating its message afterwards changes nothing inside the command
+    expect(JSON.stringify(cmd)).not.toContain('"z"');
+  });
+
+  it("refuses a message type the host has not published", () => {
+    expect(() => toCommand({ type: "core.deleteEverything" } as never)).toThrow(/unknown command message type "core.deleteEverything"/);
+    expect(() => toCommand({ type: "core.setPitches", targets: "nope", label: "" } as never)).toThrow(/targets must be an array/);
+  });
+
+  it("execute reaches the bound session as a core command, and throws without a document", () => {
+    const host = makeHost([]);
+    const adapter = fakeAdapter();
+    host.bindSession(adapter);
+    host.execute({ type: "core.setPitches", targets: [], label: "t" });
+    expect(adapter.execute).toHaveBeenCalledTimes(1);
+    expect(adapter.execute.mock.calls[0]![0]).toBeInstanceOf(SetPitchesCommand);
+    host.bindSession(null);
+    expect(() => host.execute({ type: "core.setPitches", targets: [], label: "t" })).toThrow("no document is open");
+  });
+
+  it("the query facade answers from the adapter, and empty without one", () => {
+    const host = makeHost([]);
+    expect(host.query.pitchEventsIn({ measureFrom: 0, measureTo: 1, staffFrom: 1, staffTo: 1 })).toEqual([]);
+    expect(host.query.blockOf(["a"])).toBeNull();
+    host.bindSession(fakeAdapter());
+    expect(host.query.pitchEventsIn({ measureFrom: 2, measureTo: 3, staffFrom: 1, staffTo: 2 })).toEqual([[{ eventId: "e-2", pitches: [{ pname: "c", oct: 4 }] }]]);
+    expect(host.query.blockOf(["a", "b"])).toEqual({ measureFrom: 0, measureTo: 1, staffFrom: 1, staffTo: 1 });
+    expect(host.query.blockOf([])).toBeNull();
+  });
+});
+
 describe("the --no-plugins property", () => {
   it("?plugins=off registers nothing", () => {
     const host = makeHost([echoPlugin().entry], { noPlugins: true });
@@ -240,25 +297,20 @@ describe("the --no-plugins property", () => {
   });
 
   it("registering, activating and disabling a plugin never touches the document: only execute does", async () => {
-    const doc = { score: { measures: [1, 2, 3] } as never, index: {} as never, contexts: [], version: 7 };
+    const doc: DocumentInfo = { id: "doc-1", version: 7, measureCount: 10, staffCount: 2, title: "Synthetic", tempo: null };
     const before = JSON.stringify(doc);
-    const execute = vi.fn();
+    const adapter = fakeAdapter();
     const plugin = echoPlugin();
     const host = makeHost([plugin.entry]);
     host.document.set(doc);
-    host.bindExecutor(execute);
+    host.bindSession(adapter);
     host.dispatchKey({ key: "Q", shiftKey: true, altKey: false });
     await flush();
     await host.registry.setEnabled("test.echo", false);
     await host.registry.setEnabled("test.echo", true);
-    expect(execute).not.toHaveBeenCalled();
+    expect(adapter.execute).not.toHaveBeenCalled();
     expect(JSON.stringify(doc)).toBe(before);
-    // and the one door: execute reaches the bound executor, or throws without a document
-    const cmd = { apply: () => [], revert: () => [] } as never;
-    host.execute(cmd);
-    expect(execute).toHaveBeenCalledWith(cmd);
-    host.bindExecutor(null);
-    expect(() => host.execute(cmd)).toThrow("no document is open");
+    expect(host.document.get()).toEqual(doc);
   });
 });
 
@@ -272,7 +324,6 @@ describe("storage and settings namespaces", () => {
     await host.registry.deactivate("test.echo");
     await host.registry.activate("test.echo");
     expect(plugin.state.log.filter((l) => l === "activate")).toHaveLength(2);
-    // the plugin bumps "count" on every activate: the value outlived the deactivation
     expect(JSON.parse(storage.getItem("battuta.plugin.test.echo.v1")!)).toEqual({ count: 2 });
     expect(storage.getItem("battuta.plugin.other.v1")).toBeNull();
     expect(settings.load().plugins?.["test.echo"]).toEqual({ values: { greeting: "hi" } });

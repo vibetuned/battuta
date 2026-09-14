@@ -1,49 +1,25 @@
 /**
  * What a plugin sees at runtime. Read side: stores (get + subscribe) over
- * the active document and the editor state. Write side: `execute` — the
- * ONLY mutation path, so undo integrity and byte-identical revert hold
- * for plugin commands exactly as for core ones — plus notices, confirm,
- * a settings namespace, a storage namespace, UI slots and panels.
+ * the document snapshot and the editor state, plus the query facade.
+ * Write side: `execute(message)` — the ONLY mutation path, so undo
+ * integrity and byte-identical revert hold for plugin edits exactly as
+ * for core ones — plus notices, confirm, a settings namespace, a storage
+ * namespace, UI slots and panels.
  *
- * Plugins never touch the DOM, the SVG, the React tree or CoreScore
- * mutably. Anything document-shaped a plugin wants to keep goes in MEI
- * (through a command) or a declared sidecar; everything else in storage.
+ * Plugins never touch the DOM, the SVG, the React tree or the document
+ * model. Anything document-shaped a plugin wants to keep goes into MEI
+ * through a message; everything else into storage.
  */
 import type { ReactNode } from "react";
-import type { BlockSelection, CaretPosition, Command, CoreScore, EventIndex, MeasureContext } from "@battuta/core";
 import type { Disposable, DisposableStore } from "./disposable.js";
+import type { DocumentInfo, DocumentQueries, EditorState } from "./document.js";
 import type { PluginManifest, SlotName } from "./manifest.js";
+import type { CommandMessage } from "./messages.js";
 
 /** A value with change notification. `subscribe` fires on every change with the new value. */
 export interface Store<T> {
   get(): T;
   subscribe(listener: (value: T) => void): Disposable;
-}
-
-/**
- * The active document, read-only. `version` bumps on every executed
- * command, undo and redo; a plugin that cached anything derived from the
- * score re-derives when it changes. The score is typed read-only; the
- * host does not (yet) freeze it — mutate it and you break undo.
- */
-export interface ReadonlyDocument {
-  readonly score: Readonly<CoreScore>;
-  readonly index: EventIndex;
-  readonly contexts: readonly MeasureContext[];
-  readonly version: number;
-}
-
-export type ViewMode = "tiles" | "pages";
-
-/** Caret and selections in model coordinates — never pixels. */
-export interface EditorState {
-  readonly caret: CaretPosition | null;
-  /** Event selection: ordered event ids within one layer. */
-  readonly selection: readonly string[];
-  /** Block selection: a measure-range × staff-range rectangle. */
-  readonly block: BlockSelection | null;
-  readonly view: ViewMode;
-  readonly entryMode: boolean;
 }
 
 /** An item rendered inside a host slot (header row, status bar, battuta menu). */
@@ -82,10 +58,13 @@ export interface PluginContext {
   readonly manifest: PluginManifest;
   /** The host's `@battuta/api` version. */
   readonly apiVersion: string;
-  readonly document: Store<ReadonlyDocument | null>;
+  /** The active document as a snapshot, null when none is open. Republished after every edit — see DocumentInfo. */
+  readonly document: Store<DocumentInfo | null>;
   readonly editor: Store<EditorState>;
-  /** Runs a core Command against the active document as one undo step. Throws when no document is open. */
-  execute(command: Command): void;
+  /** Questions about the active document, answered as data. */
+  readonly query: DocumentQueries;
+  /** Runs a command message against the active document as one undo step. Throws when no document is open. */
+  execute(message: CommandMessage): void;
   /** Provides the handler for one of the plugin's declared commands; keybindings reach it through here. */
   registerCommand(id: string, handler: CommandHandler): Disposable;
   /** Bottom-right toast, same as the host's own notices. */
@@ -100,7 +79,7 @@ export interface PluginContext {
   readonly subscriptions: DisposableStore;
 }
 
-/** What a plugin's entry module exports. */
+/** What a plugin's entry module exports (as its default export). */
 export interface PluginModule {
   activate(ctx: PluginContext): void | Promise<void>;
   deactivate?(): void | Promise<void>;
@@ -108,13 +87,21 @@ export interface PluginModule {
 
 /**
  * What the host registers: the manifest eagerly (declarative
- * contributions take effect at once), the code lazily (`load` is a
- * dynamic import, run on the first activation event).
+ * contributions take effect at once), the code lazily. `load` is a
+ * dynamic import — `() => import("@battuta/plugin-x")` — which resolves
+ * to the module NAMESPACE; the host unwraps its default export.
  */
 export interface PluginEntry {
   manifest: PluginManifest;
-  load: () => Promise<PluginModule>;
+  load: () => Promise<PluginModule | { default: PluginModule }>;
 }
 
 /** Identity helper that types a plugin module; `export default definePlugin({ activate })`. */
 export const definePlugin = (plugin: PluginModule): PluginModule => plugin;
+
+/** Unwraps what `PluginEntry.load` resolved to — a module namespace or the module itself. */
+export function resolvePluginModule(loaded: PluginModule | { default: PluginModule }): PluginModule {
+  const candidate = "default" in loaded && loaded.default && typeof (loaded.default as PluginModule).activate === "function" ? loaded.default : (loaded as PluginModule);
+  if (typeof candidate.activate !== "function") throw new Error("plugin module has no activate(): export default definePlugin({ activate })");
+  return candidate;
+}
