@@ -1,0 +1,182 @@
+---
+title: Writing a plugin
+description: A walkthrough of a real battuta plugin — the reflection cycle — from its manifest to its tests, and the rules the build enforces.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+battuta is a host: the editor proper — tiles, caret, selection, undoable
+commands, the score on disk — and, around it, features that attach
+through declared extension points. This page walks through a real one,
+the [reflection cycle](../plugins/), end to end. It is a worked example
+rather than an API tour; the reference material lives beside the code, in
+`packages/plugins/README.md`.
+
+<Aside type="caution" title="First-party for now">
+Plugins ship inside battuta — there is no install mechanism and no
+marketplace, [on purpose](../limits/). What follows is how the features
+in this build are written, and how the next one will be.
+</Aside>
+
+## What a plugin is made of
+
+```
+packages/plugins/reflection/
+  package.json      depends on @battuta/api and nothing else of the workspace
+  src/manifest.ts   what the host knows WITHOUT loading your code
+  src/index.ts      activate(ctx) — your code, fetched on demand
+  src/forms.ts      the feature's own logic: pure, no host, no document
+  test/             vitest, against a real host in memory
+  README.md         how to use it
+  BUILDING.md       how it was built
+```
+
+Both documents are mandatory and the build checks they exist.
+
+## 1. The manifest declares; it does not run
+
+The host imports `src/manifest.ts` statically, so it knows your keys and
+commands before a byte of your code is fetched. It must therefore stay
+tiny and import nothing but a type:
+
+```ts
+import type { PluginManifest } from "@battuta/api";
+
+export const COMMAND_CYCLE = "battuta.reflection.cycle";
+
+export const manifest: PluginManifest = {
+  id: "battuta.reflection",
+  name: "Reflection cycle",
+  version: "0.1.0",
+  engines: { battuta: "^0.1.0" },
+  activationEvents: [`onCommand:${COMMAND_CYCLE}`],
+  contributes: {
+    commands: [{ id: COMMAND_CYCLE, title: "Reflection cycle" }],
+    keybindings: [{ command: COMMAND_CYCLE, keys: ["R"], label: "reflection cycle: …", group: "rhythm", when: "block selection" }],
+  },
+};
+```
+
+**Declare the narrowest activation event that can possibly need you.**
+`onCommand:` fires implicitly when one of your keybindings is pressed, so
+a user who never presses <kbd>shift</kbd> + <kbd>r</kbd> never loads this
+plugin at all. `onStartup` costs every user your code at launch; reach
+for it last.
+
+Contributing a keybinding is all it takes to appear in the shortcut
+editor, on the on-screen keyboard, and in the
+[keyboard reference](../keyboard/) — those surfaces render from the union
+of the core keymap and every plugin's contributions, so they follow you
+automatically, including when the user turns you off.
+
+## 2. The code activates late and disposes completely
+
+```ts
+import { definePlugin } from "@battuta/api";
+
+export default definePlugin({
+  activate(ctx) {
+    ctx.registerCommand(COMMAND_CYCLE, () => { /* … */ });
+    ctx.subscriptions.add(ctx.document.subscribe((doc) => { /* … */ }));
+  },
+});
+```
+
+Everything the context hands back is tracked for you; anything else you
+create — a timer, a listener — goes into `ctx.subscriptions`. Turning the
+plugin off runs `deactivate()` and then fires every disposable, so "off"
+is complete by construction rather than by discipline.
+
+## 3. Reads are questions, writes are messages
+
+A plugin never sees the document model. Reads are a query facade that
+answers with plain data:
+
+```ts
+const doc = ctx.document.get();                       // id, version, counts, title, tempo
+const state = ctx.editor.get();                       // caret, selection, block, view
+const block = state.block ?? ctx.query.blockOf(state.selection);
+const voices = ctx.query.pitchEventsIn(block);        // PitchEvent[][]
+```
+
+Writes are **commands as data** — a serializable message the host maps to
+a real core command and runs as one undo step:
+
+```ts
+ctx.execute({ type: "core.setPitches", targets, label: "inversion" });
+```
+
+This is the only mutation path. A plugin cannot construct a command, and
+cannot mutate in a way the host has not published — which is what keeps
+undo integrity and the byte-identical-revert property true for plugin
+edits exactly as for ones you type by hand, and what keeps a future
+worker-hosted or third-party plugin a deferral rather than a rewrite.
+
+<Aside type="danger" title="You cannot observe your own edit synchronously">
+The host republishes `ctx.document` after its render cycle, so the
+`version` you read straight after `execute` is the one from **before**
+your edit — which is indistinguishable from somebody else's edit. Learn
+the result from `ctx.document.subscribe` instead. In the reflection
+plugin, getting this wrong turns four presses of the cycle into four
+inversions, and nothing else fails.
+</Aside>
+
+## 4. Feature logic is yours; document knowledge is core's
+
+The reflection plugin's `src/forms.ts` computes inversions and
+retrogrades over arrays of pitches. It knows nothing about MEI, XML,
+commands or the editor — and that is exactly why it lives in the plugin
+rather than in the editor core, even though it used to live there. Core
+ships in the initial download, so anything left in it costs every user
+its weight at launch whether or not they use the feature.
+
+The line that decides it: **core knows what a pitch is and how to write
+one; the plugin knows what a retrograde is.** If a function has no
+document knowledge and exists only because your feature does, it is
+yours. If it reads or mutates the document tree, it belongs to core and
+you reach it through a query or a message.
+
+## 5. Plugins own no document state
+
+Anything about the *score* goes into the file through a message. Small
+preferences go in `ctx.settings`, larger things in `ctx.storage`, and
+anything that is merely about the current editing session — the
+reflection cycle's "where am I in the four forms" — stays in memory and
+is safe to lose.
+
+This is what makes "turn every plugin off" a safe operation: a document
+saved with plugins on and with plugins off is byte-identical, and the
+build has a test that says so.
+
+## 6. The rules have teeth
+
+Every rule that matters fails a build rather than a code review — the
+result of an earlier attempt at this plugin, which broke the central one
+while passing every check:
+
+| Rule | What fails |
+| --- | --- |
+| Only `@battuta/api`, react, and your own files are imported | the plugin-boundaries test |
+| No plugin code in the host's initial download | the bundle-budget check |
+| A handler for a command you did not declare | the registry refuses it |
+| A plugin binding may not shadow a core key | the keymap store drops it |
+| Both documents exist, `BUILDING.md` with its eight headings | the plugin-boundaries test |
+
+If you find yourself needing something the API does not offer, that is a
+request to grow the API — a new message type, a new query — not a reason
+to reach past it.
+
+## 7. Test against a real host
+
+Plugin tests run against the actual host in memory, with a fake editor
+standing in for the app. The one property worth reproducing faithfully is
+that the document snapshot is republished *after* the executor returns,
+never synchronously — that is what catches the mistake in the warning
+above.
+
+## Where to go next
+
+`packages/plugins/README.md` has the conventions, the registration steps
+and the two document templates; `packages/plugins/reflection/BUILDING.md`
+is the worked example every later plugin copies, including a long list of
+what was tried and dropped.

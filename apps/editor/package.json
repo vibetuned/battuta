@@ -15,6 +15,7 @@
   "dependencies": {
     "@battuta/api": "*",
     "@battuta/core": "*",
+    "@battuta/plugin-reflection": "*",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "tone": "^15.1.22",

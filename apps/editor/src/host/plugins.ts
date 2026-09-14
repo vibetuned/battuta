@@ -13,5 +13,6 @@
  *   { manifest: reflection, load: () => import("@battuta/plugin-reflection") },
  */
 import type { PluginEntry } from "@battuta/api";
+import { manifest as reflection } from "@battuta/plugin-reflection/manifest";
 
-export const BUILTIN_PLUGINS: readonly PluginEntry[] = [];
+export const BUILTIN_PLUGINS: readonly PluginEntry[] = [{ manifest: reflection, load: () => import("@battuta/plugin-reflection") }];

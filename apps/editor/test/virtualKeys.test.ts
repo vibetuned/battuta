@@ -11,10 +11,32 @@
  *    exact fields the App's keydown handler matches on.
  */
 import { describe, it, expect } from "vitest";
-import { defaultKeymap, keyMatches, type Layout } from "../src/keymap";
+import { defaultKeymap, keyMatches, type Keymap, type Layout } from "../src/keymap";
+import { KeymapStore } from "../src/host/keymapStore";
+import { BUILTIN_PLUGINS } from "../src/host/plugins";
 import { generatedKeys, physicalKeys, coveredIds, eventForSpec, displayLabel, PIANO_COVERS, EXTRA_IDS, DIGIT_PAD_ID, DIGIT_PAD_COVERS, MOD_VARIANTS } from "../src/virtualKeys";
 
 const LAYOUTS: Layout[] = ["qwerty", "azerty"];
+
+/**
+ * The keymap as the RUNNING app has it: the core map ∪ every shipped
+ * plugin's contributed bindings, merged by the host's own store. The
+ * panel renders from this (App.tsx passes `useStore(host.keymap)`), so a
+ * binding that left keymap.ts for a plugin manifest — the reflection
+ * cycle did, in slice 2 — is still held to every rule below.
+ *
+ * Slice 4 moves the coverage test itself onto this union, so an
+ * unreachable binding from ANY plugin fails CI; here it is what keeps
+ * the modifier-variant rules honest across the move.
+ */
+const unionKeymap = (layout: Layout): Keymap => {
+  const store = new KeymapStore(layout);
+  for (const entry of BUILTIN_PLUGINS) {
+    const bindings = entry.manifest.contributes?.keybindings ?? [];
+    if (bindings.length) store.contribute(entry.manifest.id, bindings);
+  }
+  return store.get();
+};
 
 describe("coverage", () => {
   for (const layout of LAYOUTS) {
@@ -60,7 +82,7 @@ describe("round-trip: synthesized events trigger their bindings", () => {
 describe("modifier variants: latching on the base button reaches the variant", () => {
   for (const layout of LAYOUTS) {
     it(`${layout}: every MOD_VARIANTS entry round-trips through its base`, () => {
-      const keymap = defaultKeymap(layout);
+      const keymap = unionKeymap(layout);
       const panel = [...generatedKeys(keymap), ...physicalKeys()];
       for (const [variantId, v] of Object.entries(MOD_VARIANTS)) {
         const target = keymap[variantId];
@@ -84,7 +106,7 @@ describe("modifier variants: latching on the base button reaches the variant", (
 
   it("variants have no button of their own (the latch IS the button)", () => {
     for (const layout of LAYOUTS) {
-      const panel = [...generatedKeys(defaultKeymap(layout)), ...physicalKeys()];
+      const panel = [...generatedKeys(unionKeymap(layout)), ...physicalKeys()];
       for (const variantId of Object.keys(MOD_VARIANTS)) {
         expect(panel.some((s) => s.id === variantId), `"${variantId}" still has a dedicated button`).toBe(false);
       }
@@ -93,7 +115,7 @@ describe("modifier variants: latching on the base button reaches the variant", (
 });
 
 describe("live relabelling under latches", () => {
-  const keymap = defaultKeymap("qwerty");
+  const keymap = unionKeymap("qwerty");
   const panel = [...generatedKeys(keymap), ...physicalKeys()];
   const spec = (id: string, key?: string) => panel.find((s) => s.id === id && (key === undefined || s.key === key))!;
   const S = { shift: true, alt: false, ctrl: false };
@@ -101,6 +123,7 @@ describe("live relabelling under latches", () => {
   const C = { shift: false, alt: false, ctrl: true };
 
   it("shift shows the shifted action on its base key", () => {
+    expect(displayLabel(spec("rest"), S, keymap)).toBe("reflect"); // contributed by a plugin
     expect(displayLabel(spec("staccato"), S, keymap)).toBe("stacc ▾");
     expect(displayLabel(spec("accent"), S, keymap)).toBe("marc ^");
     expect(displayLabel(spec("simile"), S, keymap)).toBe("%");
@@ -114,6 +137,16 @@ describe("live relabelling under latches", () => {
     expect(displayLabel(spec(DIGIT_PAD_ID, "3"), A, keymap)).toBe("f3");
     expect(displayLabel(spec(DIGIT_PAD_ID, "8"), A, keymap)).toBe("→3");
     expect(displayLabel(spec(DIGIT_PAD_ID, "0"), S, keymap)).toBe("0"); // there is no volta 0
+  });
+
+  it("a variant the live keymap does not carry keeps its base caption", () => {
+    // The reflection cycle is a PLUGIN binding: turn the plugin off and
+    // it leaves the keymap store, so the shifted rest key must stop
+    // advertising "reflect" — a caption for a key that does nothing is
+    // exactly what the first attempt at this slice shipped.
+    const core = defaultKeymap("qwerty");
+    expect(core["battuta.reflection.cycle"]).toBeUndefined();
+    expect(displayLabel(spec("rest"), S, core)).toBe(spec("rest").label);
   });
 
   it("arrows become duration steps under alt; unaffected keys keep their caption", () => {

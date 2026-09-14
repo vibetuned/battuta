@@ -16,6 +16,82 @@ is in [PLANNING.md](PLANNING.md). What lands here: each decision as it
 is taken, and each slice as it closes, with the `App.tsx` line count
 (baseline 2026-09-12: 3,330).
 
+- **Slice 2 — the reflection cycle is a plugin (2026-09-14).** The first
+  real one. `shift+R` on a block — prime → inversion → retrograde →
+  retrograde inversion → prime — left `App.tsx` for
+  `packages/plugins/reflection`, and the serial-form maths left
+  `@battuta/core` with it. `core/reflect.ts` split along the line between
+  document and feature and became `core/pitches.ts`: core keeps
+  `collectPitchEvents` and `SetPitchesCommand` (any pitch feature needs
+  them), the plugin took `reflectionForm`, `REFLECTION_CYCLE`,
+  `REFLECTION_LABELS` and `arityPalindromic` (no MEI knowledge, and they
+  exist only because this feature does — core ships in the initial chunk,
+  so leaving them there would have cost every user their weight at launch
+  and "turn it off" would have unloaded nothing). `SetPitchesCommand`'s
+  default label is now `"set pitches"`, not `"reflect"`; every caller
+  passes its own, so nothing observable changed. **`@battuta/api` needed
+  no change and stays at 0.1.0** — `api-report.d.ts` unchanged — which is
+  the result this slice was run to get: the surface designed on 2026-09-14
+  (a `DocumentInfo` snapshot with an `id`, `query.pitchEventsIn`,
+  `query.blockOf`, `core.setPitches` as a message) was exactly enough to
+  rebuild the feature with zero core imports, where the first attempt
+  needed two API changes and three. The plugin keeps the cycle's base
+  capture in memory keyed on `DocumentInfo.id`, writes no settings and no
+  storage key, and puts nothing in the document but pitch attributes.
+  Bundle: `plugin-reflection` is a **1.99 kB lazy chunk** and the budget
+  check passed on the first build (slice 1's `manualChunks` fix held —
+  the first attempt's two chunking failures did not recur). The initial
+  chunk went the *other* way, 592.8 → **595.1 kB** (ceiling 605.5): with
+  no plugin registered the host measures 593.2 kB, so **registering the
+  first plugin costs ~1.9 kB** — its manifest is in the initial
+  `battuta-shared` chunk by design, plus the dynamic-import glue — while
+  the feature code it removed was about a kilobyte. Worth stating as a
+  rule: the per-plugin cost to the host is fixed and the saving scales
+  with the feature, so an extraction this small is a wash; slices 7 and 8
+  (Tone.js, the 4.6 MB Humdrum build) are where the ceiling drops.
+  Decisions: plugin packages need **no vitest config** (vitest's defaults
+  already find `test/**`, and `vitest/config` is not an import a plugin
+  may have — the file was deleted rather than the rule widened) and use
+  **extensionless relative imports** (a plugin is consumed as raw
+  TypeScript by Vite, which does not remap `.js` → `.ts`; `tsc --noEmit`
+  accepts both, so the mistake would have failed only the production
+  build). Dead ends, in `packages/plugins/reflection/BUILDING.md` §7: a
+  test duplicating the host's rebind-survives-off/on guarantee (deleted —
+  it is the host's, `host.test.ts` pins it, and making it run here needed
+  a `localStorage` shim); asserting the plugin's pitch targets through the
+  host (the command's targets are private and applying one needs core —
+  the maths, the write and the mapping are each tested where they live,
+  and an empty query pins the base's source negatively); content
+  comparison instead of a version counter, still rejected as not
+  behaviour-neutral. Two surfaces keyed by the moved id needed fixing, and
+  only one had a test: `virtualKeys.ts`'s `MOD_VARIANTS`/`SHORT` entries
+  became `battuta.reflection.cycle` and `displayLabel` now **skips a
+  variant the live keymap does not carry** (with the plugin off, the
+  shifted rest key went on captioning "reflect" for a key that does
+  nothing — the exact bug the first attempt shipped); and
+  `docs/scripts/build-keymap.mjs`, which reads `keymap.ts` alone, silently
+  dropped `shift+r` from the generated keyboard reference — it now reads
+  every plugin manifest too and marks contributed rows, since the plugin's
+  README points readers at that reference. `virtualKeys.test.ts` resolves
+  the variant rules against the **union** keymap (core ∪ contributions,
+  merged by the host's own store); the full union *coverage* test is still
+  slice 4's. The `--no-plugins` property now has a real plugin to be off,
+  pinned in the plugin's own suite. Verification: 32 plugin tests, core
+  226 (its reflection cases rebuilt around a diatonic shift, case 33 of
+  the property fuzzer included), editor 85, api 17, and **all 347 browser
+  e2e checks green across the five scripts** — `verify-phase5.mjs` drives
+  the whole cycle, four presses, byte-identical return and the four-step
+  undo unwind, unchanged, which is what proves the extraction
+  behaviour-neutral. `spikes/verify-tauri.sh` did **not** run: it needs
+  GNU `timeout`, which macOS does not ship (neither `timeout` nor
+  `gtimeout` on PATH) — the same environment gap the 2026-09-12
+  post-mortem recorded, still unfixed; nothing in this slice touches Rust.
+  Docs: the plugin's `README.md` and `BUILDING.md` (the worked example
+  later plugins copy), a new **Writing a plugin** reference page walking
+  through it, the `reference/plugins` row, DESIGN.md's host-and-plugins
+  note. `App.tsx` **3,364 → 3,321** (−43: the `reflect` branch and the
+  `reflectCycle` ref).
+
 - **Plugin contract hardened after the first slice-2 attempt (2026-09-14).**
   A context-free agent built the reflection plugin on 2026-09-12: 31
   tests, all e2e green, 1.2 kB lazy chunk — and it imported

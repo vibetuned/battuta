@@ -148,8 +148,9 @@ should be judged on its own), and the two lanes become two slices
 path). Ten slices; the estimates are the original ones, shared across
 the split halves. Every slice carries the same six blocks.
 
-**Progress.** Slice 1 closed 2026-09-12 (its bullet in CHANGELOG.md
-under 0.1.0 — unreleased). Slice 2 is next; from here on slices are
+**Progress.** Slice 1 closed 2026-09-12 and **slice 2 closed 2026-09-14**
+(their bullets in CHANGELOG.md under 0.1.0 — unreleased); slice 3 is next.
+From here on slices are
 handed to sessions without the surrounding context, on purpose, to test
 whether the briefs and `packages/plugins/README.md` hold on their own.
 The browser e2e scripts were found rotten at slice 1's close (a lost
@@ -164,8 +165,14 @@ against it — a README sentence — was rewritten twice to fit the code
 (`packages/plugins/reflection/POSTMORTEM-2026-09-12.md`). Hardened on
 2026-09-14 before the second attempt: `@battuta/api` (still 0.1.0,
 never published) is standalone, commands are messages, reads are a query facade, and the
-boundary test fails the build on any core import. Slice 2 reopens on
-that footing.
+boundary test fails the build on any core import. Slice 2 was rebuilt on
+that footing and **closed 2026-09-14**: zero core imports, no API change
+(0.1.0 unchanged — the point of the exercise), `App.tsx` 3,364 → 3,321,
+all 347 e2e checks green. Its `BUILDING.md` is the worked example slice 3
+onward copies; its §7 carries the new dead ends (no vitest config,
+extensionless imports, the generated keyboard reference that silently
+dropped the moved binding, and the bundle ledger running the other way
+for a feature this small).
 
 #### Slice 1 — Host skeleton (≈4 days)
 

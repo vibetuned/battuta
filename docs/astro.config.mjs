@@ -77,6 +77,7 @@ export default defineConfig({
             { slug: "reference/keyboard" },
             { slug: "reference/status-bar" },
             { slug: "reference/plugins" },
+            { slug: "reference/writing-a-plugin" },
             { slug: "reference/limits" },
             { slug: "reference/troubleshooting" },
             { slug: "reference/code-signing" },

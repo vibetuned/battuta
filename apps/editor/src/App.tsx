@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, isHarmText, harmSuggestions, HARM_CHARS, reflectionForm, REFLECTION_CYCLE, REFLECTION_LABELS, type ReflectionForm, type PitchEvent, type HarmKind, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
+import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, isHarmText, harmSuggestions, HARM_CHARS, type HarmKind, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
 import { RenderPool, type TileResult } from "./render/renderPool";
 import { keyMatches, type Keymap, type Layout } from "./keymap";
 import { host, useStore, Slot, Panels, confirmDialog, tauriInvoke, blockOfEvents } from "./host";
@@ -628,9 +628,6 @@ export default function App() {
   // Undo-stack top at the last save, per doc: dirty = the top moved. Undoing
   // back to the saved command reads clean again, like a text editor.
   const savedMarks = useRef(new Map<number, unknown>());
-  /** shift+R cycle state: the base pitches captured at the first press.
-   * version-keyed — any other edit (or undo) re-bases the cycle. */
-  const reflectCycle = useRef<{ sig: string; base: PitchEvent[][]; step: number; version: number } | null>(null);
   /** The caret id the view last followed — scroll only on real moves. */
   const lastScrolledCaret = useRef<string | undefined>(undefined);
   const mainRef = useRef<HTMLElement>(null);
@@ -1906,46 +1903,6 @@ export default function App() {
           }
         } catch (err) {
           setNotice(`repeat refused: ${err instanceof Error ? err.message : err}`);
-        }
-        return;
-      }
-      if (hit("reflect") && !mod && bsel) {
-        // shift+R on a block: the serial forms of the selection — prime →
-        // inversion → retrograde → retrograde inversion → prime. Every
-        // form derives from the BASE captured at the first press (no
-        // compounding); any other edit in between re-bases the cycle.
-        e.preventDefault();
-        const sig = `${activeId}:${bsel.measureFrom}-${bsel.measureTo}/${bsel.staffFrom}-${bsel.staffTo}`;
-        let cyc = reflectCycle.current;
-        if (!cyc || cyc.sig !== sig || cyc.version !== session.version) {
-          cyc = { sig, base: session.blockPitchEvents(bsel), step: 0, version: session.version };
-        }
-        if (cyc.base.length === 0) {
-          setNotice("reflection refused: no notes in the selection");
-          return;
-        }
-        let targets: PitchEvent[] | null = null;
-        let form: ReflectionForm = "prime";
-        let skipped = false;
-        for (let attempts = 0; attempts < REFLECTION_CYCLE.length && !targets; attempts++) {
-          form = REFLECTION_CYCLE[cyc.step % REFLECTION_CYCLE.length]!;
-          cyc.step++;
-          const per = cyc.base.map((seq) => reflectionForm(seq, form));
-          if (per.every((t) => t !== null)) targets = per.flatMap((t) => t!);
-          else skipped = true; // retrograde over non-mirroring chord sizes
-        }
-        if (!targets) {
-          setNotice("reflection refused: nothing to transform");
-          return;
-        }
-        try {
-          session.setPitches(targets, form);
-          afterCommand(session);
-          cyc.version = session.version; // our own edit continues the cycle
-          reflectCycle.current = cyc;
-          setNotice(`reflection: ${REFLECTION_LABELS[form]}${skipped ? " (retrograde skipped: chord sizes don't mirror)" : ""}`);
-        } catch (err) {
-          setNotice(`reflection refused: ${err instanceof Error ? err.message : err}`);
         }
         return;
       }

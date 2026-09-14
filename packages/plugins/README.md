@@ -53,6 +53,8 @@ packages/plugins/<name>/
                       (sources, not a dist: Vite and tsc both consume linked TypeScript, so no build step
                       and no prepare)
   tsconfig.json       strict TS; "jsx": "react-jsx" if the plugin renders panels
+                      (NO vitest config: vitest's defaults already find test/**/*.test.ts in a node
+                      environment, and "vitest/config" is not an import a plugin package may have)
   src/manifest.ts     export const manifest: PluginManifest = { … }   — imports @battuta/api and nothing else
   src/index.ts(x)     export default definePlugin({ activate, deactivate })
   src/<feature>.ts    the feature's own logic (the reflection forms, a lane grammar): pure TS over api data
@@ -92,6 +94,22 @@ statically from the host.
 Two decisions are already taken, so no plugin re-decides them: packages
 point `exports` at `src/` (no build, no prepare), and plugin code never
 imports `@battuta/core` — the boundary test fails the build.
+
+**Relative imports carry no extension** (`./manifest`, not
+`./manifest.js`). Core and the api are compiled by `tsc` to `dist/`,
+where the `.js` form is right; a plugin is consumed as **raw TypeScript**
+by Vite and vitest, which do not remap `.js` → `.ts`. `tsc --noEmit`
+accepts both, so the wrong form fails only the production build.
+
+**If you move a binding out of the core keymap**, three surfaces are
+keyed by its id and only some have tests: `virtualKeys.ts`'s
+`MOD_VARIANTS` / `SHORT` entries, the tests that resolve variants against
+`defaultKeymap` (use the union keymap instead — see
+`apps/editor/test/virtualKeys.test.ts`), and
+`docs/scripts/build-keymap.mjs`, which now reads plugin manifests too so
+the generated keyboard reference does not silently lose the row. The
+shortcut editor and the on-screen keyboard follow on their own: they
+render from `useStore(host.keymap)`, the union, at runtime.
 
 ## Reading and writing the document
 

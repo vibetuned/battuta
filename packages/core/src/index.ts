@@ -51,8 +51,10 @@ export type { CaretPosition, EventRef } from "./events.js";
 
 export { playbackShaping, mergeTiedSpans, GATE_DEFAULT } from "./playback.js";
 export type { PlaybackShaping } from "./playback.js";
-export { SetPitchesCommand, collectPitchEvents, reflectionForm, arityPalindromic, REFLECTION_CYCLE, REFLECTION_LABELS } from "./reflect.js";
-export type { PitchEvent, Pitch, ReflectionForm } from "./reflect.js";
+// The serial forms that used to sit beside these left for
+// @battuta/plugin-reflection (slice 2): no MEI knowledge, so not core's.
+export { SetPitchesCommand, collectPitchEvents } from "./pitches.js";
+export type { PitchEvent, Pitch } from "./pitches.js";
 export { buildExpansion } from "./expansion.js";
 export type { ExpansionPlan } from "./expansion.js";
 export { CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand, RegenerateIdsCommand, SetTitleCommand, SetTempoCommand } from "./commands.js";

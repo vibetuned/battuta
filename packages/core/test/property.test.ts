@@ -16,7 +16,7 @@ import {
   ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand,
   ChainTieCommand, ChordNoteAccidentalCommand, ToggleFingCommand, CycleHairpinCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, ToggleVoltaCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, TupletCommand, SetHarmCommand, AutoBeamCommand, UnbeamMeasuresCommand, chordNotes, MergeEventsCommand, SplitEventCommand, ChangeContextCommand, planContextChange,
   validateMeasureDurations, frac,
-  SetPitchesCommand, collectPitchEvents, reflectionForm, REFLECTION_CYCLE,
+  SetPitchesCommand, collectPitchEvents,
   type Command, type CommandContext, type CoreScore,
 } from "../src/index.js";
 import { scoreFrom } from "./helpers.js";
@@ -146,14 +146,26 @@ function makeCommand(ctx: CommandContext, d: CmdDescriptor): Command | null {
       return new SetHarmCommand(ids[0]!, texts[d.param % texts.length]!, d.param % 2 === 0 ? "chord" : "rna");
     }
     case 33: {
-      // a reflection form of a random measure-range: extraction is pure,
-      // the command only writes pitch triples (throws on arity -> no-op)
+      // Pitch content written onto a random measure-range: a diatonic
+      // shift, built from the document it is about to write to, so the
+      // arity matches by construction. (The reflection FORMS left core
+      // with their plugin in slice 2 — this case exercises the command,
+      // not a feature's theory.)
       const to = Math.min(m + (d.param % 2), nMeasures - 1);
       const seqs = collectPitchEvents(ctx.score, ctx.index, m, to, 1, 9);
-      const form = REFLECTION_CYCLE[d.param % REFLECTION_CYCLE.length]!;
-      const targets = seqs.flatMap((seq) => reflectionForm(seq, form) ?? []);
+      const PNAMES = ["c", "d", "e", "f", "g", "a", "b"];
+      const step = (d.param % 5) - 2;
+      const targets = seqs.flatMap((seq) =>
+        seq.map((ev) => ({
+          eventId: ev.eventId,
+          pitches: ev.pitches.map((p) => {
+            const diatonic = p.oct * 7 + PNAMES.indexOf(p.pname) + step;
+            return { ...p, pname: PNAMES[((diatonic % 7) + 7) % 7]!, oct: Math.floor(diatonic / 7) };
+          }),
+        })),
+      );
       if (targets.length === 0) return new TransposeOctaveCommand(ids, 1); // nothing pitched: any command keeps the pool moving
-      return new SetPitchesCommand(targets, form);
+      return new SetPitchesCommand(targets, "shift");
     }
     case 31: {
       // a consecutive run of 3 events (wrap) or whatever sits at the seed

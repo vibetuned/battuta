@@ -69,7 +69,11 @@ export const MOD_VARIANTS: Record<string, ModVariant> = {
   slurDoubleSharp: { of: "sharp", mods: { shift: true } },
   intensity: { of: "inputMode", mods: { shift: true } },
   tuplet: { of: "tie", mods: { shift: true } },
-  reflect: { of: "rest", mods: { shift: true } },
+  // Contributed by @battuta/plugin-reflection: the id is the plugin's
+  // command id, and the caption below is keyed the same way. A generated
+  // surface keyed by an id that MOVES is exactly where the first attempt
+  // at this slice left a caption advertising a key that did nothing.
+  "battuta.reflection.cycle": { of: "rest", mods: { shift: true } },
   pedal: { of: "dynamics", mods: { shift: true } },
   staccatissimo: { of: "staccato", mods: { shift: true } },
   marcato: { of: "accent", mods: { shift: true } },
@@ -119,7 +123,7 @@ const SHORT: Record<string, string> = {
   lyrics: "lyrics",
   contextBar: "ctx bar",
   tuplet: "tuplet",
-  reflect: "reflect",
+  "battuta.reflection.cycle": "reflect",
   beam: "beam",
 };
 
@@ -251,6 +255,11 @@ export function displayLabel(spec: VirtualKeySpec, mods: LatchedMods, keymap: Ke
   if (!mods.shift && !mods.alt) return spec.label;
   for (const [variantId, v] of Object.entries(MOD_VARIANTS)) {
     if (v.of !== spec.id) continue;
+    // A variant the LIVE keymap does not carry is not reachable — a
+    // plugin contributing it is off, or its binding was withdrawn. Say
+    // nothing rather than advertise a caption for a key that does
+    // nothing (the plugin-off case the first slice-2 attempt shipped).
+    if (!keymap[variantId]) continue;
     if ((v.mods.shift ?? false) !== mods.shift || (v.mods.alt ?? false) !== mods.alt) continue;
     if (v.keys && !v.keys.includes(spec.key)) continue;
     return v.labels?.[spec.key] ?? SHORT[variantId] ?? keymap[variantId]?.keys[0] ?? variantId;

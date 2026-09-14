@@ -1,20 +1,22 @@
 /**
- * Reflection cycle (shift+R on a block): the classic serial forms of the
- * selected material — Prime → Inversion → Retrograde → Retrograde
- * Inversion → Prime. Inversion is DIATONIC, mirrored about each voice's
- * first note; retrograde reverses the pitch CONTENT across the rhythm
- * skeleton — durations and rests stay in place, so measure validity is
- * untouched by construction. Pitch content moves as (pname, oct, accid)
- * triples, so cycling back to prime restores the document byte-
- * identically. The editor holds the base form while cycling and derives
- * every form from it (no compounding drift).
+ * Pitch content as data, and the one command that writes it.
+ *
+ * This is the DOCUMENT half of what used to be `reflect.ts`: reading the
+ * pitched events out of a block, and writing pitch triples back onto
+ * them as one undoable step. It knows what a pitch is and how MEI spells
+ * one; it has no opinion about what a caller means by the change.
+ *
+ * The FEATURE half — the serial forms of the reflection cycle — left for
+ * `@battuta/plugin-reflection` in slice 2: those functions have no MEI
+ * knowledge and exist only because that feature does, and core ships
+ * inside the host's initial chunk, so keeping them here would have cost
+ * every user their weight at launch whether or not they ever press the
+ * key. Anything here, by contrast, is what any pitch feature needs.
  */
-import { CoreElement, childElements } from "./xml.js";
+import { CoreElement } from "./xml.js";
 import { Command, CommandContext, DirtyRegion, targetNotes } from "./commands.js";
 import { CoreScore } from "./score.js";
 import { EventIndex } from "./events.js";
-
-const PNAMES = ["c", "d", "e", "f", "g", "a", "b"] as const;
 
 export interface Pitch {
   pname: string;
@@ -28,20 +30,6 @@ export interface PitchEvent {
   eventId: string;
   pitches: Pitch[];
 }
-
-export type ReflectionForm = "inversion" | "retrograde" | "retrogradeInversion" | "prime";
-
-/** The cycle, in press order (the fourth press returns to prime). */
-export const REFLECTION_CYCLE: ReflectionForm[] = ["inversion", "retrograde", "retrogradeInversion", "prime"];
-
-export const REFLECTION_LABELS: Record<ReflectionForm, string> = {
-  inversion: "inversion",
-  retrograde: "retrograde",
-  retrogradeInversion: "retrograde inversion",
-  prime: "back to the original",
-};
-
-const diatonic = (p: Pitch): number => p.oct * 7 + PNAMES.indexOf(p.pname as (typeof PNAMES)[number]);
 
 /**
  * The pitched events of a block, one sequence per (staff, layer) voice,
@@ -74,45 +62,16 @@ export function collectPitchEvents(score: CoreScore, index: EventIndex, measureF
   return [...voices.values()].filter((seq) => seq.length > 0);
 }
 
-/** Retrograde moves pitch sets between events, never structure: event i
- * and its mirror must hold the same number of notes. */
-export const arityPalindromic = (seq: PitchEvent[]): boolean => seq.every((ev, i) => ev.pitches.length === seq[seq.length - 1 - i]!.pitches.length);
-
 /**
- * The target assignment for a form of one voice's BASE sequence: event
- * ids keep their positions, pitch content is transformed. Null when the
- * form is impossible (retrograde over non-mirroring chord sizes).
- */
-export function reflectionForm(base: PitchEvent[], form: ReflectionForm): PitchEvent[] | null {
-  if (base.length === 0 || base[0]!.pitches.length === 0) return null;
-  const anchor = diatonic(base[0]!.pitches[0]!);
-  const invert = (p: Pitch): Pitch => {
-    const d = 2 * anchor - diatonic(p);
-    return { ...p, pname: PNAMES[((d % 7) + 7) % 7]!, oct: Math.floor(d / 7) };
-  };
-  let content: Pitch[][];
-  switch (form) {
-    case "prime":
-      content = base.map((ev) => ev.pitches);
-      break;
-    case "inversion":
-      content = base.map((ev) => ev.pitches.map(invert));
-      break;
-    case "retrograde":
-    case "retrogradeInversion": {
-      if (!arityPalindromic(base)) return null;
-      const src = form === "retrograde" ? base.map((ev) => ev.pitches) : base.map((ev) => ev.pitches.map(invert));
-      content = src.slice().reverse();
-      break;
-    }
-  }
-  return base.map((ev, i) => ({ eventId: ev.eventId, pitches: content[i]! }));
-}
-
-/**
- * Write pitch content onto events (notes in child order for chords) —
- * the generic write half of the reflection cycle. Full-attr mementos,
- * byte-identical revert.
+ * Write pitch content onto events (notes in child order for chords).
+ * Full-attribute mementos, so a revert restores attributes this command
+ * never touched and is byte-identical rather than merely equivalent.
+ *
+ * Sharp edge: `apply` throws when a target's pitch count does not match
+ * the event's note count, and it throws AFTER writing earlier targets —
+ * a half-applied command that never reaches the undo stack. Build
+ * targets from the document you are about to write to (which is what
+ * every caller does) and arity matches by construction.
  */
 export class SetPitchesCommand implements Command {
   readonly label: string;
@@ -121,7 +80,7 @@ export class SetPitchesCommand implements Command {
 
   constructor(
     private readonly targets: PitchEvent[],
-    label = "reflect",
+    label = "set pitches",
   ) {
     this.label = label;
   }

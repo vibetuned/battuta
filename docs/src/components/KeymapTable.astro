@@ -1,8 +1,10 @@
 ---
 /**
  * A slice of the editor's keymap, rendered from src/data/keymap.json —
- * which scripts/build-keymap.mjs generates out of apps/editor/src/keymap.ts.
- * Nothing here is hand-maintained, so the guide cannot drift from the app.
+ * which scripts/build-keymap.mjs generates out of apps/editor/src/keymap.ts
+ * AND every plugin manifest. Nothing here is hand-maintained, so the guide
+ * cannot drift from the app. A row a plugin contributes is marked, because
+ * turning that plugin off takes the key away.
  *
  * <KeymapTable group="marks" />            every action in one group
  * <KeymapTable ids={["tie","slurDoubleSharp"]} />   a hand-picked subset
@@ -58,7 +60,12 @@ let lastGroup = "";
                   </>
                 ))}
               </td>
-              <td>{row.label}</td>
+              <td>
+                {row.label}
+                {"plugin" in row && row.plugin && (
+                  <span class="plugin" title={`contributed by the ${row.plugin} plugin — turning it off removes this key`}>plugin</span>
+                )}
+              </td>
               <td class="when">
                 {row.when ?? "any time"}
                 {row.locked && <span class="lock" title="fixed binding — listed in the editor but not rebindable">fixed</span>}
@@ -97,6 +104,16 @@ let lastGroup = "";
   }
   table.keymap .when {
     color: var(--sl-color-gray-3);
+  }
+  table.keymap .plugin {
+    display: inline-block;
+    margin-left: 0.4rem;
+    padding: 0 0.35rem;
+    border: 1px solid var(--sl-color-accent);
+    border-radius: 0.6rem;
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-accent-high);
+    white-space: nowrap;
   }
   table.keymap .lock {
     display: inline-block;
