@@ -1,4 +1,7 @@
-// @battuta/api 0.1.6 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
+// @battuta/api 0.1.10 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
+
+// ---- ../dist/.tsbuildinfo
+{"version":"5.9.3"}
 
 // ---- actions.d.ts
 /**
@@ -218,46 +221,19 @@ export declare class DisposableStore implements Disposable {
  * third-party loading stays a deferral, not a rewrite) and what makes
  * "everything through @battuta/api" true rather than aspirational: there
  * is nothing of the document model here to reach into.
+
  */
-/** Caret position in model coordinates — never pixels. */
-export interface CaretPosition {
-    measureIndex: number;
-    staffN: number;
-    layerN: number;
-    eventIndex: number;
-}
-/** Block selection: inclusive measure-index range × inclusive staff-number range. */
-export interface BlockSelection {
-    measureFrom: number;
-    measureTo: number;
-    staffFrom: number;
-    staffTo: number;
-}
-/** One written pitch (MEI @pname/@oct, with the accidental attributes when present). */
-export interface Pitch {
-    pname: string;
-    oct: number;
-    accid?: string;
-    accidGes?: string;
-}
-/** A pitched event (note or chord): its id and its pitches in child order. */
-export interface PitchEvent {
-    eventId: string;
-    pitches: Pitch[];
-}
-export type ViewMode = "tiles" | "pages";
-/** The two harmony lanes over one event: chord symbols (`<harm place="above">`) and Roman numerals (`<harm type="rna" place="below">`). */
-export type HarmKind = "chord" | "rna";
 /**
- * One verse-1 syllable, as MEI has it: `<syl wordpos con>` inside the
- * note's `<verse n="1">`. `wordpos` i/m/t = word start/middle/end, absent
- * for a whole word; `con: "d"` draws the hyphen to the next syllable.
+ * Core owns the document's data types; the api RE-EXPORTS exactly these —
+ * plain JSON, no model, no class — and nothing else of `@battuta/core`.
+ * Adding a name here is a contract change (the surface report inlines
+ * the re-exported shapes, so a change to one of them in core shows up as
+ * a surface change and needs a version bump); a plugin still imports only
+ * `@battuta/api`, and the boundary test keeps it that way.
  */
-export interface SylValue {
-    text: string;
-    wordpos?: string;
-    con?: string;
-}
+import type { CaretPosition, BlockSelection, PitchEvent, SylValue, HarmKind } from "@battuta/core";
+export type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKind } from "@battuta/core";
+export type ViewMode = "tiles" | "pages";
 /** Caret and selections, in model coordinates. */
 export interface EditorState {
     readonly caret: CaretPosition | null;
@@ -300,9 +276,12 @@ export interface DocumentQueries {
     /** The harmony text of one kind anchored at an event, "" when none. */
     harmAt(eventId: string, kind: HarmKind): string;
     /**
-     * Would the document accept this text as a harmony of this kind? The
-     * grammar that decides lives in core, because `core.setHarm` refuses
-     * what fails it; a lane asks here rather than carrying a second copy.
+     * Would the document accept this text as a harmony of this kind? Core
+     * owns the grammar that decides, because more than one plugin may write
+     * a harmony (the lane today, a generator tomorrow) and every writer must
+     * be refused the same text; `core.setHarm` refuses what fails it. Ask
+     * here — a lane's `complete`, a generator's filter — never copy it.
+     * Needs no document: a grammar question.
      */
     harmValid(kind: HarmKind, text: string): boolean;
 }
@@ -311,7 +290,8 @@ export interface DocumentQueries {
 /**
  * @battuta/api — the plugin contract of the battuta host.
  *
- * Standalone: no dependency on @battuta/core or the editor. Everything a
+ * Imports nothing of the editor and, of core, only the plain-data document
+ * types `document.ts` re-exports (core owns them). Everything a
  * plugin can see is data (document.ts), everything it can do is a
  * message (messages.ts) or a context call (context.ts).
  *
@@ -320,7 +300,7 @@ export interface DocumentQueries {
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export declare const API_VERSION = "0.1.6";
+export declare const API_VERSION = "0.1.10";
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";
 export type { Disposable } from "./disposable.js";
@@ -599,8 +579,10 @@ export interface SetSylMessage {
 /**
  * Set (or, with empty text, clear) the harmony of one kind at an event —
  * a chord symbol above or a Roman numeral below. Refused when the text is
- * not one the grammar accepts (`ctx.query.harmValid` asks the same
- * grammar first). One undo step; byte-identical revert; labels itself.
+ * not one core's grammar accepts — `ctx.query.harmValid` asks the same
+ * grammar, so a lane checks before it builds the message and a generator
+ * filters before it writes. One undo step; byte-identical revert; labels
+ * itself.
  */
 export interface SetHarmMessage {
     type: "core.setHarm";
@@ -686,3 +668,42 @@ export interface Version {
 export declare function parseVersion(v: string): Version | null;
 /** True when `version` lies inside `range` (all space-separated comparators must hold). */
 export declare function satisfiesEngine(range: string, version: string): boolean;
+
+// ---- re-exported from @battuta/core (declared there; printed here so the pin covers the shape)
+// BlockSelection — from packages/core/dist/clipboard.d.ts
+export interface BlockSelection {
+    measureFrom: number;
+    measureTo: number;
+    staffFrom: number;
+    staffTo: number;
+}
+// CaretPosition — from packages/core/dist/events.d.ts
+export interface CaretPosition {
+    measureIndex: number;
+    staffN: number;
+    layerN: number;
+    /** Index of the event the caret is on, within its layer. */
+    eventIndex: number;
+}
+// HarmKind — from packages/core/dist/harm.d.ts
+export type HarmKind = "chord" | "rna";
+// Pitch — from packages/core/dist/pitches.d.ts
+export interface Pitch {
+    pname: string;
+    oct: number;
+    accid?: string;
+    accidGes?: string;
+}
+// PitchEvent — from packages/core/dist/pitches.d.ts
+export interface PitchEvent {
+    eventId: string;
+    pitches: Pitch[];
+}
+// SylValue — from packages/core/dist/lyrics.d.ts
+export interface SylValue {
+    text: string;
+    /** i = word start, m = middle, t = end; absent = whole word. */
+    wordpos?: string;
+    /** "d" = hyphen continues to the next syllable. */
+    con?: string;
+}

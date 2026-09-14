@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, isHarmText, harmSuggestions, HARM_CHARS, type HarmKind, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
+import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
 import { RenderPool, type TileResult } from "./render/renderPool";
 import { keyMatches, type Keymap, type Layout } from "./keymap";
 import { host, useStore, Slot, Panels, LaneInput, laneFace, confirmDialog, tauriInvoke, blockOfEvents, rule, gate, modal, isMod, type ActionStep, type KeyEvent, type Outcome } from "./host";
@@ -1355,7 +1355,6 @@ export default function App() {
       blockOf: (ids) => blockOfEvents(session.index, ids),
       lyricAt: (id) => session.sylAt(id),
       harmAt: (id, kind) => session.harmAt(id, kind),
-      harmValid: (kind, text) => isHarmText(kind, text),
     });
     // The lanes' view of this document: the caret path and what sits on it.
     host.lanes.bind({
@@ -1373,30 +1372,12 @@ export default function App() {
       },
       leaveEntryMode: () => setEntryMode(false),
     });
-    // The editor's own harmony lanes, as INTERNAL specs on the host's point,
-    // until slice 6 moves them into a plugin as slice 5b moved lyrics. They
-    // already commit as the `core.setHarm` message the plugin will send;
-    // the host executes it and turns a refusal into a notice.
-    const harmony = (kind: HarmKind, face: Pick<LaneSpec, "id" | "label" | "name" | "glyph">): LaneSpec => ({
-      ...face,
-      place: kind === "rna" ? "below" : "above",
-      attachesTo: "event",
-      advance: "event",
-      advanceOn: ["Enter"],
-      hint: `${kind === "rna" ? "roman numerals" : "chord symbols"}: type at the caret · enter commits + advances · tab completes · esc leaves`,
-      accepts: (ch) => HARM_CHARS[kind].test(ch),
-      ...(kind === "rna" ? { transform: (ch: string) => (ch === "o" ? "°" : ch === "0" ? "ø" : ch) } : {}),
-      complete: (b) => isHarmText(kind, b),
-      suggest: (b) => harmSuggestions(kind, b),
-      read: (id) => session.harmAt(id, kind),
-      commit: ({ eventId, buffer }) => (buffer === session.harmAt(eventId, kind) ? null : { type: "core.setHarm", eventId, kind, text: buffer }),
-    });
-    const internal = [
-      host.lanes.register(harmony("chord", { id: "chord", label: "chord symbols (above)", name: "chords", glyph: "♩" })),
-      host.lanes.register(harmony("rna", { id: "rna", label: "roman numerals (below)", name: "numerals", glyph: "RN" })),
-    ];
+    // No internal lanes left: lyrics went to a plugin in slice 5b and
+    // harmony in slice 6, so every lane the editor offers is now a
+    // manifest-declared one. What the App still owns is the ADAPTER above
+    // — the caret path and what sits on it — which is the document's, not
+    // any lane's.
     return () => {
-      for (const d of internal) d.dispose();
       host.lanes.bind(null);
       host.bindSession(null);
     };

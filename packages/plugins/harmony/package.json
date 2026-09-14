@@ -1,0 +1,27 @@
+{
+  "name": "@battuta/plugin-harmony",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "description": "The harmony lanes: chord symbols above the staff and Roman numerals below, typed at the caret with completions.",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./manifest": "./src/manifest.ts"
+  },
+  "//": [
+    "exports point at src/, NOT a built dist/: Vite and tsc both consume linked TypeScript, so a plugin has no build step and no prepare.",
+    "dependencies: @battuta/api and nothing else of the workspace. No react: the lanes' floating editor is the host's, and this plugin renders nothing."
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@battuta/api": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

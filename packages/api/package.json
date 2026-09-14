@@ -1,8 +1,8 @@
 {
   "name": "@battuta/api",
-  "version": "0.1.6",
+  "version": "0.1.10",
   "license": "AGPL-3.0-only",
-  "description": "The plugin contract of the battuta host: manifest, activation, context, command messages. Standalone \u2014 depends on nothing of the editor or the core.",
+  "description": "The plugin contract of the battuta host: manifest, activation, context, command messages. Imports nothing of the editor; from core, only the plain-data document types it re-exports.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -10,14 +10,15 @@
     ".": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "prepare": "tsc -p tsconfig.build.json",
+    "build": "tsc -b tsconfig.build.json",
+    "prepare": "tsc -b tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "api:update": "node scripts/api-report.mjs --update"
   },
   "//": [
-    "prepare is LOAD-BEARING (same as @battuta/core): the editor and every plugin resolve @battuta/api via dist/, and npm install/ci runs prepare in workspaces. The package imports nothing from other workspaces, so the order npm prepares them in does not matter.",
+    "prepare is LOAD-BEARING (same as @battuta/core): the editor and every plugin resolve @battuta/api via dist/, and npm install/ci runs prepare in workspaces. The build is `tsc -b` over a project reference to core, so core's declarations exist before the api compiles whatever order npm runs the workspaces' prepare in (slice 1's CI failure was that order).",
+    "Core owns the document's data types (caret, block, pitch, syllable, harmony kind); document.ts re-exports exactly those, type-only, and nothing else of core reaches a plugin (decided 2026-09-15). Nothing of core reaches the api's runtime.",
     "The version is the API version plugins declare in engines.battuta. Any change to the public types (api-report.d.ts) requires bumping it \u2014 the surface test refuses otherwise."
   ],
   "peerDependencies": {
@@ -27,5 +28,8 @@
     "@types/react": "^18.3.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
+  },
+  "dependencies": {
+    "@battuta/core": "*"
   }
 }

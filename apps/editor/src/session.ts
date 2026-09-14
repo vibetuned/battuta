@@ -8,7 +8,7 @@ import {
   buildScore, resolveContexts, buildEventIndex, ensureIds, fromDom, serialize, serializeDocument, childElements, findAll, meterCapacity, frac,
   CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand, RegenerateIdsCommand,
   copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, AddVoiceCommand, RemoveVoiceCommand, ToggleRepeatCommand, ToggleEndRepeatCommand, ToggleVoltaCommand,
-  SetHarmCommand, harmTextAt, SetSylCommand, sylAt, type SylValue, CycleStaffGroupCommand, type StaffGroupState, SetTitleCommand, SetTempoCommand, fingTextsAt, buildExpansion, SetPitchesCommand, collectPitchEvents, playbackShaping, ReplaceEntryCommand,
+  harmTextAt, SetSylCommand, sylAt, type SylValue, CycleStaffGroupCommand, type StaffGroupState, SetTitleCommand, SetTempoCommand, fingTextsAt, buildExpansion, SetPitchesCommand, collectPitchEvents, playbackShaping, ReplaceEntryCommand,
   type PitchEvent, type PlaybackShaping, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, TupletCommand, AutoBeamCommand, UnbeamThen, measuresOf, ChangeContextCommand, planContextChange,
   type CoreScore, type MeasureContext, type EventIndex, type Command, type DirtyRegion, type DomLikeElement, type DomLikeNode,
   type BlockSelection, type ClipboardFragment, type PastePlan, type EntrySpec, type MarkKind, type HarmKind, type CoreElement, type CaretPosition, type ContextChangeSpec,
@@ -295,9 +295,6 @@ export class DocumentSession {
   }
   measureRepeat(caret: CaretPosition): DirtyRegion[] {
     return this.execute(new MeasureRepeatCycleCommand(caret.measureIndex, caret.staffN, caret.layerN));
-  }
-  setHarm(targetId: string, text: string, kind: HarmKind): DirtyRegion[] {
-    return this.execute(new SetHarmCommand(targetId, text, kind));
   }
   harmAt(targetId: string, kind: HarmKind): string {
     const ref = this.index.byId.get(targetId);

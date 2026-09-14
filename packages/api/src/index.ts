@@ -1,7 +1,8 @@
 /**
  * @battuta/api — the plugin contract of the battuta host.
  *
- * Standalone: no dependency on @battuta/core or the editor. Everything a
+ * Imports nothing of the editor and, of core, only the plain-data document
+ * types `document.ts` re-exports (core owns them). Everything a
  * plugin can see is data (document.ts), everything it can do is a
  * message (messages.ts) or a context call (context.ts).
  *
@@ -10,7 +11,7 @@
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export const API_VERSION = "0.1.6";
+export const API_VERSION = "0.1.10";
 
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";

@@ -23,7 +23,7 @@ export type { EntrySpec, MarkKind } from "./entry.js";
 export { normalizeBlock, copyBlock, fragmentToText, materializeStaff, findStaffInMeasure } from "./clipboard.js";
 export type { BlockSelection, ClipboardFragment, ClipboardStaff } from "./clipboard.js";
 
-export { SetHarmCommand, harmTextAt, isChordSymbol, isRomanNumeral, isHarmText, harmSuggestions, HARM_CHARS } from "./harm.js";
+export { SetHarmCommand, harmTextAt, isChordSymbol, isRomanNumeral, isHarmText } from "./harm.js";
 export { SetSylCommand, sylAt } from "./lyrics.js";
 export type { SylValue } from "./lyrics.js";
 export { CycleStaffGroupCommand } from "./staffgroup.js";

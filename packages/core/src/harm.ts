@@ -4,18 +4,26 @@
  *  - Roman numeral analysis (<harm place="below" type="rna">V65/IV…)
  * Both are startid-anchored control events in the event's measure, so
  * tiles, copy/paste, and undo treat them like any other control event.
- * The grammars are closed: validators say whether a buffer is a complete
- * symbol, charsets say which keys may extend one, and the suggestion
- * helpers drive the editor's autosuggest.
+ * Core keeps the ELEMENT — where a `<harm>` hangs, how to read its text
+ * back, how to write it as one undoable step — and its VALIDITY: the two
+ * closed grammars that say what text may be written at all. Validity
+ * lives here, below every writer, because there will be more than one
+ * (the harmony lane today, a generator that reads a measure and writes
+ * its harmony tomorrow) and each must be refused the same junk; the api
+ * asks the same grammar through `ctx.query.harmValid`, so no plugin
+ * carries a copy (decided 2026-09-15). The editor AFFORDANCES — which
+ * keys may extend a buffer, what a typed key becomes, what is offered —
+ * are the harmony plugin's (`packages/plugins/harmony/src/grammar.ts`).
  */
 import { CoreElement, childElements } from "./xml.js";
 import { Command, CommandContext, DirtyRegion } from "./commands.js";
 import { newId } from "./ids.js";
 
+/** The discriminator of the element: `<harm>` plain and above, or `type="rna"` and below. Re-exported to plugins by `@battuta/api`. */
 export type HarmKind = "chord" | "rna";
 
 /* ------------------------------------------------------------------ */
-/* Grammars                                                            */
+/* Validity: what may be written into a <harm> of each kind            */
 
 const CHORD_RE =
   /^[A-G][b#]?(?:maj|ma|min|dim|aug|sus[24]|add\d{1,2}|alt|M|m|ø|°|Δ|\+|-)?\d{0,2}(?:[b#]\d{1,2}|alt)*(?:\/[A-G][b#]?)?$/;
@@ -27,47 +35,8 @@ const RNA_RE = new RegExp(
 
 export const isChordSymbol = (text: string): boolean => CHORD_RE.test(text);
 export const isRomanNumeral = (text: string): boolean => RNA_RE.test(text);
+/** Would `SetHarmCommand` accept this text as a harmony of this kind? The api's `harmValid`. */
 export const isHarmText = (kind: HarmKind, text: string): boolean => (kind === "chord" ? isChordSymbol(text) : isRomanNumeral(text));
-
-/** Which single characters may appear in a buffer of this kind at all. */
-export const HARM_CHARS: Record<HarmKind, RegExp> = {
-  chord: /^[A-G]$|^[b#]$|^[0-9]$|^[madjinugslt]$|^[MΔø°+/-]$/,
-  rna: /^[IViv]$|^[b#]$|^[2-7]$|^[NtFrGe]$|^[°øo0+/]$/,
-};
-
-const CHORD_QUALITIES = [
-  "", "m", "7", "maj7", "m7", "6", "m6", "9", "maj9", "11", "13",
-  "dim", "dim7", "m7b5", "ø7", "°7", "aug", "+", "sus4", "sus2",
-  "add9", "7b9", "7#9", "7b5", "7#5", "7alt", "-7", "Δ7",
-];
-const RNA_BASES = [
-  "I", "i", "II", "ii", "ii7", "iii", "III", "III+", "IV", "iv", "V", "V7",
-  "V65", "V43", "V42", "v", "vi", "VI", "vii°", "vii°7", "viiø7", "VII",
-  "I6", "I64", "bII", "bVI", "bIII", "N6", "It+6", "Fr+6", "Ger+6",
-];
-
-/** Completions for the current buffer (the editor's autosuggest). */
-export function harmSuggestions(kind: HarmKind, buffer: string): string[] {
-  let pool: string[];
-  if (kind === "chord") {
-    const m = /^([A-G][b#]?)/.exec(buffer);
-    if (!m) return ["C", "D", "E", "F", "G", "A", "B"].filter((r) => r.startsWith(buffer));
-    const root = m[1]!;
-    pool = CHORD_QUALITIES.map((q) => root + q);
-    // keep a slash continuation available once the head is complete
-    if (isChordSymbol(buffer) && !buffer.includes("/")) pool.push(buffer + "/");
-  } else {
-    const slash = buffer.indexOf("/");
-    if (slash >= 0) {
-      const head = buffer.slice(0, slash + 1);
-      pool = RNA_BASES.filter((b) => !b.includes("+6")).map((b) => head + b);
-    } else {
-      pool = [...RNA_BASES];
-      if (isRomanNumeral(buffer)) pool.push(buffer + "/");
-    }
-  }
-  return pool.filter((s) => s.startsWith(buffer) && s !== buffer).slice(0, 6);
-}
 
 /* ------------------------------------------------------------------ */
 

@@ -10,7 +10,7 @@
  * exported for tests, which pass memory-backed settings and storage.
  */
 import { API_VERSION, DisposableStore, type ActionsService, type ActivationEvent, type BlockSelection, type CommandMessage, type DocumentInfo, type DocumentQueries, type EditorState, type HostCapability, type KeymapEntry, type PitchEvent, type PluginContext, type PluginEntry, type PluginManifest, type Store, type SylValue, type HarmKind } from "@battuta/api";
-import type { Command } from "@battuta/core";
+import { isHarmText, type Command } from "@battuta/core";
 import { toCommand } from "./messages";
 import { keyMatches, type Layout } from "../keymap";
 import { detectLayout } from "../settings";
@@ -43,7 +43,6 @@ export interface SessionAdapter {
   blockOf(eventIds: readonly string[]): BlockSelection | null;
   lyricAt(eventId: string): SylValue | null;
   harmAt(eventId: string, kind: HarmKind): string;
-  harmValid(kind: HarmKind, text: string): boolean;
 }
 
 export interface Host {
@@ -154,7 +153,7 @@ export function createHost(options: HostOptions = {}): Host {
     blockOf: (ids) => adapter?.blockOf(ids) ?? null,
     lyricAt: (id) => adapter?.lyricAt(id) ?? null,
     harmAt: (id, kind) => adapter?.harmAt(id, kind) ?? "",
-    harmValid: (kind, text) => adapter?.harmValid(kind, text) ?? false,
+    harmValid: (kind, text) => isHarmText(kind, text), // core's grammar; a question about text, not about a document
   };
   const lanes = new LaneStore({
     execute,

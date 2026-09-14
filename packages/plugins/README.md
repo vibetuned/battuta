@@ -157,8 +157,8 @@ The api is a data contract. Nothing in it is a live object of the model.
 | the verse-1 syllable of a note | `ctx.query.lyricAt(eventId)` | `SylValue` (`text`, `wordpos?`, `con?`) or null |
 | **write** a syllable (empty text clears) | `ctx.execute({ type: "core.setSyl", eventId, value })` | one undo step; refused on a rest |
 | the harmony text of one kind at an event | `ctx.query.harmAt(eventId, kind)` — `kind` is `"chord"` (above) or `"rna"` (below) | `string`, "" when none |
-| would the document accept this harmony text? | `ctx.query.harmValid(kind, text)` | `boolean` — the grammar lives in core because `core.setHarm` refuses what fails it; ask, do not copy |
-| **write** a harmony (empty text clears) | `ctx.execute({ type: "core.setHarm", eventId, kind, text })` | one undo step; refused when `harmValid` would say no |
+| would the document accept this harmony text? | `ctx.query.harmValid(kind, text)` | `boolean`; core's grammar, no document needed — a lane's `complete`, a generator's filter. Ask it, never copy it |
+| **write** a harmony (empty text clears) | `ctx.execute({ type: "core.setHarm", eventId, kind, text })` | one undo step; refused when `harmValid` says no — every writer of a `<harm>` is held to the same grammar |
 | a control in the context bar that looks like the host's | render `<select className="sbsel" data-cycle?>` from a `statusBar` slot item | the look, F6 roving focus and ↑/↓ cycling (`data-cycle`) come with the class; the bar anchors host controls and grows contributions into the free space, so your item never moves them |
 
 Three things to know, each learned the hard way:
@@ -238,6 +238,13 @@ Conventions the tests cannot see, still binding:
   host's vocabulary first and the implementation second — otherwise the
   mechanism the old code used becomes the requirement.
 
+- **If the api validates, it validates every time.** A message whose text
+  has a grammar is refused by core, and the same grammar is askable
+  through a query (`harmValid`). Validity sits below every writer because
+  there will be more than one (a lane, a generator); the editor
+  affordances — what may be typed, what is offered — are the plugin's. A
+  plugin that copies a grammar to avoid the query is asking for the two
+  to drift.
 - **No document state outside the document.** Transient state lives in
   memory; small values in `ctx.settings`; larger ones in `ctx.storage`.
   Anything about the SCORE goes into MEI through a message. "All plugins

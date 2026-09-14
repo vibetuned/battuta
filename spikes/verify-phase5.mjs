@@ -779,7 +779,7 @@ check("tuplet round unwinds cleanly", true);
 const harmDepth0 = await page.evaluate(() => window.__SESSION__.stack.undoDepth);
 await page.locator('g[id="cc-m2n1"] use').first().click({ force: true });
 await page.waitForFunction(() => document.querySelector("main").dataset.caret === "cc-m2n1", null, { timeout: 5000 });
-await page.selectOption("select[data-lanes]", "chord"); // the host's lanes select (its title lists whatever lanes are on)
+await page.selectOption("select[data-lanes]", "battuta.harmony.chord"); // DESIGN HOOK: the lane id (the plugin's since slice 6); the select itself is the host's
 await page.waitForFunction(() => document.querySelector("[data-harm-input]"), null, { timeout: 5000 });
 check("the chord lane opens its editor at the caret", true);
 for (const k of ["C", "m", "a", "j", "7"]) await page.keyboard.press(k);
@@ -804,7 +804,7 @@ await page.waitForFunction(() => {
 }, null, { timeout: 5000 });
 check("slash chords commit too", true);
 // switch to the numeral lane: V + 6 + tab completes to V65
-await page.selectOption("select[data-lanes]", "rna");
+await page.selectOption("select[data-lanes]", "battuta.harmony.rna"); // DESIGN HOOK: same, the numeral lane
 await page.locator('g[id="cc-m2n1"] use').first().click({ force: true });
 await page.waitForFunction(() => document.querySelector("main").dataset.caret === "cc-m2n1", null, { timeout: 5000 });
 for (const k of ["V", "6"]) await page.keyboard.press(k);

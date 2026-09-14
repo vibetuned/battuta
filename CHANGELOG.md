@@ -55,6 +55,146 @@ is taken, and each slice as it closes, with the `App.tsx` line count
   refusals) and the query test extended; editor 122, api 18, plugins 105;
   `verify-phase5` 222 (its two harmony hooks now read `select[data-lanes]`; one flaky voice-navigation check in a back-to-back run passed on its own), `verify-lyrics` 26, `verify-app` 18, the keyboard 25, all green.
   `App.tsx` **3,117 → 3,109**; initial chunk **599.0 kB** (ceiling 605.5).
+- **Decision: validity lives in core and the api asks it — `harmValid` is
+  back (2026-09-15, in-house; api 0.1.9 → 0.1.10).** Slice 6 moved the
+  whole harmony grammar into the plugin and let `core.setHarm` write any
+  text, on the argument that core only refused because core owned the
+  regexes. The user reversed it with the reason the brief had lacked: **a
+  second writer.** A generator plugin that reads a measure and writes its
+  harmony is on the horizon, and every writer of a `<harm>` must be
+  refused the same text — so the guard sits below all of them, in core,
+  and the api exposes the same question rather than have each plugin carry
+  a copy. And the rule behind it is consistency: **if the api validates,
+  it validates every time** — a message with a grammar is refused by core,
+  and the grammar is askable through a query. So `CHORD_RE` / `RNA_RE`,
+  `isChordSymbol`, `isRomanNumeral` and `isHarmText` are core's again and
+  `SetHarmCommand` refuses on them (its two validity tests and the
+  refusal test came home); `ctx.query.harmValid(kind, text)` is on the api
+  again, answered by the host straight from core — a question about text,
+  it needs no document — and `core.setHarm`'s doc promises the refusal
+  once more. The plugin keeps what is the editor's: the charsets
+  (`accepts`), the numeral key mapping (`transform`) and the suggestion
+  lists (`suggest`); its `complete` is `ctx.query.harmValid`, and
+  `suggestions` takes the validity predicate as a parameter for its one
+  rule that needs it, so the plugin holds no copy of a regex and its unit
+  test injects a deliberately small fake (the real answer is exercised
+  through the host in `harmony.test.ts`). `engines.battuta` ^0.1.10. The
+  plugin's BUILDING.md §7.2 and §7.3 keep their reasoning with the
+  reversal noted: the argument was right that "core refuses" alone does
+  not hold the grammar in core; it missed that a second writer does.
+- **Decision: core owns the document's data types; the api re-exports
+  them (2026-09-15, in-house; api 0.1.8 → 0.1.9).** Slice 6 left
+  `HarmKind` declared twice, once in core and once on the api, with a
+  type-level assertion in `host/messages.ts` holding the two equal, and
+  called the duplication forced by the standalone rule. Four more types
+  had been declared twice since the api went standalone in slice 2
+  (`CaretPosition`, `BlockSelection`, `Pitch`, `PitchEvent`) and
+  `SylValue` since 5a. The user's call: the model owns what a caret, a
+  block, a pitch, a syllable or a harmony kind IS, so core declares each
+  once and `packages/api/src/document.ts` re-exports exactly those six —
+  plain JSON, no class, nothing else of core — which refines the
+  standalone rule rather than breaking it: the api imports nothing of
+  the editor, and of core only the data types it hands to plugins,
+  type-only, erased at runtime; a plugin still imports `@battuta/api`
+  alone, and `plugin-boundaries` still fails the build on a core import.
+  Two consequences, both handled. **The surface report could no longer
+  see those shapes** — a re-export emits as a name — so `surface.mjs` now
+  resolves every re-export the api makes and prints the declaration it
+  points at in a closing section of `api-report.d.ts`; a field changing
+  in core is a surface change here and needs the version bump like any
+  other. **Build order**: the api's compile now needs core's
+  declarations, and npm's workspace `prepare` order is not something to
+  lean on (slice 1's CI failure was exactly that), so the two build
+  tsconfigs are TypeScript project references — core's is `composite`,
+  the api's references it and builds with `tsc -b`, which builds core
+  first from any state; checked by deleting both `dist/` folders and
+  running the api's prepare alone. The api declares `@battuta/core` as a
+  dependency (`*`, the workspace) so the graph says what the imports do;
+  lockfile updated; the pin in `host/messages.ts` is gone, because a type
+  declared once cannot drift. (A first attempt ran the dependency the
+  other way — core importing the api's declarations — and was reversed
+  on review the same hour: it kept the api's snapshot self-contained but
+  put the model's vocabulary in the plugin contract's package, which is
+  backwards; the report change above is what makes the right direction
+  cost nothing.) Harmony's BUILDING.md §7.4 keeps its reasoning with a
+  note that the premise was one-sided.
+- **Slice 6 — the harmony lanes plugin (2026-09-15). CLOSED, and the
+  `lanes` point is frozen.** `packages/plugins/harmony` declares two lanes
+  (`battuta.harmony.chord` above, `battuta.harmony.rna` below), activates
+  on `onLane:` of either and registers both specs as one function of
+  `kind`. **No api addition and no host change** — `@battuta/api` stays at
+  **0.1.6**, `api-report.d.ts` unchanged — and, the point of the slice,
+  **no change to the `lanes` point either**: not a field, not a query. The
+  two lanes use `accepts`, `transform`, `complete` and `suggest`, the four
+  `LaneSpec` fields lyrics leaves unset, so between 5b and 6 every field
+  of the point has a consumer and none has a third state. Slice 5a shaped
+  it against these two lanes before either left `App.tsx`, and that is why
+  both extractions were boring.
+  - **The whole grammar moved, and the api SHRANK.** The brief split it by
+    validity — regexes stay in core because `SetHarmCommand` refuses on
+    them, affordances go to the plugin, which asks back through
+    `ctx.query.harmValid` — and the slice first shipped that way. On
+    review the justification turned out to be circular: **the command
+    refused because core owned the grammar**, and nothing else held the
+    regexes there. What a chord symbol IS has no MEI knowledge (`CHORD_RE`
+    is a regex over a string, and MEI puts no constraint on `<harm>`
+    text), so the reflection plugin's rule applies without an exception —
+    *parses a chord symbol → the plugin's, even if it sat in core before*.
+    `CHORD_RE` / `RNA_RE` / `isChordSymbol` / `isRomanNumeral` /
+    `isHarmText` joined `HARM_CHARS` (→ `accepts`), the `o` → `°` / `0` →
+    `ø` mapping (→ `transform`) and `CHORD_QUALITIES` / `RNA_BASES` /
+    `harmSuggestions` (→ `suggest`) in `src/grammar.ts`, with every core
+    test case. **Core keeps the ELEMENT** — `harmTextAt` and
+    `SetHarmCommand`, 55 lines and three exports lighter — and the command
+    now writes the text it is given, exactly as `SetSylCommand` does.
+    `HarmKind` stays in core with them: it is not grammar but the
+    discriminator of an element (`isKind` reads `type="rna"`, the command
+    writes `type` and `place`), and the api declares its own because
+    neither package may import the other — the api is standalone by rule
+    and core sits below it. That duplication was unpinned in one
+    direction: `toCommand` fails to compile if the API grows a kind core
+    lacks, but a kind added to CORE alone would have been silent. A
+    type-level assertion in `host/messages.ts`, the one place both are in
+    scope, now catches both; checked by adding a third kind to core and
+    watching the editor's typecheck fail. The
+    cost, stated plainly: a plugin sending `core.setHarm` directly can
+    write junk into a `<harm>`, as `core.setSyl` already allows for a
+    `<syl>`; nothing a USER can do reaches it, because the lane's
+    `complete` stops an incomplete buffer before a message is built. The
+    gain: turning the plugin off unloads the grammar with the feature, one
+    opinion about what a symbol is instead of two modules agreeing, and
+    `suggest` no longer calls a host query on every keystroke.
+    **`ctx.query.harmValid` then had no consumer at all and left the api
+    (0.1.7), and `core.setHarm`'s own promise changed with it — it no
+    longer refuses, which the api report treats as the contract change it
+    is (0.1.8). `@battuta/api` 0.1.6 → 0.1.8**, the report regenerated
+    twice. Two leftovers
+    the move exposed went with it: `session.setHarm`, dead since the
+    internal specs left, and core's `isHarmText` import in `App.tsx`.
+  - **`App.tsx` 3,109 → 3,091** (−18) and it now has **no lane code at
+    all**: the mechanism went in 5a, lyrics in 5b, harmony here. What
+    remains is the lane ADAPTER — the caret path and what sits on it —
+    which is the document's view and would exist for any lane. The union
+    keymap snapshot is **byte-identical**: harmony is picked from the lane
+    box, so unlike 5b this extraction moves no binding.
+  - Initial chunk 598.3 → **598.1 kB** (ceiling 605.5); the plugin a **1.6
+    kB lazy chunk**. Tests: harmony 30 (13 grammar, 17 lifecycle), lyrics
+    26, editor 123, api 18, core 223 (−3: every grammar case moved, and
+    "rejects invalid text" became "writes the text it is given"), other
+    plugins 79. **`verify-phase5.mjs` 221/221 with exactly its two named
+    hooks changed** (the select's option VALUES become the lane ids; the
+    select is found by `data-lanes`, which is the host's), `verify-lyrics`
+    25/25 and every other script unchanged, the shell smoke 6/6.
+  - Two dead ends worth the next author's time. Assertions in the moved
+    suggestion test failed on arrival and **were the test being wrong, not
+    the code** — a narrowed fake grammar accepted a buffer the case assumed
+    it rejected, and the seven chord roots return through an early path
+    that never meets the six-item cap; when a moved test fails on arrival,
+    suspect the move. And the split itself: **a rule that explains the code
+    you already have is not the same as a rule that would have produced
+    it** — "validity versus affordances" is a real distinction and was
+    still the wrong axis, because the module's subject is the element, not
+    the vocabulary. `packages/plugins/harmony/BUILDING.md` §7 has both.
 - **Slice 5b — the lyrics lane plugin (2026-09-14). CLOSED.**
   `packages/plugins/lyrics` is the first consumer of the `lanes` point from
   outside the host, and it needed **no api addition and no host change**:

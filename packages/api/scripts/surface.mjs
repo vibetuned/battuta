@@ -31,10 +31,38 @@ export function publicSurface() {
     undefined,
     true,
   );
-  return Object.keys(files)
-    .sort()
-    .map((f) => `// ---- ${f}\n${files[f].trimEnd()}\n`)
-    .join("\n");
+  return (
+    Object.keys(files)
+      .sort()
+      .map((f) => `// ---- ${f}\n${files[f].trimEnd()}\n`)
+      .join("\n") + reexportedFromCore(program)
+  );
+}
+
+/**
+ * Core owns the document's data types and the api re-exports them
+ * (src/document.ts). A re-export shows in the emitted .d.ts as a name
+ * only, so the report also prints the DECLARATION each one resolves to —
+ * a field changing in core is then a surface change here, and needs the
+ * version bump like any other.
+ */
+function reexportedFromCore(program) {
+  const checker = program.getTypeChecker();
+  const out = [];
+  for (const sf of program.getSourceFiles()) {
+    if (sf.isDeclarationFile || !sf.fileName.startsWith(join(root, "src").replace(/\\/g, "/"))) continue;
+    const mod = checker.getSymbolAtLocation(sf);
+    if (!mod) continue;
+    for (const sym of checker.getExportsOfModule(mod)) {
+      const target = sym.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(sym) : sym;
+      for (const d of target.declarations ?? []) {
+        const from = d.getSourceFile().fileName.replace(/\\/g, "/");
+        if (from.startsWith(root.replace(/\\/g, "/") + "/src")) continue; // the api's own: already printed
+        out.push(`// ${sym.name} — from packages/${relative(join(root, ".."), from).replace(/\\/g, "/")}\n${d.getText()}`);
+      }
+    }
+  }
+  return out.length ? `\n// ---- re-exported from @battuta/core (declared there; printed here so the pin covers the shape)\n${[...new Set(out)].sort().join("\n")}\n` : "";
 }
 
 export const packageVersion = () => JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;

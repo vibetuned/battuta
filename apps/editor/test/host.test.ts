@@ -75,7 +75,6 @@ function echoPlugin(): { entry: PluginEntry; state: { log: string[]; loads: numb
 const fakeAdapter = (execute = vi.fn()): SessionAdapter & { execute: ReturnType<typeof vi.fn> } => ({
   lyricAt: (id) => (id === "n1" ? { text: "hel", wordpos: "i", con: "d" } : null),
   harmAt: (id, kind) => (id === "n1" && kind === "chord" ? "Cmaj7" : ""),
-  harmValid: (kind, text) => (kind === "chord" ? /^[A-G]/.test(text) : /^[IViv]/.test(text)),
   execute,
   pitchEventsIn: (block) => [[{ eventId: `e-${block.measureFrom}`, pitches: [{ pname: "c", oct: 4 }] }]],
   blockOf: (ids) => (ids.length ? { measureFrom: 0, measureTo: ids.length - 1, staffFrom: 1, staffTo: 1 } : null),
@@ -498,18 +497,19 @@ describe("a runtime slot item replaces the plugin's declared face while it lives
 });
 
 describe("lanes on the context", () => {
-  it("query.lyricAt / harmAt / harmValid are answered by the bound adapter; empty answers without a document", () => {
+  it("query.lyricAt / harmAt are answered by the bound adapter; empty answers without a document; harmValid is core's grammar and needs none", () => {
     const host = makeHost([]);
+    expect(host.query.harmValid("chord", "Cmaj7")).toBe(true);
+    expect(host.query.harmValid("chord", "H7")).toBe(false);
+    expect(host.query.harmValid("rna", "V65")).toBe(true);
+    expect(host.query.harmValid("rna", "Cmaj7")).toBe(false);
     expect(host.query.lyricAt("n1")).toBeNull();
     expect(host.query.harmAt("n1", "chord")).toBe("");
-    expect(host.query.harmValid("chord", "C")).toBe(false);
     host.bindSession(fakeAdapter());
     expect(host.query.lyricAt("n1")).toEqual({ text: "hel", wordpos: "i", con: "d" });
     expect(host.query.lyricAt("n2")).toBeNull();
     expect(host.query.harmAt("n1", "chord")).toBe("Cmaj7");
     expect(host.query.harmAt("n1", "rna")).toBe("");
-    expect(host.query.harmValid("chord", "C7")).toBe(true);
-    expect(host.query.harmValid("rna", "C7")).toBe(false);
   });
 
   it("a declared lane is listed before the plugin loads; picking it fires onLane:<id>, the plugin registers, the lane opens; register() demands a declaration", async () => {

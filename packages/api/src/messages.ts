@@ -36,8 +36,10 @@ export interface SetSylMessage {
 /**
  * Set (or, with empty text, clear) the harmony of one kind at an event —
  * a chord symbol above or a Roman numeral below. Refused when the text is
- * not one the grammar accepts (`ctx.query.harmValid` asks the same
- * grammar first). One undo step; byte-identical revert; labels itself.
+ * not one core's grammar accepts — `ctx.query.harmValid` asks the same
+ * grammar, so a lane checks before it builds the message and a generator
+ * filters before it writes. One undo step; byte-identical revert; labels
+ * itself.
  */
 export interface SetHarmMessage {
   type: "core.setHarm";

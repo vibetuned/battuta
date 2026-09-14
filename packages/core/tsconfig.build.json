@@ -5,7 +5,12 @@
     "declaration": true,
     "outDir": "dist",
     "moduleResolution": "node16",
-    "module": "Node16"
+    "module": "Node16",
+    "composite": true,
+    "tsBuildInfoFile": "dist/.tsbuildinfo",
+    "rootDir": "src"
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }

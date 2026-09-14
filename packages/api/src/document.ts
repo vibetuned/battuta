@@ -5,53 +5,21 @@
  * third-party loading stays a deferral, not a rewrite) and what makes
  * "everything through @battuta/api" true rather than aspirational: there
  * is nothing of the document model here to reach into.
+
  */
-
-/** Caret position in model coordinates — never pixels. */
-export interface CaretPosition {
-  measureIndex: number;
-  staffN: number;
-  layerN: number;
-  eventIndex: number;
-}
-
-/** Block selection: inclusive measure-index range × inclusive staff-number range. */
-export interface BlockSelection {
-  measureFrom: number;
-  measureTo: number;
-  staffFrom: number;
-  staffTo: number;
-}
-
-/** One written pitch (MEI @pname/@oct, with the accidental attributes when present). */
-export interface Pitch {
-  pname: string;
-  oct: number;
-  accid?: string;
-  accidGes?: string;
-}
-
-/** A pitched event (note or chord): its id and its pitches in child order. */
-export interface PitchEvent {
-  eventId: string;
-  pitches: Pitch[];
-}
-
-export type ViewMode = "tiles" | "pages";
-
-/** The two harmony lanes over one event: chord symbols (`<harm place="above">`) and Roman numerals (`<harm type="rna" place="below">`). */
-export type HarmKind = "chord" | "rna";
 
 /**
- * One verse-1 syllable, as MEI has it: `<syl wordpos con>` inside the
- * note's `<verse n="1">`. `wordpos` i/m/t = word start/middle/end, absent
- * for a whole word; `con: "d"` draws the hyphen to the next syllable.
+ * Core owns the document's data types; the api RE-EXPORTS exactly these —
+ * plain JSON, no model, no class — and nothing else of `@battuta/core`.
+ * Adding a name here is a contract change (the surface report inlines
+ * the re-exported shapes, so a change to one of them in core shows up as
+ * a surface change and needs a version bump); a plugin still imports only
+ * `@battuta/api`, and the boundary test keeps it that way.
  */
-export interface SylValue {
-  text: string;
-  wordpos?: string;
-  con?: string;
-}
+import type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKind } from "@battuta/core";
+export type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKind } from "@battuta/core";
+
+export type ViewMode = "tiles" | "pages";
 
 /** Caret and selections, in model coordinates. */
 export interface EditorState {
@@ -97,9 +65,12 @@ export interface DocumentQueries {
   /** The harmony text of one kind anchored at an event, "" when none. */
   harmAt(eventId: string, kind: HarmKind): string;
   /**
-   * Would the document accept this text as a harmony of this kind? The
-   * grammar that decides lives in core, because `core.setHarm` refuses
-   * what fails it; a lane asks here rather than carrying a second copy.
+   * Would the document accept this text as a harmony of this kind? Core
+   * owns the grammar that decides, because more than one plugin may write
+   * a harmony (the lane today, a generator tomorrow) and every writer must
+   * be refused the same text; `core.setHarm` refuses what fails it. Ask
+   * here — a lane's `complete`, a generator's filter — never copy it.
+   * Needs no document: a grammar question.
    */
   harmValid(kind: HarmKind, text: string): boolean;
 }

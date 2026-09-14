@@ -101,7 +101,12 @@ permanently; they carry no assets, so the weight budget is unaffected.
 One package, semver'd separately from the app, `engines.battuta`
 declared by every plugin, **standalone — it imports nothing from core
 or the editor** (decided 2026-09-14 after the first slice-2 attempt
-imported core; see the CHANGELOG). Read side: a document snapshot
+imported core; see the CHANGELOG) — refined 2026-09-15: core owns the
+document's data types (caret, block, pitch, syllable, harmony kind) and
+`document.ts` re-exports exactly those, type-only; nothing else of core
+reaches the api or a plugin, each type is declared once, the surface
+report prints the shapes it re-exports, and the api's build is a project
+reference to core. Read side: a document snapshot
 (`id`, `version`, counts, title, tempo), caret and selections with a
 subscribe, and a **query facade** answered by the host as data
 (`pitchEventsIn(block)`, `blockOf(ids)`; tile geometry and timemaps
@@ -234,9 +239,29 @@ a day instead of a rollback.** **Slice 6's host half landed 2026-09-14**
 anchoring rule, the lanes select as its boundary, the `.sbsel` look as a
 class — the CHANGELOG bullet has the account), and the grammar split is
 decided in its brief: validity stays in core and is asked through
-`harmValid`, the editor affordances move into the plugin. **Slice 6, the
-harmony plugin, is next**, and it is the rule of three: the point is
-frozen after it.
+`harmValid`, the editor affordances move into the plugin. **Slice 6 closed
+2026-09-15**: `packages/plugins/harmony` declares both lanes and
+registers them as one function of `kind`, and the `lanes` point took
+**no change at all** for its second consumer — not a field, not a query.
+Between 5b and 6 every `LaneSpec` field has a consumer and none has a
+third state, so **the point is frozen for the phase**. `App.tsx` has no
+lane code left (3,109 → 3,091; what remains is the adapter, the
+document's own view of the caret path), the union keymap snapshot is
+byte-identical (harmony is picked, never pressed), and the grammar split
+landed on its second reading: the brief split the grammar by validity
+(regexes in core, because `SetHarmCommand` refused on them) and that
+justification was circular — the command refused because core owned
+them. The whole grammar went to the plugin, core kept only the ELEMENT,
+and `ctx.query.harmValid` left the api (0.1.6 → 0.1.8). **Reversed the
+same day, on the third reading**: a second writer is coming (a generator
+plugin that reads a measure and writes its harmony), every writer must be
+refused the same text, and if the api validates it validates every time
+— so validity is core's again, `SetHarmCommand` refuses on it, `harmValid`
+is back on the api (0.1.10), and the plugin keeps the affordances
+(charset, transform, suggestions) and asks the question instead of
+copying the answer.
+**Slice 7, playback, is next** — the first slice where the bundle budget
+moves for real.
 
 From here on slices are
 handed to sessions without the surrounding context, on purpose, to test
@@ -730,6 +755,18 @@ mechanism is gone.
 
 **Done when.** Both lanes run on the shared point, and `App.tsx` has no
 lane code left.
+
+**Closed 2026-09-15.** Both hold; the point took no change and is frozen.
+*As briefed, after a detour:* the slice first moved the whole grammar
+into the plugin and dropped `harmValid` (0.1.6 → 0.1.8), arguing the
+brief's reasoning was circular; the user restored the split the same day
+for a reason the brief had not given — a second writer (a harmony
+generator) must be refused the same text, and an api that validates
+validates every time — so validity is core's, `harmValid` is on the api
+(0.1.10) and the plugin owns the affordances (CHANGELOG, and the
+plugin's BUILDING.md §7.2–§7.3 with the reversal noted). Its §7.4 kept `HarmKind` declared twice and pinned; superseded the
+same day — core owns the data types and the api re-exports them, so
+nothing is declared twice (api 0.1.9).
 
 #### Slice 7 — Playback (≈1 week)
 

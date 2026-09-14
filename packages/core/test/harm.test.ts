@@ -1,10 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { buildEventIndex, serialize, findAll, SetHarmCommand, harmTextAt, isChordSymbol, isRomanNumeral, harmSuggestions, type CommandContext } from "../src/index.js";
+// Core owns the ELEMENT and its VALIDITY: the grammars below decide what
+// text may be written into a <harm> at all, and SetHarmCommand refuses on
+// them — below every writer, so the harmony lane and any future generator
+// are refused the same junk (the api asks the same grammar as
+// ctx.query.harmValid). The editor affordances — charsets, the numeral key
+// mapping, the suggestion lists — are the harmony plugin's, with their
+// tests (packages/plugins/harmony/test/grammar.test.ts).
+import { buildEventIndex, serialize, findAll, SetHarmCommand, harmTextAt, isChordSymbol, isRomanNumeral, isHarmText, type CommandContext } from "../src/index.js";
 import { scoreFrom, mei } from "./helpers.js";
 
 const ctxFor = (score: ReturnType<typeof scoreFrom>["score"]): CommandContext => ({ score, index: buildEventIndex(score) });
 
-describe("harmony grammars", () => {
+describe("harmony validity", () => {
   it("accepts the chord-symbol families", () => {
     for (const good of ["C", "Cm", "C7", "Cmaj7", "CM7", "CΔ7", "Cm7", "C-7", "Cdim", "C°7", "Cm7b5", "Cø7", "Caug", "C+", "Csus4", "Csus2", "Cadd9", "C6", "Cm6", "C9", "C11", "C13", "Cmaj9", "C7b9", "C7#9", "C7alt", "F#m7", "Bb13", "C/E", "G/B", "F#m7/A"]) {
       expect(isChordSymbol(good), good).toBe(true);
@@ -23,12 +30,11 @@ describe("harmony grammars", () => {
     }
   });
 
-  it("suggests completions from a prefix", () => {
-    expect(harmSuggestions("chord", "Cma")).toContain("Cmaj7");
-    expect(harmSuggestions("chord", "")).toContain("C");
-    expect(harmSuggestions("rna", "V6")).toContain("V65");
-    expect(harmSuggestions("rna", "Ge")).toContain("Ger+6");
-    expect(harmSuggestions("chord", "Cmaj7").every((s) => s.startsWith("Cmaj7"))).toBe(true);
+  it("isHarmText picks the grammar by kind — what the api answers as harmValid", () => {
+    expect(isHarmText("chord", "Cmaj7")).toBe(true);
+    expect(isHarmText("chord", "V65")).toBe(false);
+    expect(isHarmText("rna", "V65")).toBe(true);
+    expect(isHarmText("rna", "Cmaj7")).toBe(false);
   });
 });
 
