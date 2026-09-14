@@ -21,6 +21,15 @@
  * bindings are untouched, so turning it back on restores them.
  */
 import { API_VERSION, DisposableStore, resolvePluginModule, satisfiesEngine, toDisposable, validateManifest, type ActivationEvent, type CommandHandler, type Disposable, type HostCapability, type KeybindingContribution, type PluginContext, type PluginEntry, type PluginManifest, type PluginModule, type SlotItemContribution, type Store } from "@battuta/api";
+import type { KeyBinding } from "../keymap";
+
+/** The shape of a key event the host needs: what the App's handler and a test both provide. */
+export interface KeyLike {
+  key: string;
+  shiftKey: boolean;
+  altKey: boolean;
+  code?: string;
+}
 
 export type PluginState = "registered" | "active" | "disabled" | "failed";
 
@@ -61,6 +70,11 @@ export class CommandTable {
     return this.owners.get(commandId);
   }
 
+  /** Every declared command id (enabled plugins only, since contributions are withdrawn on off), in declaration order. */
+  declared(): readonly string[] {
+    return [...this.owners.keys()];
+  }
+
   handlerOf(commandId: string): CommandHandler | undefined {
     return this.handlers.get(commandId);
   }
@@ -77,9 +91,11 @@ export interface RegistryDeps {
   /** Manifest-declared slot items: rendered by the host before the plugin's code loads. */
   declareSlotItems(pluginId: string, items: SlotItemContribution[]): Disposable;
   commands: CommandTable;
-  createContext(manifest: PluginManifest, subscriptions: DisposableStore): PluginContext;
+  createContext(manifest: PluginManifest, subscriptions: DisposableStore, activatedBy: ActivationEvent | null): PluginContext;
   /** Where activation and command failures are reported (a notice in the app). */
   report(message: string): void;
+  /** The host's key matcher (keymap.ts), so plugin bindings match exactly as core ones do. */
+  keyMatches(b: KeyBinding, e: KeyLike): boolean;
 }
 
 interface PluginRecord {
@@ -146,10 +162,11 @@ export class PluginRegistry implements Store<readonly PluginInfo[]> {
   /** Activate every enabled, not-yet-active plugin that declared this event. */
   async fire(event: ActivationEvent): Promise<void> {
     const targets = [...this.records.entries()].filter(([, r]) => r.enabled && r.state === "registered" && r.entry.manifest.activationEvents.includes(event));
-    await Promise.all(targets.map(([id]) => this.activate(id)));
+    await Promise.all(targets.map(([id]) => this.activate(id, event)));
   }
 
-  async activate(id: string): Promise<boolean> {
+  /** `activatedBy` is what the plugin's context reports as the reason it woke; null = started directly. */
+  async activate(id: string, activatedBy: ActivationEvent | null = null): Promise<boolean> {
     const rec = this.records.get(id);
     if (!rec) return false;
     if (rec.activating) return rec.activating;
@@ -159,7 +176,7 @@ export class PluginRegistry implements Store<readonly PluginInfo[]> {
         const mod = rec.module ?? resolvePluginModule(await rec.entry.load());
         rec.module = mod;
         rec.subscriptions = new DisposableStore();
-        await mod.activate(this.deps.createContext(rec.entry.manifest, rec.subscriptions));
+        await mod.activate(this.deps.createContext(rec.entry.manifest, rec.subscriptions, activatedBy));
         rec.state = "active";
         return true;
       } catch (e) {
@@ -215,13 +232,23 @@ export class PluginRegistry implements Store<readonly PluginInfo[]> {
     }
   }
 
+  /** A key against the plugins' contributed bindings: runs the owning command. False when none matches. */
+  dispatchKeyFor(keymap: { get(): Record<string, KeyBinding> }, e: KeyLike): boolean {
+    for (const [id, b] of Object.entries(keymap.get())) {
+      if (!b.plugin || !this.deps.keyMatches(b, e)) continue;
+      void this.runCommand(id);
+      return true;
+    }
+    return false;
+  }
+
   /** Run a plugin command by id, loading its owner first if needed. False when no plugin owns it. */
   async runCommand(commandId: string, args?: unknown): Promise<boolean> {
     const owner = this.deps.commands.ownerOf(commandId);
     if (owner === undefined) return false;
     let handler = this.deps.commands.handlerOf(commandId);
     if (!handler) {
-      await this.activate(owner);
+      await this.activate(owner, `onCommand:${commandId}`);
       handler = this.deps.commands.handlerOf(commandId);
     }
     if (!handler) {

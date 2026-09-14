@@ -1,4 +1,4 @@
-// @battuta/api 0.1.2 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
+// @battuta/api 0.1.4 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
 
 // ---- actions.d.ts
 /**
@@ -26,10 +26,12 @@
  *   transpose.down, transpose.octaveUp, transpose.octaveDown ·
  *   edit.delete, edit.backspace, edit.escape
  *
- * `ids()` is the live list: every id `run` knows, rebindable and locked,
- * so a projection (the on-screen keyboard) can check its buttons against
- * it rather than trust this comment.
+ * `ids` is the live list: every id `run` knows — the host's rules and
+ * every enabled plugin's commands — as a Store, so a projection (the
+ * on-screen keyboard) re-renders when a plugin is turned on or off or a
+ * document opens, instead of trusting this comment or polling.
  */
+import type { Store } from "./context.js";
 /** One keymap entry as data: what the shortcut editor and the on-screen keyboard render. */
 export interface KeymapEntry {
     /** Action id — a core id (`tie`) or a plugin's command id. */
@@ -52,11 +54,13 @@ export interface ActionsService {
      * Run an action by id through the host's own dispatch table. True when
      * it ran; false when the id is unknown, or the state does not allow it
      * (no caret, a lane or picker owns the keyboard, the action's own
-     * condition fails) — exactly when the key would have done nothing.
+     * condition fails) — exactly when the key would have done nothing. A
+     * plugin's command id runs through the registry, after the same gates,
+     * as its key would.
      */
     run(id: string): boolean;
-    /** Every id `run` knows, in dispatch order, each once. */
-    ids(): readonly string[];
+    /** Every id `run` knows — the host's, then every enabled plugin's commands — republished on every change. */
+    readonly ids: Store<readonly string[]>;
 }
 
 // ---- context.d.ts
@@ -75,7 +79,7 @@ export interface ActionsService {
 import type { ReactNode } from "react";
 import type { Disposable, DisposableStore } from "./disposable.js";
 import type { DocumentInfo, DocumentQueries, EditorState } from "./document.js";
-import type { PluginManifest, SlotName } from "./manifest.js";
+import type { ActivationEvent, PluginManifest, SlotName } from "./manifest.js";
 import type { CommandMessage } from "./messages.js";
 import type { MidiService } from "./midi.js";
 import type { ActionsService, KeymapEntry } from "./actions.js";
@@ -114,6 +118,15 @@ export interface PluginContext {
     readonly manifest: PluginManifest;
     /** The host's `@battuta/api` version. */
     readonly apiVersion: string;
+    /**
+     * The activation event that woke this plugin — `onStartup`,
+     * `onPointer:coarse`, `onCommand:<id>` (a key or a declared slot item),
+     * `onSettings:<key>` — or null when it was started directly (the
+     * Plugins tab, a test). Activation runs BEFORE the command handler that
+     * caused it, so a plugin with a toggle needs this to know whether to
+     * open its UI now or leave that to the handler about to run.
+     */
+    readonly activatedBy: ActivationEvent | null;
     /** The active document as a snapshot, null when none is open. Republished after every edit — see DocumentInfo. */
     readonly document: Store<DocumentInfo | null>;
     readonly editor: Store<EditorState>;
@@ -135,6 +148,13 @@ export interface PluginContext {
     readonly keymap: Store<readonly KeymapEntry[]>;
     /** Run the host's actions by id — the door for input surfaces. See actions.ts. */
     readonly actions: ActionsService;
+    /**
+     * Slot items. An item whose `id` equals one of the plugin's DECLARED slot
+     * items replaces that item's face while it lives — so a declared entry
+     * point (static, rendered before the code loads) becomes a live,
+     * stateful button once the plugin is active, and returns to its declared
+     * face on deactivate.
+     */
     readonly slots: {
         add(slot: SlotName, item: SlotItem): Disposable;
     };
@@ -275,7 +295,7 @@ export interface DocumentQueries {
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export declare const API_VERSION = "0.1.2";
+export declare const API_VERSION = "0.1.4";
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";
 export type { Disposable } from "./disposable.js";
@@ -299,8 +319,15 @@ export { definePlugin, resolvePluginModule } from "./context.js";
  * plugin therefore costs exactly one manifest object.
  */
 /** Events the host fires; a plugin's code loads on the first one it declares. */
-export type ActivationEvent = "onStartup" | `onCommand:${string}` | `onLane:${string}` | `onFormat:${string}` | `onDocument:${string}` | `onView:${string}` | "onPlay" | `onPointer:${string}`;
-export declare const ACTIVATION_EVENT_PREFIXES: readonly ["onStartup", "onCommand:", "onLane:", "onFormat:", "onDocument:", "onView:", "onPlay", "onPointer:"];
+export type ActivationEvent = "onStartup" | `onCommand:${string}` | `onLane:${string}` | `onFormat:${string}` | `onDocument:${string}` | `onView:${string}` | "onPlay" | `onPointer:${string}`
+/**
+ * Fired at startup for a plugin whose OWN settings namespace holds a
+ * truthy value under `<key>` — "you were in use when I last quit, come
+ * back". How a persisted UI state (an open panel) survives a restart
+ * without `onStartup` costing every user the code at launch.
+ */
+ | `onSettings:${string}`;
+export declare const ACTIVATION_EVENT_PREFIXES: readonly ["onStartup", "onCommand:", "onLane:", "onFormat:", "onDocument:", "onView:", "onPlay", "onPointer:", "onSettings:"];
 /**
  * Host capabilities a manifest may require. A capability is a platform
  * service with a browser backend and a shell backend (never a plugin);
@@ -366,6 +393,15 @@ export interface SlotItemContribution {
     command: string;
     /** Lower renders first among the slot's items. */
     order?: number;
+    /**
+     * Draw this face de-emphasised until the plugin is active. For an entry
+     * point that OPENS something (the 🎹 and its panel), "not active" means
+     * "not showing", so a lit button would be a small lie — and the plugin's
+     * own runtime item takes the face over the moment it runs. Leave it
+     * unset for an item that simply runs a command, which is not disabled in
+     * any sense while its plugin waits to be loaded.
+     */
+    dimUntilActive?: boolean;
 }
 export interface PluginContributions {
     commands?: CommandContribution[];

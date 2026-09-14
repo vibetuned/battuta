@@ -13,7 +13,7 @@
 import type { ReactNode } from "react";
 import type { Disposable, DisposableStore } from "./disposable.js";
 import type { DocumentInfo, DocumentQueries, EditorState } from "./document.js";
-import type { PluginManifest, SlotName } from "./manifest.js";
+import type { ActivationEvent, PluginManifest, SlotName } from "./manifest.js";
 import type { CommandMessage } from "./messages.js";
 import type { MidiService } from "./midi.js";
 import type { ActionsService, KeymapEntry } from "./actions.js";
@@ -60,6 +60,15 @@ export interface PluginContext {
   readonly manifest: PluginManifest;
   /** The host's `@battuta/api` version. */
   readonly apiVersion: string;
+  /**
+   * The activation event that woke this plugin — `onStartup`,
+   * `onPointer:coarse`, `onCommand:<id>` (a key or a declared slot item),
+   * `onSettings:<key>` — or null when it was started directly (the
+   * Plugins tab, a test). Activation runs BEFORE the command handler that
+   * caused it, so a plugin with a toggle needs this to know whether to
+   * open its UI now or leave that to the handler about to run.
+   */
+  readonly activatedBy: ActivationEvent | null;
   /** The active document as a snapshot, null when none is open. Republished after every edit — see DocumentInfo. */
   readonly document: Store<DocumentInfo | null>;
   readonly editor: Store<EditorState>;
@@ -81,6 +90,13 @@ export interface PluginContext {
   readonly keymap: Store<readonly KeymapEntry[]>;
   /** Run the host's actions by id — the door for input surfaces. See actions.ts. */
   readonly actions: ActionsService;
+  /**
+   * Slot items. An item whose `id` equals one of the plugin's DECLARED slot
+   * items replaces that item's face while it lives — so a declared entry
+   * point (static, rendered before the code loads) becomes a live,
+   * stateful button once the plugin is active, and returns to its declared
+   * face on deactivate.
+   */
   readonly slots: { add(slot: SlotName, item: SlotItem): Disposable };
   readonly panels: { open(panel: PanelSpec): Disposable };
   /** Disposed on deactivate. Add every subscription here; the host disposes what it handed out itself. */

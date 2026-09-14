@@ -179,11 +179,32 @@ account and the review; the measures it asked for are in place (the
 keymap snapshot, `--unpublished` withdrawn). Its e2e script survived,
 restored to the in-App panel: `verify-onscreen-keyboard.mjs`, 24 checks.
 **Slice 4a closed 2026-09-14** (in-house): the dispatcher is a table,
-`ctx.keymap` and `ctx.actions.run(id)` / `ids()` are the door.
-**Slice 4b, the keyboard plugin, is next.** Its entry point is decided
-and built: slots belong to the host, the 🎹 is a manifest-declared item
-in the header slot, and the second header row has a slot of its own
-(`docHeader`) for the player when slice 7 moves it.
+`ctx.keymap` and `ctx.actions.run(id)` / `ids` are the door.
+**Slice 4b closed 2026-09-14** — after stopping first, which is the
+result the slice was run to test. Its entry point was decided and built
+before it: slots belong to the host, the 🎹 is a manifest-declared item in
+the header slot, and the second header row has a slot of its own
+(`docHeader`) for the player when slice 7 moves it. The plugin ships the
+panel as a projection of the union keymap with `ctx.actions.run(id)`
+behind every button, the piano as slice 3's virtual MIDI input, and the
+coverage suite over the union keymap in both layouts. Built against
+0.1.2 it reached 23 of its 24 e2e checks and **stopped**: the panel sees
+plugin-contributed bindings in the union keymap and `run(id)` did not
+carry them, so it would have had to caption a button it could not press.
+It invented nothing, left the check failing, and reported three gaps
+(`packages/plugins/onscreen-keyboard/BUILDING.md` §7.1–§7.3). All three
+were then decided and built in-house as **api 0.1.3** — `run(id)` means
+*this action*; `ctx.actions.ids` is a store; `ctx.activatedBy` and
+`onSettings:<key>` exist; a runtime slot item overrides a declared one's
+face (and, at 0.1.4 after review, a declared one may ask to be dimmed
+until its plugin runs) — and the plugin consumed them: 24 of 24, the
+union keymap snapshot
+unchanged, `App.tsx` 3,248 → 3,227, the initial chunk 601.4 → 593.0 kB.
+**A slice that stops with a precise gap and a slice that closes are the
+same slice, one day apart; a slice that invents its way past the gap is a
+rollback.**
+**Slice 5, the lyrics lane, is next.**
+
 From here on slices are
 handed to sessions without the surrounding context, on purpose, to test
 whether the briefs and `packages/plugins/README.md` hold on their own.
@@ -391,17 +412,33 @@ doors from 4a and 3 — and that a UI plugin needs no service.
 once into the plugin's namespace by a dated list in `settings.ts`), the
 coarse-pointer default, the 🎹 button.
 
-**API may grow.** **None.** The entry point is decided and built
-(2026-09-14, in-house): the 🎹 is a manifest-declared slot item in the
-`header` slot — `contributes.slotItems: [{ id, slot: "header", label:
-"🎹", command }]` — which the host renders before the plugin's code
-loads; the click runs the command, which activates the plugin. No new
-activation-event kind, no `activatedBy`, no keyboard service, no new
-binding (the union keymap snapshot must not change), no new host module.
-The panel opens on `onPointer:coarse` — which the HOST fires at startup
-on a coarse pointer (a one-line addition to the host's startup, in-house
-before the slice, since firing it is the host's job) — and from the
-toggle; whether it is open is the plugin's own setting.
+**API may grow.** **None from the plugin.** The entry point is decided
+and built (2026-09-14, in-house): the 🎹 is a manifest-declared slot
+item in the `header` slot — `contributes.slotItems: [{ id, slot:
+"header", label: "🎹", command }]` — which the host renders before the
+plugin's code loads; the click runs the command, which activates the
+plugin. No keyboard service, no new binding (the union keymap snapshot
+must not change), no new host module. The panel opens on
+`onPointer:coarse` — which the HOST fires at startup on a coarse pointer
+— and from the toggle; whether it is open is the plugin's own setting.
+*Amended 2026-09-14, in-house, after the plugin stopped on three gaps
+(its BUILDING.md §7.1–7.4), api 0.1.2 → 0.1.3:* `ctx.actions.run(id)`
+reaches an enabled plugin's command when no core rule has the id, past
+the same gates its key would meet, and `ctx.actions.ids` is a
+`Store<readonly string[]>` (core rules ∪ enabled plugins' commands,
+republished on every install and every on/off); `ctx.activatedBy` names
+the event that woke the plugin (`onStartup`, `onPointer:coarse`,
+`onCommand:<id>`, `onSettings:<key>`, or null from the Plugins tab);
+`onSettings:<key>` is a new activation event the host fires at startup
+for a plugin whose OWN setting under `<key>` is truthy; and a runtime
+`ctx.slots.add` item with the same `id` as a declared slot item replaces
+its face while the plugin is active (the declared face returns on
+deactivate), so the 🎹 can be a real toggle that shows its state. Each
+was decided here, not in the slice, and each names its consumer.
+*Amended again after review, api 0.1.3 → 0.1.4:* a declared slot item may
+carry `dimUntilActive`, drawn de-emphasised until its plugin is active —
+per item, because "not active" means "not showing" only for an entry
+point that opens something.
 
 **Stop when.** The panel needs any capability beyond `ctx.keymap`,
 `ctx.actions.run` / `ids`, `ctx.midi.registerInput`, `ctx.panels`,

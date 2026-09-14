@@ -11,6 +11,7 @@ import Shot from "../../../components/Shot.astro";
 Every battuta action is a keystroke — which is a problem on a tablet. The
 on-screen keyboard puts the whole keymap on screen: toggle it with **🎹** in
 the header (touch devices show it automatically), close it with its **×**.
+Leave it up and it comes back the next time you open battuta.
 
 <Shot name="vkeys" caption="Piano, octave rail, modifier latches, the digit pad, and one key per action, grouped like the shortcut editor." />
 
@@ -27,14 +28,15 @@ label); a wheel or two-finger scroll over the piano does the same.
 
 ## Modifier latches
 
-**ctrl**, **alt** and **shift** are *sticky*: tap one and it applies to the
-next key, then releases — tap again to cancel. They behave like the real
-modifiers, so everything in the [keyboard reference](../../reference/keyboard/)
-holds: latch **shift** and **→** extends the selection, latch **alt** and the
-arrows become shorten/lengthen duration.
+**alt** and **shift** are *sticky*: tap one and it applies to the next key,
+then releases — tap again to cancel. They behave like the real modifiers, so
+everything in the [keyboard reference](../../reference/keyboard/) holds:
+latch **shift** and **→** extends the selection, latch **alt** and the
+arrows become shorten/lengthen duration. (There is no ctrl latch: every
+ctrl chord has a button of its own in the *system* group.)
 
-While a latch is on, **the keys relabel to what they will now do**, and the
-remapped ones are tinted:
+While a latch is on, **the keys relabel to what they will now do**, the
+remapped ones are tinted, and the ones that latch reaches nothing on dim:
 
 <Shot name="vkeys-shift" caption="Shift latched: voltas on the digit pad, staccatissimo on the staccato key, tuplet on tie." />
 

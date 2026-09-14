@@ -21,15 +21,15 @@
     },
     {
       "name": "vkeys",
-      "alt": "The on-screen keyboard: two piano octaves with the octave rail, the ctrl/alt/shift latches, the digit pad, and one key per shortcut, grouped like the shortcut editor.",
+      "alt": "The on-screen keyboard: two piano octaves with the octave rail, the alt/shift latches, the digit pad, and one key per action, grouped like the shortcut editor.",
       "width": 1280,
-      "height": 135
+      "height": 134
     },
     {
       "name": "vkeys-shift",
       "alt": "Shift latched: the keys relabel live to what they will do — the digit pad turns into voltas, staccato reads staccatissimo, tie reads tuplet — and the remapped keys are tinted.",
       "width": 1280,
-      "height": 135
+      "height": 134
     },
     {
       "name": "statusbar",

@@ -39,6 +39,135 @@ is taken, and each slice as it closes, with the `App.tsx` line count
   validation; ordering beside runtime items); editor 112; the DOM is
   unchanged while no plugin declares an item, so the e2e scripts are
   untouched. Initial chunk 601.4 kB (ceiling 605.5).
+- **Decision: `run(id)` means *this action*; the action list is a store;
+  a plugin knows why it woke; `onSettings:<key>`; a runtime slot item
+  overrides its declared face (2026-09-14, in-house; api 0.1.2 → 0.1.3).**
+  Slice 4b stopped on three gaps, as its brief said to, and each was a
+  host decision, so they were taken here. (1) `ctx.actions.run(id)` now
+  reaches an enabled plugin's command when no core rule has the id —
+  through the registry, AFTER the same gates and modals its key would
+  meet, so a plugin's action is runnable by id exactly when its key would
+  have been (`ActionTable` takes a `PluginFallback` with `key` and `run`;
+  the App's `install` no longer passes the key fallback). The api's doc
+  comment, which had claimed "every plugin command" since 4a, is true
+  again. (2) `ctx.actions.ids` is a `Store<readonly string[]>` — core
+  rules in dispatch order, then every enabled plugin's declared commands
+  — republished when the App installs a table (a document opens or
+  closes) and when a plugin is turned on or off; "if a plugin adds an
+  action, everyone is told" (the panel's `useStore(ctx.document)` trick
+  goes). (3) `ctx.activatedBy` names the activation event that woke the
+  plugin — `onStartup`, `onPointer:coarse`, `onCommand:<id>` (a key or a
+  declared slot item's click), `onSettings:<key>` — or null from the
+  Plugins tab, because activation runs BEFORE the handler that caused it
+  and a toggle must know not to open first. (4) `onSettings:<key>` is a
+  new activation event: `host.fireStartupEvents` fires `onStartup`, then
+  `onPointer:coarse` on a coarse pointer, then per plugin each declared
+  `onSettings:<key>` whose key is truthy in the plugin's OWN settings —
+  how a panel left open returns on a desktop without `onStartup`. (5)
+  Slot items a plugin adds at runtime are keyed `<pluginId>:<id>` like
+  declared ones, and a runtime item REPLACES the declared item of the same
+  id while it lives — the 🎹 is static until the plugin is active, then a
+  live button that can show pressed or dimmed, and the declared face
+  returns on deactivate. Tests: `actions.test.ts` (gate stops a plugin id
+  as it stops a key; a core rule that declines never falls through to the
+  plugins; `ruleIds` republishes on install), `host.test.ts` +5 (the ids
+  store follows on/off and install; `run` of a plugin id activates and
+  runs; `activatedBy` per wake-up path incl. null; `onSettings` only for
+  a truthy OWN setting; the declared-face override). 101 editor tests,
+  plugin suites green, budget 593.0 of 605.5 kB. The keyboard plugin got
+  the one-line edit the type change forced (`useStore(ctx.actions.ids)`);
+  consuming the rest — the toggle, the restore, the live 🎹 — is the
+  slice's, which reopens.
+- **Slice 4b — the on-screen keyboard plugin (2026-09-14). CLOSED, after
+  stopping once.** `packages/plugins/onscreen-keyboard`: the panel is a
+  `panels` consumer in the bottom area, every button is
+  `ctx.actions.run(id)` — no synthesized key events anywhere — latched
+  modifiers select a VARIANT action rather than re-casing a character, the
+  digit pad resolves to `duration.N` / `volta.N` / `finger.N` /
+  `fingerChange.N` per latch, and the piano is the virtual MIDI input slice
+  3 registered, moved here unchanged. The 🎹 is the manifest-declared slot
+  item decided on 2026-09-14, replaced by a live item once the plugin is
+  active so it dims while the panel is down, as it did in 0.0.3. The
+  coverage suite moved into the plugin and runs against the UNION keymap in
+  both layouts, so an unreachable binding from ANY plugin fails CI.
+  **No host module added**; the host-side edits are the `vkeys` settings
+  move (a dated line in `settings.ts`, with its own test — a plugin cannot
+  do this, it sees only its own namespace) and naming React into
+  `battuta-shared` in `vite.config.ts` (Rollup settles a shared dependency
+  inside the first plugin chunk that imports it — the same failure as core
+  in slice 2, predicted by the post-mortem and fixed before the first
+  build). `App.tsx` **3,248 → 3,227** (−21), with 717 lines leaving
+  `apps/editor/` altogether; initial chunk **601.4 → 593.0 kB** (ceiling
+  605.5) and the panel an **11.1 kB lazy chunk** a desktop user who never
+  opens it does not download. Tests: plugin 47 (27 key model, 20
+  lifecycle), editor 101 (−23 the moved coverage suite, +6 the settings
+  migration, +5 the host's new guarantees), api 17, core 226; the union
+  keymap snapshot byte-identical (this extraction adds no binding); **all
+  six browser scripts green — 347 regression checks plus the keyboard
+  script's 24 — and the shell smoke 6/6.**
+  - **The slice stopped first, and that is the result worth recording.**
+    Built against api 0.1.2 it was 23 of 24: the panel projects the union
+    keymap, which carries plugin bindings, and `ctx.actions.run()` did not
+    — 4a had decided that deliberately — so the panel could caption a
+    button it could not press. Measured in the browser: of the 91 action
+    ids the panel names, exactly one was missing from the host's 108. It
+    refused to advertise a dead key (the 2026-09-12 post-mortem's own
+    example), left check 13 failing, and reported three gaps with the shape
+    of the decision each needed. **Nothing was invented in the plugin**;
+    the api stayed at 0.1.2 and no host module appeared. Compare the first
+    attempt at this slice, which met the same wall and answered it with
+    fourteen api exports and a host service.
+  - **The three gaps, decided and built in-house (api 0.1.2 → 0.1.3), then
+    consumed by the plugin.** `ctx.actions.run(id)` reaches an enabled
+    plugin's command when no core rule has the id, past the same gates and
+    modals its key would meet — so `run` means *this action*, and the api's
+    own doc comment (which had claimed "every plugin command" since 4a and
+    contradicted the host, uncaught, because prose is not executable)
+    became true. `ctx.actions.ids` is a `Store<readonly string[]>` (core
+    rules ∪ enabled plugins' commands, republished on every install and
+    every on/off). `ctx.activatedBy` names the event that woke a plugin, so
+    a UI plugin can tell "a touch device asked for me" from "the click
+    about to run my toggle" — the trap the post-mortem recorded and the
+    reason this plugin's command could go back to being a real toggle.
+    `onSettings:<key>` is a new activation event the host fires at startup
+    for a plugin whose own setting under that key is truthy, which brings a
+    panel left open back on a desktop without `onStartup` costing every
+    user the code at launch. And a runtime slot item with the same id as a
+    declared one replaces its face while the plugin is active, the declared
+    face returning on deactivate — a static entry point that becomes a
+    stateful button. `@battuta/api` **0.1.3**; the report regenerated, the
+    reflection plugin's `^0.1.0` still holds, the keyboard pins `^0.1.4`
+    (the range it actually uses, including `dimUntilActive` below).
+  - **Two behaviour reductions the id model forces**, recorded because they
+    are a reviewer's to reject: the **ctrl latch is gone** (with ctrl
+    latched, tapping any letter button used to synthesize a ctrl chord, so
+    ctrl + the sharp button saved the file; every ctrl chord already has
+    its own button, and `ctrl+shift+s` is a declared variant of save), and
+    a latch with no declared variant now does nothing *visibly* — it did
+    nothing before too, because the shifted character missed the binding,
+    but it looked like an ordinary button.
+  - **Two visual fixes after review.** A declared slot item may now ask to
+    be drawn de-emphasised until its plugin is active —
+    `SlotItemContribution.dimUntilActive`, **`@battuta/api` 0.1.4**. The 🎹
+    was lit with no panel under it on a desktop, because the plugin's own
+    live (dimming) face does not exist until it runs. Per item rather than
+    a blanket rule for every declared face: for an entry point that OPENS
+    something "not active" means "not showing", but a declared menu entry
+    is not disabled while its plugin waits to be loaded. The rule is one
+    exported function (`dimsDeclared`) so it has a test rather than living
+    inside a component. And the panel's height is declared
+    (`ROW_HEIGHT = 110` in `Panel.tsx`) instead of inherited from the
+    tallest child: that child was the three-button modifier column, and
+    dropping the ctrl latch shrank the row to the shortcut groups' 98px —
+    shorter, and too tight for the horizontal scrollbar the groups scroll
+    on, which pushed a vertical scrollbar into the panel. The groups
+    scroller is `overflowY: "hidden"` as well. **Neither was visible to
+    CI**: headless Chromium draws overlay scrollbars, which take no space.
+  - Full account in `packages/plugins/onscreen-keyboard/BUILDING.md` §7,
+    including what was tried and dropped: a `setTimeout`-deferred default
+    for the activation race, deleted as a race dressed as a design; and
+    testing a panel with no DOM by reading the element's props rather than
+    reaching for a renderer.
 - **Slice 4a — core actions by id (2026-09-14, in-house).** The App's
   key dispatcher is a table. `apps/editor/src/host/actions.ts` holds the
   mechanism — an ORDERED list of steps: *rules* (`id`, an event-only key

@@ -1,18 +1,21 @@
 /**
- * On-screen keyboard for tablets and touch devices: a two-octave piano
- * that drives the SAME entry path as Web MIDI (explicit pitch + octave,
- * multi-touch chords, caret advance on release), sticky ctrl/alt/shift
- * latches, and one button per keymap action — generated from the LIVE
- * keymap so rebinds and new actions appear on their own. Shortcut
- * buttons synthesize window KeyboardEvents; the app's single keydown
- * handler does the rest, untouched.
+ * The panel itself: a two-octave piano, the modifier latches, and one
+ * button per action — the keymap's rows generated from `ctx.keymap`, the
+ * locked rows hand-listed in keys.ts.
+ *
+ * It holds real state of its own (the latches, the held notes, the octave
+ * rail), so it must never be disposed-and-reopened to show new data: that
+ * remounts it and resets the user's octave mid-phrase. The host's stores
+ * are subscribed one level up (index.tsx) and arrive here as props.
+ *
+ * No `position: fixed`: in 0.0.3 this bar positioned itself along the
+ * bottom, which was right when App.tsx mounted it and wrong the moment the
+ * host's own panel area — itself fixed, with a z-index and a max-height —
+ * became its parent.
  */
-import { useMemo, useState } from "react";
-import type { Keymap, Layout } from "./keymap";
-import { generatedKeys, physicalKeys, eventForSpec, displayLabel, NO_MODS, type LatchedMods, type VirtualKeySpec } from "./virtualKeys";
-
-/** Panel group order; groups the keymap grows later append after these. */
-const GROUP_ORDER = ["nav", "digits", "entry", "accidentals", "marks", "rhythm", "repeats", "system"];
+import { useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import type { KeymapEntry } from "@battuta/api";
+import { actionFor, displayLabel, groupKeys, NO_MODS, type LatchedMods } from "./keys";
 
 const WHITE_SEMIS = [0, 2, 4, 5, 7, 9, 11]; // C D E F G A B
 const BLACKS: [number, number][] = [
@@ -25,7 +28,19 @@ const BLACKS: [number, number][] = [
 ];
 const WHITE_COUNT = 14; // two octaves
 
-const KEY_BTN: React.CSSProperties = {
+/**
+ * The row's height, declared rather than inherited. Until slice 4b it was
+ * an accident: the tallest child was the modifier column, three 34px
+ * buttons and two gaps. Dropping the ctrl latch (§7.8) took it to two, and
+ * the row shrank to whatever the shortcut groups happen to be — which is
+ * both visibly shorter AND too tight for the horizontal scrollbar the
+ * groups need, so the scrollbar squeezed the buttons and the host's panel
+ * area sprouted a vertical one. 110 is what the three-button column gave,
+ * and it leaves the ~15px a classic (non-overlay) scrollbar takes.
+ */
+const ROW_HEIGHT = 110;
+
+const KEY_BTN: CSSProperties = {
   minWidth: 44,
   minHeight: 34,
   padding: "2px 8px",
@@ -38,33 +53,29 @@ const KEY_BTN: React.CSSProperties = {
   touchAction: "manipulation",
 };
 
-export function VirtualKeyboard({
-  keymap,
-  layout,
-  entryMode,
-  onNoteOn,
-  onNoteOff,
-  onClose,
-}: {
-  keymap: Keymap;
-  layout: Layout;
+const LATCHED: CSSProperties = { background: "#4a7dbd", color: "#fff", borderColor: "#4a7dbd" };
+
+export interface KeyboardPanelProps {
+  /** The UNION keymap as data: core ∪ every enabled plugin's contributions. */
+  keymap: readonly KeymapEntry[];
+  /** Note entry on? The piano dims outside it, exactly as in 0.0.3. */
   entryMode: boolean;
+  /** Does the host's action table know this id? See index.tsx for the "not yet installed" case. */
+  runnable: (action: string) => boolean;
+  /** Run an action by id — `ctx.actions.run`. */
+  onAction: (action: string) => void;
   onNoteOn: (midiNote: number) => void;
   onNoteOff: (midiNote: number) => void;
   onClose: () => void;
-}) {
+}
+
+export function KeyboardPanel({ keymap, entryMode, runnable, onAction, onNoteOn, onNoteOff, onClose }: KeyboardPanelProps) {
   /** Lowest shown octave: oct 3 shows C3–B4 (middle C on the left half). */
   const [oct, setOct] = useState(3);
   const [mods, setMods] = useState<LatchedMods>(NO_MODS);
   const [held, setHeld] = useState<Set<number>>(new Set());
 
   const stepOctave = (d: number) => setOct((o) => Math.min(6, Math.max(0, o + d)));
-
-  const press = (spec: VirtualKeySpec) => {
-    const ev = eventForSpec(spec, mods, layout);
-    window.dispatchEvent(new KeyboardEvent("keydown", { ...ev, bubbles: true, cancelable: true }));
-    if (mods.shift || mods.alt || mods.ctrl) setMods(NO_MODS); // one-shot latch
-  };
 
   const noteOn = (midi: number) => {
     setHeld((h) => new Set(h).add(midi));
@@ -80,11 +91,10 @@ export function VirtualKeyboard({
     onNoteOff(midi);
   };
 
-  const groups = useMemo(() => {
-    const specs = [...generatedKeys(keymap), ...physicalKeys()];
-    const names = [...GROUP_ORDER, ...specs.map((s) => s.group).filter((g) => !GROUP_ORDER.includes(g))];
-    return [...new Set(names)].map((name) => ({ name, specs: specs.filter((s) => s.group === name) })).filter((g) => g.specs.length > 0);
-  }, [keymap]);
+  // Rebuilt on every render: `keymap` and `runnable` both change with the
+  // host's stores, and the list is tens of entries — a useMemo keyed on
+  // both would cost more to keep correct than it saves.
+  const groups = groupKeys(keymap, runnable);
 
   // Piano geometry in percent of the piano width.
   const whiteW = 100 / WHITE_COUNT;
@@ -101,7 +111,7 @@ export function VirtualKeyboard({
   );
 
   const keyEvents = (midi: number) => ({
-    onPointerDown: (e: React.PointerEvent) => {
+    onPointerDown: (e: ReactPointerEvent) => {
       e.preventDefault(); // no focus steal, no synthetic mouse events
       noteOn(midi);
     },
@@ -116,17 +126,14 @@ export function VirtualKeyboard({
       data-vk-mod={name}
       title={`latch ${name} for the next key`}
       onClick={() => setMods((m) => ({ ...m, [name]: !m[name] }))}
-      style={{ ...KEY_BTN, minWidth: 40, ...(mods[name] ? { background: "#4a7dbd", color: "#fff", borderColor: "#4a7dbd" } : {}) }}
+      style={{ ...KEY_BTN, minWidth: 40, ...(mods[name] ? LATCHED : {}) }}
     >
       {name}
     </button>
   );
 
   return (
-    <div
-      data-vkeys
-      style={{ position: "fixed", left: 0, right: 0, bottom: 24, zIndex: 25, display: "flex", gap: 10, alignItems: "stretch", padding: "8px 10px", background: "#1a222d", borderTop: "1px solid #2c3a4a", userSelect: "none" }}
-    >
+    <div data-vkeys style={{ display: "flex", gap: 10, alignItems: "stretch", padding: "8px 10px", background: "#1a222d", userSelect: "none" }}>
       {/* --- piano: octave rail + two octaves of keys ------------------- */}
       <div style={{ display: "flex", flexDirection: "column", gap: 4, width: 34 }}>
         <button data-vk-oct-up style={{ ...KEY_BTN, minWidth: 30, flex: 1 }} title="octaves up" onClick={() => stepOctave(1)}>
@@ -141,7 +148,7 @@ export function VirtualKeyboard({
       </div>
       <div
         data-vk-piano
-        style={{ position: "relative", flex: "0 0 clamp(240px, 34vw, 460px)", touchAction: "none", opacity: entryMode ? 1 : 0.55 }}
+        style={{ position: "relative", flex: "0 0 clamp(240px, 34vw, 460px)", minHeight: ROW_HEIGHT, touchAction: "none", opacity: entryMode ? 1 : 0.55 }}
         title={entryMode ? "tap to enter notes — hold several for a chord; wheel/swipe the rail for octaves" : "press input (i) first — the piano enters notes in input mode"}
         onWheel={(e) => stepOctave(e.deltaY > 0 ? -1 : 1)}
       >
@@ -167,21 +174,39 @@ export function VirtualKeyboard({
         ))}
       </div>
       {/* --- modifier latches ------------------------------------------- */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, justifyContent: "center" }}>
-        {(["ctrl", "alt", "shift"] as const).map(modBtn)}
-      </div>
-      {/* --- shortcut groups, horizontally scrollable -------------------- */}
-      <div style={{ display: "flex", gap: 12, overflowX: "auto", flex: 1, alignItems: "stretch" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, justifyContent: "center" }}>{(["alt", "shift"] as const).map(modBtn)}</div>
+      {/* --- action groups, horizontally scrollable ---------------------- */}
+      {/* The groups scroll sideways and never vertically: a horizontal
+          scrollbar eats into this box's height, and with overflowY left to
+          "auto" the shortfall becomes a second, vertical scrollbar inside
+          the panel. ROW_HEIGHT is what keeps the buttons clear of it. */}
+      <div style={{ display: "flex", gap: 12, overflowX: "auto", overflowY: "hidden", flex: 1, alignItems: "stretch" }}>
         {groups.map((g) => (
           <div key={g.name} data-vk-group={g.name} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             <span style={{ color: "#6b7a8b", fontSize: 10, textTransform: "uppercase", letterSpacing: 1 }}>{g.name}</span>
             <div style={{ display: "grid", gridTemplateRows: "repeat(2, auto)", gridAutoFlow: "column", gap: 4 }}>
               {g.specs.map((s, i) => {
-                // Live relabel: the caption shows what the key does UNDER
-                // the active latches; a remapped key is tinted to match.
-                const label = displayLabel(s, mods, keymap);
+                // Live relabel: the caption shows what the button does
+                // UNDER the active latches, and a re-mapped button is
+                // tinted to match. A latch that reaches nothing leaves the
+                // caption alone, so the panel never advertises a dead key.
+                const label = displayLabel(s, mods, keymap, runnable);
+                const action = actionFor(s, mods, keymap, runnable);
                 return (
-                  <button key={`${s.id}:${s.label}:${i}`} data-vk-key={s.id} title={s.title} onClick={() => press(s)} style={{ ...KEY_BTN, ...(label !== s.label ? { color: "#9fc3ea", borderColor: "#4a7dbd" } : {}) }}>
+                  <button
+                    key={`${s.id}:${s.key ?? s.label}:${i}`}
+                    data-vk-key={s.id}
+                    data-vk-action={action ?? ""}
+                    title={s.title}
+                    onClick={() => {
+                      if (action !== null) onAction(action);
+                      // One-shot latch — cleared even by a button the latch
+                      // reaches nothing on. NOT `disabled`: a disabled
+                      // button fires no click, so the latch would stick.
+                      if (mods.shift || mods.alt) setMods(NO_MODS);
+                    }}
+                    style={{ ...KEY_BTN, ...(label !== s.label ? { color: "#9fc3ea", borderColor: "#4a7dbd" } : {}), ...(action === null ? { opacity: 0.4 } : {}) }}
+                  >
                     {label}
                   </button>
                 );

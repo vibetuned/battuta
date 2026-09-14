@@ -16,7 +16,8 @@ import { keyMatches, type Layout } from "../keymap";
 import { detectLayout } from "../settings";
 import { KeymapStore } from "./keymapStore";
 import { SlotStore, PanelStore } from "./slots";
-import { CommandTable, PluginRegistry } from "./registry";
+import { CommandTable, PluginRegistry, type KeyLike } from "./registry";
+export type { KeyLike } from "./registry";
 import { confirmDialog } from "./shell";
 import { createStore, mapStore, type WritableStore } from "./store";
 import { ActionTable } from "./actions";
@@ -29,12 +30,6 @@ export const OFFERED_CAPABILITIES: readonly HostCapability[] = ["midi"];
 
 const IDLE_EDITOR: EditorState = { caret: null, selection: [], block: null, view: "tiles", entryMode: false };
 
-export interface KeyLike {
-  key: string;
-  shiftKey: boolean;
-  altKey: boolean;
-  code?: string;
-}
 
 /**
  * What the App binds for the active document: the executor (one undo
@@ -77,6 +72,8 @@ export interface Host {
   /** Plugin keybindings: called by the App's key handler AFTER the core dispatcher falls through. */
   dispatchKey(e: KeyLike): boolean;
   fire(event: ActivationEvent): Promise<void>;
+  /** onStartup, then onPointer:coarse on a touch device, then onSettings:<key> per plugin whose own setting is truthy. */
+  fireStartupEvents(opts: { coarsePointer: boolean }): Promise<void>;
   dispose(): Promise<void>;
 }
 
@@ -113,8 +110,23 @@ export function createHost(options: HostOptions = {}): Host {
       ...(b.plugin !== undefined ? { plugin: b.plugin } : {}),
     })),
   );
-  const actions = new ActionTable();
-  const actionsService: ActionsService = { run: (id) => actions.run(id), ids: () => actions.ids() };
+  // Declared before the registry exists: the fallbacks look it up lazily.
+  let registryRef: PluginRegistry | null = null;
+  const actions = new ActionTable({
+    key: (e) => registryRef?.dispatchKeyFor(keymap, e) ?? false,
+    run: (id) => {
+      if (!registryRef || commands.ownerOf(id) === undefined) return false;
+      void registryRef.runCommand(id);
+      return true;
+    },
+  });
+  // Every id run() knows: the installed core rules, then every enabled
+  // plugin's declared commands — republished when the App installs a table
+  // (a document opens) and when a plugin is turned on or off.
+  const actionIds = createStore<readonly string[]>([]);
+  const publishIds = () => actionIds.set([...actions.ruleIds.get(), ...commands.declared()]);
+  actions.ruleIds.subscribe(publishIds);
+  const actionsService: ActionsService = { run: (id) => actions.run(id), ids: actionIds };
   const slots = new SlotStore();
   const panels = new PanelStore();
   const commands = new CommandTable();
@@ -134,9 +146,10 @@ export function createHost(options: HostOptions = {}): Host {
     blockOf: (ids) => adapter?.blockOf(ids) ?? null,
   };
 
-  const createContext = (manifest: PluginManifest, subscriptions: DisposableStore): PluginContext => ({
+  const createContext = (manifest: PluginManifest, subscriptions: DisposableStore, activatedBy: ActivationEvent | null): PluginContext => ({
     manifest,
     apiVersion: options.apiVersion ?? API_VERSION,
+    activatedBy,
     document,
     editor,
     query,
@@ -149,7 +162,7 @@ export function createHost(options: HostOptions = {}): Host {
     midi,
     keymap: keymapView,
     actions: actionsService,
-    slots: { add: (slot, item) => subscriptions.add(slots.add(slot, item)) },
+    slots: { add: (slot, item) => subscriptions.add(slots.add(slot, item, manifest.id)) },
     panels: { open: (panel) => subscriptions.add(panels.open(panel)) },
     subscriptions,
   });
@@ -168,17 +181,33 @@ export function createHost(options: HostOptions = {}): Host {
     commands,
     createContext,
     report: notice,
+    keyMatches: (b, e) => keyMatches(b, e),
   });
 
+  registryRef = registry;
+  registry.subscribe(publishIds); // a plugin on or off changes the command set
   if (!noPlugins) for (const entry of options.plugins ?? []) registry.register(entry);
+  publishIds();
 
-  const dispatchKey = (e: KeyLike): boolean => {
-    for (const [id, b] of Object.entries(keymap.get())) {
-      if (!b.plugin || !keyMatches(b, e)) continue;
-      void registry.runCommand(id);
-      return true;
+  const dispatchKey = (e: KeyLike): boolean => registry.dispatchKeyFor(keymap, e);
+
+  /**
+   * The startup activation events, in order: onStartup for everyone who
+   * asked; onPointer:coarse on a touch-first device; then, per plugin,
+   * `onSettings:<key>` for each such event it declared whose key holds a
+   * truthy value in its OWN settings — "you were in use when I last quit".
+   */
+  const fireStartupEvents = async (opts: { coarsePointer: boolean }): Promise<void> => {
+    await registry.fire("onStartup");
+    if (opts.coarsePointer) await registry.fire("onPointer:coarse");
+    for (const info of registry.get()) {
+      if (!info.enabled || info.state !== "registered") continue;
+      const mine = pluginSettings(settings, info.id);
+      for (const event of info.manifest.activationEvents) {
+        if (!event.startsWith("onSettings:")) continue;
+        if (mine.get(event.slice("onSettings:".length))) await registry.activate(info.id, event);
+      }
     }
-    return false;
   };
 
   return {
@@ -204,6 +233,7 @@ export function createHost(options: HostOptions = {}): Host {
     execute,
     dispatchKey,
     fire: (event) => registry.fire(event),
+    fireStartupEvents,
     dispose: () => registry.dispose(),
   };
 }
@@ -227,7 +257,7 @@ const coarsePointer = (): boolean => {
 
 /** The application's host. Built-in plugins registered; the startup events fired: onStartup, then onPointer:coarse on a touch device. */
 export const host: Host = createHost({ noPlugins: detectNoPlugins(), plugins: BUILTIN_PLUGINS });
-void host.fire("onStartup").then(() => (coarsePointer() ? host.fire("onPointer:coarse") : undefined));
+void host.fireStartupEvents({ coarsePointer: coarsePointer() });
 if (typeof window !== "undefined" && (import.meta.env.DEV || "__TAURI__" in window)) (window as unknown as Record<string, unknown>).__HOST__ = host;
 
 export { memorySettings };

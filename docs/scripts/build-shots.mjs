@@ -131,10 +131,14 @@ try {
   await page.locator("[data-menu-backdrop]").click();
   await page.waitForFunction(() => !document.querySelector("[data-app-menu]"), null, { timeout: 5000 });
 
-  // the on-screen keyboard: plain, then with shift latched (live relabel)
-  await page.locator("[data-vkeys-toggle]").click();
+  // the on-screen keyboard: plain, then with shift latched (live relabel).
+  // Since slice 4b the 🎹 has two faces — the host's, rendered from the
+  // plugin's manifest before its code loads, and the plugin's own live one
+  // (which dims while the panel is down) once it is active. This click is
+  // what loads it, so the first selector is the one that matches here.
+  await page.locator('[data-slot-command="battuta.onscreen-keyboard.toggle"], [data-vkeys-toggle]').first().click();
   await page.waitForSelector("[data-vkeys]");
-  await shot("vkeys", "The on-screen keyboard: two piano octaves with the octave rail, the ctrl/alt/shift latches, the digit pad, and one key per shortcut, grouped like the shortcut editor.", await boxOf("[data-vkeys]", 4));
+  await shot("vkeys", "The on-screen keyboard: two piano octaves with the octave rail, the alt/shift latches, the digit pad, and one key per action, grouped like the shortcut editor.", await boxOf("[data-vkeys]", 4));
   await page.locator('[data-vk-mod="shift"]').click();
   await page.waitForFunction(() => [...document.querySelectorAll('[data-vk-key="digitPad"]')].some((b) => b.textContent.includes("volta")), null, { timeout: 5000 });
   await shot("vkeys-shift", "Shift latched: the keys relabel live to what they will do — the digit pad turns into voltas, staccato reads staccatissimo, tie reads tuplet — and the remapped keys are tinted.", await boxOf("[data-vkeys]", 4));

@@ -144,10 +144,12 @@ The api is a data contract. Nothing in it is a live object of the model.
 | add an input surface (a piano, a chord pad) | `ctx.midi.registerInput(name)` | `MidiVirtualInput` — dispose to unregister |
 | send to every MIDI output | `ctx.midi.openOutputs()` | `MidiOutputs` (`schedule`, `send`, `panic`, `close`) or null |
 | the union keymap as data (id, label, group, when, keys, mods, locked, plugin) | `ctx.keymap` | `Store<KeymapEntry[]>` |
-| **run** an action by id — a keymap id or a locked one (`undo`, `nav.left`, `duration.4`, `pitch.c`, …; the list is in `packages/api/src/actions.ts`) | `ctx.actions.run(id)` | true when it ran; false when the id is unknown or the state forbids it — exactly when the key would have done nothing |
-| every id `run` knows | `ctx.actions.ids()` | `readonly string[]`, in dispatch order |
-| an entry point the user can click BEFORE your code loads (a 🎹 that opens your panel) | `contributes.slotItems: [{ id, slot, label, title?, command, order? }]` in the manifest | the host renders a button; the click runs your command and activates you |
-| a slot item that needs live state | `ctx.slots.add(slot, { id, order?, render })` at runtime | `Disposable` |
+| **run** an action by id — a keymap id, a locked one (`undo`, `nav.left`, `duration.4`, `pitch.c`, …; the list is in `packages/api/src/actions.ts`) or an enabled plugin's command id | `ctx.actions.run(id)` | true when it ran; false when the id is unknown or the state forbids it — exactly when the key would have done nothing. A plugin's command goes through the registry after the same gates |
+| every id `run` knows, live | `ctx.actions.ids` | `Store<readonly string[]>`: core rules in dispatch order, then enabled plugins' commands; republished when a document installs its table and when a plugin is turned on or off |
+| why you were woken | `ctx.activatedBy` | `onStartup` \| `onPointer:coarse` \| `onCommand:<id>` \| `onSettings:<key>` \| null (the Plugins tab, a test). Activation runs BEFORE the handler that caused it: open your UI in `activate` only when this is NOT `onCommand:<your toggle>` |
+| come back at startup when your own setting says so (a panel left open) | `activationEvents: ["onSettings:<key>"]` — the host fires it after `onStartup` / `onPointer:coarse` when `ctx.settings.get(key)` is truthy | your `activate` runs with `activatedBy === "onSettings:<key>"` |
+| an entry point the user can click BEFORE your code loads (a 🎹 that opens your panel) | `contributes.slotItems: [{ id, slot, label, title?, command, order?, dimUntilActive? }]` in the manifest | the host renders a button; the click runs your command and activates you. `dimUntilActive` draws that face de-emphasised until you are running — for a button that OPENS something, "not active" means "not showing"; leave it unset for one that just runs a command |
+| a slot item that needs live state — or the declared entry point once you are active | `ctx.slots.add(slot, { id, order?, render })` at runtime; the same `id` as a declared item REPLACES its face while the item lives | `Disposable` — dispose (or deactivate) and the declared face is back |
 | a panel | `ctx.panels.open({ id, side: "bottom" \| "side", title, render })` | `Disposable` |
 
 Three things to know, each learned the hard way:
@@ -234,9 +236,11 @@ Conventions the tests cannot see, still binding:
 - **Dispose everything.** What the context hands back is tracked for
   you; anything else you create (timers, listeners) goes into
   `ctx.subscriptions`. Off = `deactivate()` then every disposable fires.
-- **Activate as late as possible.** Keybindings activate you implicitly
-  (`onCommand:<id>` fires when the key is pressed); `onStartup` costs
-  every user your code at launch.
+- **Activate as late as possible.** Keybindings and declared slot items
+  activate you implicitly (`onCommand:<id>` fires when the key is pressed
+  or the item clicked); `onSettings:<key>` brings you back at startup
+  only for a user who left you in use; `onStartup` costs every user your
+  code at launch.
 - **Extractions are behaviour-neutral.** Every e2e script passes
   unchanged (`spikes/verify-*.mjs`); if none drives the feature you are
   extracting, add one FIRST.
@@ -247,8 +251,9 @@ Conventions the tests cannot see, still binding:
 - **Traps every UI plugin will meet** (found 2026-09-14, all real, kept
   from the rolled-back attempt): activation runs BEFORE the command
   handler that caused it, so a plugin that opens its UI in `activate()`
-  and toggles it in the handler opens and then closes — write the table
-  of wake-up paths out and test each row; a panel with internal state
+  and toggles it in the handler opens and then closes — `ctx.activatedBy`
+  says which path woke you; write the table of wake-up paths out and
+  test each row; a panel with internal state
   subscribes to the host's stores itself (`useSyncExternalStore`, six
   lines) and is never disposed-and-reopened to refresh, which remounts
   it; a component that moves into a slot loses its own `position: fixed`

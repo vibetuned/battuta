@@ -35,6 +35,14 @@ export default defineConfig(({ command }) => ({
           const plugin = /packages\/plugins\/([^/]+)\/(.*)$/.exec(f);
           if (plugin) return /(^|\/)manifest\.(ts|js|mjs)$/.test(plugin[2]) ? "battuta-shared" : `plugin-${plugin[1]}`;
           if (/\/packages\/(core|api)\//.test(f)) return "battuta-shared";
+          // React is imported by the host AND by any plugin that renders a
+          // panel. Unnamed, Rollup settles it inside the FIRST plugin chunk
+          // that imports it, and the host then has to import that chunk
+          // statically to get React — which the budget check reports as
+          // "plugin code reached from the initial chunk". Same failure as
+          // core in slice 2 and react in slice 4's first attempt: anything
+          // the host and a plugin share must be named.
+          if (/\/node_modules\/(react|react-dom|scheduler)\//.test(f)) return "battuta-shared";
           return undefined;
         },
       },

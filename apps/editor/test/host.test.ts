@@ -20,6 +20,7 @@ import { API_VERSION, definePlugin, type PluginContext, type PluginEntry, type P
 import { SetPitchesCommand } from "@battuta/core";
 import { createHost, memorySettings, toCommand, type SessionAdapter } from "../src/host";
 import { memoryStorage } from "../src/host/services";
+import { dimsDeclared } from "../src/host/slots";
 
 // keymap.ts persists overrides in localStorage; give node one.
 const shim = memoryStorage();
@@ -208,7 +209,7 @@ describe("off and on again", () => {
     const host = makeHost([plugin.entry], { settings });
     host.dispatchKey({ key: "Q", shiftKey: true, altKey: false });
     await flush();
-    expect(host.slots.items.get().header.map((i) => i.id)).toEqual(["echo-btn"]);
+    expect(host.slots.items.get().header.map((i) => i.id)).toEqual(["test.echo:echo-btn"]); // keyed by plugin, like a declared item
     expect(host.panels.panels.get().map((p) => p.id)).toEqual(["echo-panel"]);
 
     await host.registry.setEnabled("test.echo", false);
@@ -333,6 +334,21 @@ describe("manifest-declared slot items", () => {
     expect(plugin.state.loads).toBe(0);
   });
 
+  it("carry dimUntilActive, and it is drawn only while the owner is not active", () => {
+    const plugin = withToggle();
+    plugin.entry.manifest.contributes!.slotItems![0]!.dimUntilActive = true;
+    const host = makeHost([plugin.entry]);
+    const item = host.slots.items.get().header[0] as { dimUntilActive?: boolean; pluginId: string };
+    expect(item.dimUntilActive).toBe(true);
+    // Before the plugin runs, its entry point is drawn de-emphasised: for a
+    // button that opens something, "not active" means "not showing".
+    expect(dimsDeclared(item, [{ id: "test.echo", state: "registered" } as never])).toBe(true);
+    expect(dimsDeclared(item, [{ id: "test.echo", state: "active" } as never])).toBe(false);
+    // …and never for a declared item that did not ask: a menu entry is not
+    // disabled while its plugin waits to be loaded.
+    expect(dimsDeclared({ pluginId: "test.echo" }, [{ id: "test.echo", state: "registered" } as never])).toBe(false);
+  });
+
   it("clicking one runs its command — which loads the plugin", async () => {
     const plugin = withToggle();
     const host = makeHost([plugin.entry]);
@@ -368,6 +384,96 @@ describe("manifest-declared slot items", () => {
     const host = makeHost([plugin.entry]);
     host.slots.add("header", { id: "runtime", order: 1, render: () => null });
     expect(host.slots.items.get().header.map((i) => i.id)).toEqual(["runtime", "test.echo:toggle"]);
+  });
+});
+
+describe("actions on the context: reactive ids and plugin commands through run", () => {
+  it("ids is a store: a plugin's commands appear when it is on and vanish when it is off, and the core rules join when the App installs them", async () => {
+    const plugin = echoPlugin();
+    const ctxIds: (readonly string[])[] = [];
+    const watcher: PluginEntry = {
+      manifest: manifest({ id: "test.watcher", activationEvents: ["onStartup"], contributes: {} }),
+      load: async () => ({
+        activate: (ctx) => {
+          ctxIds.push(ctx.actions.ids.get());
+          ctx.subscriptions.add(ctx.actions.ids.subscribe((v) => ctxIds.push(v)));
+        },
+      }),
+    };
+    const host = makeHost([plugin.entry, watcher]);
+    await host.fire("onStartup");
+    expect(ctxIds[0]).toContain("test.echo.say");
+    await host.registry.setEnabled("test.echo", false);
+    expect(ctxIds.at(-1)).not.toContain("test.echo.say");
+    await host.registry.setEnabled("test.echo", true);
+    expect(ctxIds.at(-1)).toContain("test.echo.say");
+    host.actions.install([{ kind: "rule", id: "tie", key: () => false, run: () => "handled", preventDefault: true }]);
+    expect(ctxIds.at(-1)).toEqual(["tie", "test.echo.say"]);
+  });
+
+  it("run(pluginCommandId) activates the owner and runs the handler; an unknown id is false", async () => {
+    const plugin = echoPlugin();
+    const host = makeHost([plugin.entry]);
+    host.bindSession(fakeAdapter());
+    // the App would install its table; an empty one has no core rules and no gates
+    host.actions.install([]);
+    expect(host.actions.run("test.echo.say")).toBe(true);
+    await flush();
+    expect(plugin.state.log).toEqual(["activate", "say:no caret"]);
+    expect(host.actions.run("test.nobody.home")).toBe(false);
+  });
+});
+
+describe("activatedBy", () => {
+  const recorder = (id: string, events: PluginManifest["activationEvents"], seen: (string | null)[]): PluginEntry => ({
+    manifest: manifest({ id, activationEvents: events, contributes: { commands: [{ id: `${id}.go`, title: "go" }], keybindings: [{ command: `${id}.go`, keys: ["Q"], label: "go", group: "system" }] } }),
+    load: async () => ({ activate: (ctx) => { seen.push(ctx.activatedBy); ctx.registerCommand(`${id}.go`, () => undefined); } }),
+  });
+
+  it("names the event that woke the plugin: onStartup, onPointer:coarse, onCommand:<id>, onSettings:<key>, or null from the tab", async () => {
+    const seen: (string | null)[] = [];
+    const settings = memorySettings({ plugins: { "test.saved": { values: { open: true } } } });
+    const host = makeHost(
+      [
+        recorder("test.startup", ["onStartup"], seen),
+        recorder("test.touch", ["onPointer:coarse"], seen),
+        recorder("test.key", ["onCommand:test.key.go"], seen),
+        recorder("test.saved", ["onSettings:open"], seen),
+        recorder("test.tab", [], seen),
+      ],
+      { settings },
+    );
+    await host.fireStartupEvents({ coarsePointer: true });
+    await host.registry.runCommand("test.key.go"); // what a declared slot item's click or a key does
+    await host.registry.setEnabled("test.tab", false);
+    await host.registry.setEnabled("test.tab", true);
+    await host.registry.activate("test.tab"); // the Plugins tab / a test: no event
+    expect(seen).toEqual(["onStartup", "onPointer:coarse", "onSettings:open", "onCommand:test.key.go", null]);
+  });
+
+  it("onSettings wakes only a plugin whose OWN setting is truthy, and never on a fine pointer for onPointer:coarse", async () => {
+    const seen: (string | null)[] = [];
+    const settings = memorySettings({ plugins: { "test.other": { values: { open: true } } } });
+    const host = makeHost([recorder("test.saved", ["onSettings:open"], seen), recorder("test.touch", ["onPointer:coarse"], seen)], { settings });
+    await host.fireStartupEvents({ coarsePointer: false });
+    expect(seen).toEqual([]);
+  });
+});
+
+describe("a runtime slot item replaces the plugin's declared face while it lives", () => {
+  it("declared until active, live while the runtime item exists, declared again after dispose", async () => {
+    const plugin = echoPlugin();
+    plugin.entry.manifest.contributes!.slotItems = [{ id: "toggle", slot: "header", label: "🎹", command: "test.echo.say" }];
+    const host = makeHost([plugin.entry]);
+    const face = () => host.slots.items.get().header.map((i) => ("declared" in i && i.declared ? `declared:${i.id}` : `live:${i.id}`));
+    expect(face()).toEqual(["declared:test.echo:toggle"]);
+    const live = host.slots.add("header", { id: "toggle", render: () => null }, "test.echo");
+    expect(face()).toEqual(["live:test.echo:toggle"]);
+    live.dispose();
+    expect(face()).toEqual(["declared:test.echo:toggle"]);
+    // another plugin's "toggle" is a different item
+    host.slots.add("header", { id: "toggle", render: () => null }, "test.other");
+    expect(face()).toEqual(["declared:test.echo:toggle", "live:test.other:toggle"]);
   });
 });
 

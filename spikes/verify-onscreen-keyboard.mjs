@@ -86,13 +86,15 @@ try {
       });
     });
   const tap = (sel) => page.locator(sel).first().click({ force: true });
-  // Since slice 4 the 🎹 is declared in the plugin's MANIFEST and rendered
+  // Since slice 4b the 🎹 is declared in the plugin's MANIFEST and rendered
   // by the host before the plugin's code loads, so it carries the generic
   // declared-slot-item hook rather than an App-specific one. Tapping it is
   // what activates the plugin — which is the point of the test below.
-  // The in-App panel's toggle. (A plugin version renders it from a manifest;
-  // whatever slice 4 chooses, this is the one selector that follows it.)
-  const TOGGLE = "[data-vkeys-toggle]";
+  // DESIGN HOOK 1 of 2 (the brief allows exactly these two to move). Two
+  // selectors, one button: the host's declared face before the plugin's
+  // code loads, the plugin's own live face (which dims when the panel is
+  // down) once it is active.
+  const TOGGLE = '[data-slot-command="battuta.onscreen-keyboard.toggle"], [data-vkeys-toggle]';
   /** A piano key press/release, as a real pointer would (the panel listens on pointer events). */
   const pianoTap = async (midi, holdWith = []) => {
     const box = async (m) => (await page.locator(`[data-vk-note="${m}"]`).first().boundingBox());
@@ -118,10 +120,10 @@ try {
   // asserts that ONE panel exists, wherever the tree puts it.
   check("…exactly one panel is mounted", (await page.evaluate(() => document.querySelectorAll("[data-vkeys]").length)) === 1);
   check("the panel carries a piano and shortcut groups", await page.evaluate(() => Boolean(document.querySelector("[data-vk-piano]")) && document.querySelectorAll("[data-vk-group]").length >= 4));
-  // The open flag: the editor's own `vkeys` setting while the panel lives in
-  // App.tsx. (A plugin version keeps it in its settings namespace — the
-  // other selector that follows the design.)
-  const savedOpen = () => page.evaluate(() => JSON.parse(localStorage.getItem("battuta.settings.v1") ?? "{}").vkeys);
+  // The open flag: since slice 4b it is the plugin's own settings namespace
+  // inside the editor's blob (the legacy top-level `vkeys` is migrated into
+  // it once, by settings.ts). DESIGN HOOK 2 of 2.
+  const savedOpen = () => page.evaluate(() => JSON.parse(localStorage.getItem("battuta.settings.v1") ?? "{}").plugins?.["battuta.onscreen-keyboard"]?.values?.open);
   check("the choice is persisted", (await savedOpen()) === true);
 
   // --- 2. a tapped action key is a real key press --------------------------

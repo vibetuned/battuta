@@ -8,11 +8,15 @@
  *
  * Adding a plugin (see packages/plugins/README.md):
  *
- *   import { manifest as reflection } from "@battuta/plugin-reflection/manifest";
+ *   import { manifest as mine } from "@battuta/plugin-mine/manifest";
  *   …
- *   { manifest: reflection, load: () => import("@battuta/plugin-reflection") },
+ *   { manifest: mine, load: () => import("@battuta/plugin-mine") },
  */
 import type { PluginEntry } from "@battuta/api";
+import { manifest as onscreenKeyboard } from "@battuta/plugin-onscreen-keyboard/manifest";
 import { manifest as reflection } from "@battuta/plugin-reflection/manifest";
 
-export const BUILTIN_PLUGINS: readonly PluginEntry[] = [{ manifest: reflection, load: () => import("@battuta/plugin-reflection") }];
+export const BUILTIN_PLUGINS: readonly PluginEntry[] = [
+  { manifest: reflection, load: () => import("@battuta/plugin-reflection") },
+  { manifest: onscreenKeyboard, load: () => import("@battuta/plugin-onscreen-keyboard") },
+];

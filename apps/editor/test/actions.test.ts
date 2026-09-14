@@ -17,13 +17,10 @@ describe("ActionTable", () => {
     const log: string[] = [];
     let selected = 2;
     const t = new ActionTable();
-    t.install(
-      [
-        rule("dynamics", (e) => e.key === "p", () => (log.push("hairpin"), "handled"), { when: () => selected >= 2 }),
-        rule("dynamics", (e) => e.key === "p", () => (log.push("cycle"), "handled")),
-      ],
-      () => false,
-    );
+    t.install([
+      rule("dynamics", (e) => e.key === "p", () => (log.push("hairpin"), "handled"), { when: () => selected >= 2 }),
+      rule("dynamics", (e) => e.key === "p", () => (log.push("cycle"), "handled")),
+    ]);
     expect(t.dispatchKey(press("p"))).toBe(true);
     selected = 1;
     t.dispatchKey(press("p"));
@@ -37,15 +34,12 @@ describe("ActionTable", () => {
   it("fallthrough continues to the next step; declined consumes without preventDefault; handled prevents", () => {
     const log: string[] = [];
     const t = new ActionTable();
-    t.install(
-      [
-        rule("merge", (e) => e.key === "m", () => (log.push("grace?"), "fallthrough")),
-        rule("merge", (e) => e.key === "m", () => (log.push("merge"), "handled")),
-        rule("dot", (e) => e.key === ".", () => "declined"),
-        rule("esc", (e) => e.key === "Escape", () => "handled", { preventDefault: false }),
-      ],
-      () => false,
-    );
+    t.install([
+      rule("merge", (e) => e.key === "m", () => (log.push("grace?"), "fallthrough")),
+      rule("merge", (e) => e.key === "m", () => (log.push("merge"), "handled")),
+      rule("dot", (e) => e.key === ".", () => "declined"),
+      rule("esc", (e) => e.key === "Escape", () => "handled", { preventDefault: false }),
+    ]);
     const m = press("m");
     expect(t.dispatchKey(m)).toBe(true);
     expect(log).toEqual(["grace?", "merge"]);
@@ -64,7 +58,7 @@ describe("ActionTable", () => {
     let caret = false;
     const ran = vi.fn(() => "handled" as const);
     const t = new ActionTable();
-    t.install([rule("undo", (e) => e.key === "z", ran), gate(() => !caret), rule("tie", (e) => e.key === "t", ran)], () => false);
+    t.install([rule("undo", (e) => e.key === "z", ran), gate(() => !caret), rule("tie", (e) => e.key === "t", ran)]);
     expect(t.dispatchKey(press("t"))).toBe(true); // consumed by the gate
     expect(t.run("tie")).toBe(false);
     expect(ran).not.toHaveBeenCalled();
@@ -79,7 +73,7 @@ describe("ActionTable", () => {
     let lane = true;
     const typed: string[] = [];
     const t = new ActionTable();
-    t.install([modal(() => lane, (e) => typed.push(e.key)), rule("tie", (e) => e.key === "t", () => "handled")], () => false);
+    t.install([modal(() => lane, (e) => typed.push(e.key)), rule("tie", (e) => e.key === "t", () => "handled")]);
     expect(t.dispatchKey(press("t"))).toBe(true);
     expect(typed).toEqual(["t"]);
     expect(t.run("tie")).toBe(false);
@@ -88,35 +82,48 @@ describe("ActionTable", () => {
     expect(typed).toEqual(["t"]);
   });
 
-  it("the plugins are the last resort for a KEY (never with ctrl), and never for run(id)", () => {
-    const plugins = vi.fn((e: KeyEvent) => e.key === "R");
-    const t = new ActionTable();
-    t.install([rule("tie", (e) => e.key === "t", () => "handled")], plugins);
+  it("the plugins are the last resort for a KEY (never with ctrl) and for an id no core rule has — past the same gates", () => {
+    const pluginKey = vi.fn((e: KeyEvent) => e.key === "R");
+    const pluginRun = vi.fn((id: string) => id === "battuta.reflection.cycle");
+    let caret = true;
+    const t = new ActionTable({ key: pluginKey, run: pluginRun });
+    t.install([gate(() => !caret), rule("tie", (e) => e.key === "t", () => "handled", { when: () => false })]);
     const r = press("R", { shiftKey: true });
     expect(t.dispatchKey(r)).toBe(true);
     expect(r.prevented).toBe(true);
     expect(t.dispatchKey(press("R", { shiftKey: true, ctrlKey: true }))).toBe(false);
-    expect(plugins).toHaveBeenCalledTimes(1);
+    expect(pluginKey).toHaveBeenCalledTimes(1);
     expect(t.dispatchKey(press("q"))).toBe(false);
-    expect(t.run("battuta.reflection.cycle")).toBe(false); // plugin commands run through the registry, not here
+    // an id the core has no rule for → the plugins
+    expect(t.run("battuta.reflection.cycle")).toBe(true);
+    expect(t.run("battuta.nobody.home")).toBe(false);
+    // a core id whose only rule declines never reaches the plugins
+    expect(t.run("tie")).toBe(false);
+    expect(pluginRun).toHaveBeenCalledTimes(2);
+    // and a gate stops a plugin id exactly as it stops a key
+    caret = false;
+    expect(t.run("battuta.reflection.cycle")).toBe(false);
+    expect(pluginRun).toHaveBeenCalledTimes(2);
   });
 
-  it("ids() lists every rule id once, in order; has() answers for one; unknown ids do nothing", () => {
+  it("ruleIds is a store of every rule id once, in order, republished on install; has() answers for one; unknown ids do nothing", () => {
     const t = new ActionTable();
-    t.install(
-      [
-        rule("undo", () => false, () => "handled"),
-        gate(() => false),
-        rule("tie", () => false, () => "handled"),
-        rule("tie", () => false, () => "handled"),
-        modal(() => false, () => undefined),
-        rule("nav.left", () => false, () => "handled"),
-      ],
-      () => false,
-    );
+    const seen: (readonly string[])[] = [];
+    t.ruleIds.subscribe((ids) => seen.push(ids));
+    t.install([
+      rule("undo", () => false, () => "handled"),
+      gate(() => false),
+      rule("tie", () => false, () => "handled"),
+      rule("tie", () => false, () => "handled"),
+      modal(() => false, () => undefined),
+      rule("nav.left", () => false, () => "handled"),
+    ]);
     expect(t.ids()).toEqual(["undo", "tie", "nav.left"]);
+    expect(seen).toEqual([["undo", "tie", "nav.left"]]);
     expect(t.has("tie")).toBe(true);
     expect(t.has("press")).toBe(false);
     expect(t.run("press")).toBe(false);
+    t.install([]);
+    expect(seen.at(-1)).toEqual([]);
   });
 });

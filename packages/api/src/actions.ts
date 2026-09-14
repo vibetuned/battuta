@@ -23,10 +23,12 @@
  *   transpose.down, transpose.octaveUp, transpose.octaveDown ·
  *   edit.delete, edit.backspace, edit.escape
  *
- * `ids()` is the live list: every id `run` knows, rebindable and locked,
- * so a projection (the on-screen keyboard) can check its buttons against
- * it rather than trust this comment.
+ * `ids` is the live list: every id `run` knows — the host's rules and
+ * every enabled plugin's commands — as a Store, so a projection (the
+ * on-screen keyboard) re-renders when a plugin is turned on or off or a
+ * document opens, instead of trusting this comment or polling.
  */
+import type { Store } from "./context.js";
 
 /** One keymap entry as data: what the shortcut editor and the on-screen keyboard render. */
 export interface KeymapEntry {
@@ -51,9 +53,11 @@ export interface ActionsService {
    * Run an action by id through the host's own dispatch table. True when
    * it ran; false when the id is unknown, or the state does not allow it
    * (no caret, a lane or picker owns the keyboard, the action's own
-   * condition fails) — exactly when the key would have done nothing.
+   * condition fails) — exactly when the key would have done nothing. A
+   * plugin's command id runs through the registry, after the same gates,
+   * as its key would.
    */
   run(id: string): boolean;
-  /** Every id `run` knows, in dispatch order, each once. */
-  ids(): readonly string[];
+  /** Every id `run` knows — the host's, then every enabled plugin's commands — republished on every change. */
+  readonly ids: Store<readonly string[]>;
 }

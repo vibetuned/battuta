@@ -15,9 +15,16 @@ export type ActivationEvent =
   | `onDocument:${string}`
   | `onView:${string}`
   | "onPlay"
-  | `onPointer:${string}`;
+  | `onPointer:${string}`
+  /**
+   * Fired at startup for a plugin whose OWN settings namespace holds a
+   * truthy value under `<key>` — "you were in use when I last quit, come
+   * back". How a persisted UI state (an open panel) survives a restart
+   * without `onStartup` costing every user the code at launch.
+   */
+  | `onSettings:${string}`;
 
-export const ACTIVATION_EVENT_PREFIXES = ["onStartup", "onCommand:", "onLane:", "onFormat:", "onDocument:", "onView:", "onPlay", "onPointer:"] as const;
+export const ACTIVATION_EVENT_PREFIXES = ["onStartup", "onCommand:", "onLane:", "onFormat:", "onDocument:", "onView:", "onPlay", "onPointer:", "onSettings:"] as const;
 
 /**
  * Host capabilities a manifest may require. A capability is a platform
@@ -88,6 +95,15 @@ export interface SlotItemContribution {
   command: string;
   /** Lower renders first among the slot's items. */
   order?: number;
+  /**
+   * Draw this face de-emphasised until the plugin is active. For an entry
+   * point that OPENS something (the 🎹 and its panel), "not active" means
+   * "not showing", so a lit button would be a small lie — and the plugin's
+   * own runtime item takes the face over the moment it runs. Leave it
+   * unset for an item that simply runs a command, which is not disabled in
+   * any sense while its plugin waits to be loaded.
+   */
+  dimUntilActive?: boolean;
 }
 
 export interface PluginContributions {
