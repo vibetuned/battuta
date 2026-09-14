@@ -1,8 +1,8 @@
 {
   "name": "@battuta/api",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "license": "AGPL-3.0-only",
-  "description": "The plugin contract of the battuta host: manifest, activation, context, command messages. Standalone — depends on nothing of the editor or the core.",
+  "description": "The plugin contract of the battuta host: manifest, activation, context, command messages. Standalone \u2014 depends on nothing of the editor or the core.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -18,7 +18,7 @@
   },
   "//": [
     "prepare is LOAD-BEARING (same as @battuta/core): the editor and every plugin resolve @battuta/api via dist/, and npm install/ci runs prepare in workspaces. The package imports nothing from other workspaces, so the order npm prepares them in does not matter.",
-    "The version is the API version plugins declare in engines.battuta. Any change to the public types (api-report.d.ts) requires bumping it — the surface test refuses otherwise."
+    "The version is the API version plugins declare in engines.battuta. Any change to the public types (api-report.d.ts) requires bumping it \u2014 the surface test refuses otherwise."
   ],
   "peerDependencies": {
     "react": "^18.3.0"

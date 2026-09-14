@@ -10,7 +10,8 @@
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "budget": "node scripts/check-budget.mjs"
+    "budget": "node scripts/check-budget.mjs",
+    "keymap:snapshot": "UPDATE_KEYMAP_SNAPSHOT=1 vitest run test/keymap-snapshot.test.ts"
   },
   "dependencies": {
     "@battuta/api": "*",

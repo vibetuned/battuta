@@ -5,10 +5,11 @@
  * Registration validates the manifest, the API range and the required
  * capabilities; a plugin that fails stays LISTED (state "failed", with
  * the reason) so the Plugins tab can show it, but contributes nothing.
- * An enabled plugin's declarative contributions (commands, keybindings)
- * take effect at registration; its code loads on the first activation
- * event it declared — or when one of its keybindings is pressed, which
- * fires `onCommand:<id>` implicitly.
+ * An enabled plugin's declarative contributions (commands, keybindings,
+ * slot items) take effect at registration; its code loads on the first
+ * activation event it declared — or when one of its keybindings is
+ * pressed, or one of its declared slot items is clicked, both of which
+ * fire `onCommand:<id>` implicitly.
  *
  * `load` is a dynamic import and resolves to a module NAMESPACE; the
  * registry unwraps the default export (`resolvePluginModule`).
@@ -19,7 +20,7 @@
  * document change, no reload. The user's keymap overrides for its
  * bindings are untouched, so turning it back on restores them.
  */
-import { API_VERSION, DisposableStore, resolvePluginModule, satisfiesEngine, toDisposable, validateManifest, type ActivationEvent, type CommandHandler, type Disposable, type HostCapability, type KeybindingContribution, type PluginContext, type PluginEntry, type PluginManifest, type PluginModule, type Store } from "@battuta/api";
+import { API_VERSION, DisposableStore, resolvePluginModule, satisfiesEngine, toDisposable, validateManifest, type ActivationEvent, type CommandHandler, type Disposable, type HostCapability, type KeybindingContribution, type PluginContext, type PluginEntry, type PluginManifest, type PluginModule, type SlotItemContribution, type Store } from "@battuta/api";
 
 export type PluginState = "registered" | "active" | "disabled" | "failed";
 
@@ -73,6 +74,8 @@ export interface RegistryDeps {
   isEnabled(id: string): boolean;
   persistEnabled(id: string, on: boolean): void;
   contributeKeybindings(pluginId: string, bindings: KeybindingContribution[]): Disposable;
+  /** Manifest-declared slot items: rendered by the host before the plugin's code loads. */
+  declareSlotItems(pluginId: string, items: SlotItemContribution[]): Disposable;
   commands: CommandTable;
   createContext(manifest: PluginManifest, subscriptions: DisposableStore): PluginContext;
   /** Where activation and command failures are reported (a notice in the app). */
@@ -248,6 +251,8 @@ export class PluginRegistry implements Store<readonly PluginInfo[]> {
       for (const c of m.contributes?.commands ?? []) rec.contributions.add(this.deps.commands.declare(c.id, m.id));
       const bindings = m.contributes?.keybindings ?? [];
       if (bindings.length) rec.contributions.add(this.deps.contributeKeybindings(m.id, bindings));
+      const slotItems = m.contributes?.slotItems ?? [];
+      if (slotItems.length) rec.contributions.add(this.deps.declareSlotItems(m.id, slotItems));
     } catch (e) {
       rec.contributions.dispose();
       rec.contributions = new DisposableStore();

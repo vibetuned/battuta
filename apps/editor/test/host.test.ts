@@ -316,6 +316,61 @@ describe("the --no-plugins property", () => {
   });
 });
 
+describe("manifest-declared slot items", () => {
+  const withToggle = (): { entry: PluginEntry; state: { log: string[]; loads: number } } => {
+    const plugin = echoPlugin();
+    plugin.entry.manifest.contributes!.slotItems = [{ id: "toggle", slot: "header", label: "🎹", title: "open it", command: "test.echo.say", order: 5 }];
+    return plugin;
+  };
+
+  it("appear at registration, before any code loads, keyed by plugin", () => {
+    const plugin = withToggle();
+    const host = makeHost([plugin.entry]);
+    const header = host.slots.items.get().header;
+    expect(header.map((i) => i.id)).toEqual(["test.echo:toggle"]);
+    expect(header[0]).toMatchObject({ declared: true, command: "test.echo.say", label: "🎹", pluginId: "test.echo" });
+    expect(host.slots.items.get().docHeader).toEqual([]);
+    expect(plugin.state.loads).toBe(0);
+  });
+
+  it("clicking one runs its command — which loads the plugin", async () => {
+    const plugin = withToggle();
+    const host = makeHost([plugin.entry]);
+    const item = host.slots.items.get().header[0]!;
+    expect(item.declared).toBe(true);
+    await host.registry.runCommand((item as { command: string }).command);
+    expect(plugin.state.loads).toBe(1);
+    expect(plugin.state.log).toEqual(["activate", "say:no caret"]);
+  });
+
+  it("leave with the plugin's contributions when it is turned off, and come back on", async () => {
+    const plugin = withToggle();
+    const host = makeHost([plugin.entry]);
+    await host.registry.setEnabled("test.echo", false);
+    expect(host.slots.items.get().header).toEqual([]);
+    await host.registry.setEnabled("test.echo", true);
+    expect(host.slots.items.get().header.map((i) => i.id)).toEqual(["test.echo:toggle"]);
+  });
+
+  it("must name the plugin's own command and a real slot", () => {
+    const bad = echoPlugin();
+    bad.entry.manifest.contributes!.slotItems = [{ id: "x", slot: "sidebar" as never, label: "x", command: "core.save" }];
+    const host = makeHost([bad.entry]);
+    const info = host.registry.info("test.echo")!;
+    expect(info.state).toBe("failed");
+    expect(info.error).toContain("slot item x needs a slot of header, docHeader, statusBar, menu");
+    expect(info.error).toContain("slot item x must name one of the plugin's own commands");
+    expect(host.slots.items.get().header).toEqual([]);
+  });
+
+  it("runtime items and declared items share a slot, ordered together", async () => {
+    const plugin = withToggle();
+    const host = makeHost([plugin.entry]);
+    host.slots.add("header", { id: "runtime", order: 1, render: () => null });
+    expect(host.slots.items.get().header.map((i) => i.id)).toEqual(["runtime", "test.echo:toggle"]);
+  });
+});
+
 describe("the MIDI service on the context", () => {
   it("is the host's own service: a plugin's virtual input reaches the host's note stream and its device list", async () => {
     const seen: string[] = [];

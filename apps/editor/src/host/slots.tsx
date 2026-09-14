@@ -1,22 +1,48 @@
 /**
- * UI slots: the three places a plugin may put an item (header row,
- * status bar, battuta menu) and the two panel areas (bottom, side).
- * Plugins hand over a render function; the host owns the React tree.
- * An empty slot renders nothing at all, so a host without plugins has
- * exactly the DOM it had before slots existed.
+ * UI slots: the four places a plugin may put an item (the first header
+ * row, the second — title, tempo, the player —, the status bar, the
+ * battuta menu) and the two panel areas (bottom, side). Plugins hand over
+ * a render function; the host owns the React tree. An empty slot renders
+ * nothing at all, so a host without plugins has exactly the DOM it had
+ * before slots existed.
+ *
+ * A slot holds two kinds of item. A RUNTIME one (`SlotItem`) carries a
+ * render function and exists while its plugin is active. A DECLARED one
+ * comes from the manifest, so the host can render it before the plugin's
+ * code has loaded — and clicking it runs the plugin's command, which is
+ * what activates the plugin. That is how a UI gets its entry point (the
+ * 🎹 that opens the on-screen keyboard cannot come from the keyboard's
+ * own code). Decided 2026-09-14.
  */
 import { Fragment } from "react";
-import { toDisposable, type Disposable, type PanelSide, type PanelSpec, type SlotItem, type SlotName } from "@battuta/api";
+import { toDisposable, type Disposable, type PanelSide, type PanelSpec, type SlotItem, type SlotItemContribution, type SlotName } from "@battuta/api";
 import { createStore, useStore } from "./store";
 
-const byOrder = (list: readonly SlotItem[]): SlotItem[] => [...list].sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
+/** A manifest-declared item, with the plugin it came from. */
+export interface DeclaredSlotItem extends SlotItemContribution {
+  pluginId: string;
+}
+
+type AnyItem = (SlotItem & { declared?: undefined }) | (DeclaredSlotItem & { render?: undefined; declared: true });
+
+const byOrder = <T extends { order?: number }>(list: readonly T[]): T[] => [...list].sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
+
+const EMPTY: Record<SlotName, readonly AnyItem[]> = { header: [], docHeader: [], statusBar: [], menu: [] };
 
 export class SlotStore {
-  readonly items = createStore<Record<SlotName, readonly SlotItem[]>>({ header: [], statusBar: [], menu: [] });
+  readonly items = createStore<Record<SlotName, readonly AnyItem[]>>(EMPTY);
 
   add(slot: SlotName, item: SlotItem): Disposable {
-    this.items.update((s) => ({ ...s, [slot]: byOrder([...s[slot].filter((i) => i.id !== item.id), item]) }));
-    return toDisposable(() => this.items.update((s) => ({ ...s, [slot]: s[slot].filter((i) => i !== item) })));
+    const entry = item as AnyItem;
+    this.items.update((s) => ({ ...s, [slot]: byOrder([...s[slot].filter((i) => i.id !== item.id), entry]) }));
+    return toDisposable(() => this.items.update((s) => ({ ...s, [slot]: s[slot].filter((i) => i !== entry) })));
+  }
+
+  /** A declared item: keyed `<pluginId>:<id>` so two plugins may both call theirs "toggle". */
+  declare(item: DeclaredSlotItem): Disposable {
+    const entry = { ...item, id: `${item.pluginId}:${item.id}`, declared: true } as AnyItem;
+    this.items.update((s) => ({ ...s, [item.slot]: byOrder([...s[item.slot].filter((i) => i.id !== entry.id), entry]) }));
+    return toDisposable(() => this.items.update((s) => ({ ...s, [item.slot]: s[item.slot].filter((i) => i !== entry) })));
   }
 }
 
@@ -29,14 +55,22 @@ export class PanelStore {
   }
 }
 
-export function Slot({ store, name }: { store: SlotStore; name: SlotName }) {
+export function Slot({ store, name, onCommand }: { store: SlotStore; name: SlotName; onCommand?: (commandId: string) => void }) {
   const items = useStore(store.items)[name];
   if (!items.length) return null;
   return (
     <>
-      {items.map((i) => (
-        <Fragment key={i.id}>{i.render()}</Fragment>
-      ))}
+      {items.map((i) =>
+        i.declared ? (
+          // Declared in a manifest: the host owns this button, and the click
+          // is what loads the plugin behind it (runCommand fires onCommand:).
+          <button key={i.id} data-slot-item={i.id} data-slot-command={i.command} title={i.title ?? i.label} onClick={() => onCommand?.(i.command)}>
+            {i.label}
+          </button>
+        ) : (
+          <Fragment key={i.id}>{i.render()}</Fragment>
+        ),
+      )}
     </>
   );
 }

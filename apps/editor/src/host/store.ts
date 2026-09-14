@@ -31,6 +31,24 @@ export function createStore<T>(initial: T): WritableStore<T> {
   };
 }
 
+/** A read-only store computed from another; recomputes on each publication of the source. */
+export function mapStore<A, B>(source: Store<A>, fn: (a: A) => B): Store<B> {
+  let cachedFor: A | undefined;
+  let cached: B | undefined;
+  const get = (): B => {
+    const a = source.get();
+    if (cached === undefined || !Object.is(a, cachedFor)) {
+      cachedFor = a;
+      cached = fn(a);
+    }
+    return cached;
+  };
+  return {
+    get,
+    subscribe: (listener) => source.subscribe(() => listener(get())),
+  };
+}
+
 /** React binding: re-renders on change; the store's get() is the snapshot. */
 export function useStore<T>(store: Store<T>): T {
   // Class-based stores (KeymapStore, PluginRegistry) need their methods

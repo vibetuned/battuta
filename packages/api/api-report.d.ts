@@ -1,4 +1,63 @@
-// @battuta/api 0.1.0 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
+// @battuta/api 0.1.2 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
+
+// ---- actions.d.ts
+/**
+ * Actions by id — the door an input surface uses instead of forging key
+ * events. The host's key dispatcher is a table `actionId → handler`;
+ * a physical key press selects an id through the keymap (rebindable
+ * actions) or a fixed physical binding (the locked ones), and
+ * `ctx.actions.run(id)` enters the SAME table at the same point, under the
+ * same state conditions (no document, a lane open, a modal picker up →
+ * nothing runs). A plugin therefore cannot do anything the host has not
+ * named, and the edits it causes are ordinary core commands.
+ *
+ * Rebindable ids are the keymap's (`tie`, `dot`, `dynamics`, …, and every
+ * plugin command). The locked physical and system keys have fixed ids:
+ *
+ *   undo, redo · zoom.in, zoom.out, zoom.reset · file.save, file.saveAs,
+ *   file.open · clipboard.copy, clipboard.paste · measure.insert,
+ *   measure.delete, measure.duplicate · entry.toggle · volta.1 … volta.9 ·
+ *   finger.1 … finger.5, finger.add.1 … finger.add.5, fingerChange.1 …
+ *   fingerChange.5 · duration.1 … duration.7 (the digit the user types:
+ *   7 = whole … 1 = 64th) · pitch.a … pitch.g · chord.a … chord.g ·
+ *   dynamic.f, dynamic.p · duration.shorter, duration.longer · nav.left,
+ *   nav.right, nav.up, nav.down, nav.home, nav.end, nav.pageUp,
+ *   nav.pageDown · select.left, select.right · transpose.up,
+ *   transpose.down, transpose.octaveUp, transpose.octaveDown ·
+ *   edit.delete, edit.backspace, edit.escape
+ *
+ * `ids()` is the live list: every id `run` knows, rebindable and locked,
+ * so a projection (the on-screen keyboard) can check its buttons against
+ * it rather than trust this comment.
+ */
+/** One keymap entry as data: what the shortcut editor and the on-screen keyboard render. */
+export interface KeymapEntry {
+    /** Action id — a core id (`tie`) or a plugin's command id. */
+    id: string;
+    label: string;
+    group: string;
+    /** Context note, e.g. "block selection". */
+    when?: string;
+    /** e.key values that trigger it (letters carry their case); display text for locked rows. */
+    keys: readonly string[];
+    shift?: boolean;
+    alt?: boolean;
+    /** Listed for the user but not rebindable (a physical-code or ctrl-chord binding). */
+    locked: boolean;
+    /** Set on entries a plugin contributed (its id). */
+    plugin?: string;
+}
+export interface ActionsService {
+    /**
+     * Run an action by id through the host's own dispatch table. True when
+     * it ran; false when the id is unknown, or the state does not allow it
+     * (no caret, a lane or picker owns the keyboard, the action's own
+     * condition fails) — exactly when the key would have done nothing.
+     */
+    run(id: string): boolean;
+    /** Every id `run` knows, in dispatch order, each once. */
+    ids(): readonly string[];
+}
 
 // ---- context.d.ts
 /**
@@ -19,6 +78,7 @@ import type { DocumentInfo, DocumentQueries, EditorState } from "./document.js";
 import type { PluginManifest, SlotName } from "./manifest.js";
 import type { CommandMessage } from "./messages.js";
 import type { MidiService } from "./midi.js";
+import type { ActionsService, KeymapEntry } from "./actions.js";
 /** A value with change notification. `subscribe` fires on every change with the new value. */
 export interface Store<T> {
     get(): T;
@@ -71,6 +131,10 @@ export interface PluginContext {
     readonly storage: StorageNamespace;
     /** The MIDI host service (capability "midi"): inputs, a note stream, virtual inputs, outputs. */
     readonly midi: MidiService;
+    /** The union keymap as data (core ∪ every enabled plugin's contributions), republished on every change. */
+    readonly keymap: Store<readonly KeymapEntry[]>;
+    /** Run the host's actions by id — the door for input surfaces. See actions.ts. */
+    readonly actions: ActionsService;
     readonly slots: {
         add(slot: SlotName, item: SlotItem): Disposable;
     };
@@ -211,9 +275,9 @@ export interface DocumentQueries {
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export declare const API_VERSION = "0.1.0";
-export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, PluginContributions, PluginManifest } from "./manifest.js";
-export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, validateManifest } from "./manifest.js";
+export declare const API_VERSION = "0.1.2";
+export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
+export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";
 export type { Disposable } from "./disposable.js";
 export { toDisposable, DisposableStore } from "./disposable.js";
 export type { Version } from "./semver.js";
@@ -222,6 +286,7 @@ export type { CaretPosition, BlockSelection, Pitch, PitchEvent, ViewMode, Editor
 export type { SetPitchesMessage, CommandMessage, CommandMessageType } from "./messages.js";
 export { COMMAND_MESSAGE_TYPES } from "./messages.js";
 export type { MidiPort, MidiNoteEvent, MidiVirtualInput, MidiOutputs, MidiService } from "./midi.js";
+export type { KeymapEntry, ActionsService } from "./actions.js";
 export type { Store, SlotItem, PanelSide, PanelSpec, SettingsNamespace, StorageNamespace, CommandHandler, PluginContext, PluginModule, PluginEntry } from "./context.js";
 export { definePlugin, resolvePluginModule } from "./context.js";
 
@@ -244,8 +309,14 @@ export declare const ACTIVATION_EVENT_PREFIXES: readonly ["onStartup", "onComman
  */
 export type HostCapability = "midi" | "workspace" | "playback";
 export declare const HOST_CAPABILITIES: readonly HostCapability[];
-/** UI slots a plugin may place an item in. Panels are a separate mechanism. */
-export type SlotName = "header" | "statusBar" | "menu";
+/**
+ * UI slots a plugin may place an item in. `header` is the first header row
+ * (tabs, view toggle); `docHeader` the second (title, tempo, and the player
+ * in page view — where a playback plugin's controls go); `statusBar` the
+ * bottom bar; `menu` the battuta menu. Panels are a separate mechanism.
+ */
+export type SlotName = "header" | "docHeader" | "statusBar" | "menu";
+export declare const SLOT_NAMES: readonly SlotName[];
 export type KeyboardLayout = "qwerty" | "azerty";
 export interface CommandContribution {
     /** Global command id; convention `<pluginId>.<verb>`, e.g. `battuta.reflection.cycle`. */
@@ -274,9 +345,32 @@ export interface KeybindingContribution {
         shift?: boolean;
     }>>;
 }
+/**
+ * A slot item DECLARED in the manifest rather than added at runtime: the
+ * host renders it before the plugin's code has ever loaded, and clicking
+ * it runs one of the plugin's commands — which is what activates the
+ * plugin. This is how a plugin's UI gets an entry point: a button that
+ * opens a panel cannot be contributed by the panel's own code, or it would
+ * not be there to open it. Runtime `ctx.slots.add` stays the way to
+ * contribute an item that needs live state.
+ */
+export interface SlotItemContribution {
+    /** Stable within the plugin. */
+    id: string;
+    slot: SlotName;
+    /** The item's face: an emoji or a very short label. */
+    label: string;
+    /** Tooltip. */
+    title?: string;
+    /** Run on click; must be one of the plugin's own `commands`. */
+    command: string;
+    /** Lower renders first among the slot's items. */
+    order?: number;
+}
 export interface PluginContributions {
     commands?: CommandContribution[];
     keybindings?: KeybindingContribution[];
+    slotItems?: SlotItemContribution[];
 }
 export interface PluginManifest {
     /** Dotted lowercase id, e.g. `battuta.reflection`. Unique across the registry. */

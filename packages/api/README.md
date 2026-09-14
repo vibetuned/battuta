@@ -5,8 +5,9 @@ the activation events that load its code, and the context it receives —
 everything a plugin can see or do. **Standalone**: it imports nothing from
 `@battuta/core` or the editor. What a plugin sees is data (`document.ts`:
 snapshots, coordinates, pitches, the query facade; `midi.ts`: the MIDI
-host service — devices, a note stream, virtual inputs, outputs), what it
-does is a message (`messages.ts`: `ctx.execute({ type: "core.setPitches", … })`, mapped
+host service — devices, a note stream, virtual inputs, outputs;
+`actions.ts`: the union keymap as data and the host's actions by id — the
+door an input surface uses), what it does is a message (`messages.ts`: `ctx.execute({ type: "core.setPitches", … })`, mapped
 to the real core command by the host). Pure types plus four small runtime
 helpers (`validateManifest`, `satisfiesEngine`, `DisposableStore`,
 `resolvePluginModule`); no DOM, no React runtime (React's `ReactNode` type
@@ -34,6 +35,10 @@ npm run api:update -w @battuta/api
 #  3. note the change under the unreleased heading in CHANGELOG.md
 ```
 
-While the current version has never been tagged (0.1.0 so far), the
-surface may change under the same number: `npm run api:update -w
-@battuta/api -- --unpublished` rewrites the report without a bump.
+**The surface is the user's.** A slice may add only the exports its
+brief lists; anything else is a STOP, not a bump. An approved change gets
+a version bump even while the number is unpublished (0.1.0 → 0.1.1): the
+bump is the visible marker in the diff, and the report script refuses to
+rewrite the snapshot without one. (An earlier `--unpublished` flag that
+skipped this was withdrawn on 2026-09-14 after a slice used it to grow the
+surface by fourteen exports.)

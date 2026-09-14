@@ -1,0 +1,430 @@
+{
+  "qwerty": {
+    "accent": {
+      "keys": [
+        ";"
+      ]
+    },
+    "battuta.reflection.cycle": {
+      "keys": [
+        "R"
+      ],
+      "plugin": "battuta.reflection"
+    },
+    "beam": {
+      "keys": [
+        "b"
+      ],
+      "alt": true
+    },
+    "coda": {
+      "keys": [
+        "o"
+      ]
+    },
+    "contextBar": {
+      "keys": [
+        "F6"
+      ]
+    },
+    "dot": {
+      "keys": [
+        "."
+      ],
+      "shift": false
+    },
+    "durations": {
+      "keys": [
+        "1–7"
+      ],
+      "locked": true
+    },
+    "durationStep": {
+      "keys": [
+        "⌥←/→"
+      ],
+      "locked": true
+    },
+    "dynamics": {
+      "keys": [
+        "p"
+      ]
+    },
+    "fermata": {
+      "keys": [
+        "h"
+      ]
+    },
+    "fingerChange": {
+      "keys": [
+        "⌥6–0"
+      ],
+      "locked": true
+    },
+    "fingering": {
+      "keys": [
+        "⌥1–5"
+      ],
+      "locked": true
+    },
+    "flat": {
+      "keys": [
+        "v",
+        "f"
+      ]
+    },
+    "inputMode": {
+      "keys": [
+        "i"
+      ]
+    },
+    "intensity": {
+      "keys": [
+        "I"
+      ]
+    },
+    "lyrics": {
+      "keys": [
+        "l"
+      ]
+    },
+    "marcato": {
+      "keys": [
+        ":",
+        ">"
+      ],
+      "shift": true
+    },
+    "measureRepeat": {
+      "keys": [
+        "\""
+      ]
+    },
+    "merge": {
+      "keys": [
+        "m"
+      ]
+    },
+    "natural": {
+      "keys": [
+        "n"
+      ]
+    },
+    "navigation": {
+      "keys": [
+        "←→↑↓"
+      ],
+      "locked": true
+    },
+    "ornament": {
+      "keys": [
+        "w"
+      ]
+    },
+    "pedal": {
+      "keys": [
+        "P"
+      ]
+    },
+    "pitches": {
+      "keys": [
+        "a–g"
+      ],
+      "locked": true
+    },
+    "repeatBarlines": {
+      "keys": [
+        "r"
+      ],
+      "alt": true
+    },
+    "rest": {
+      "keys": [
+        "r"
+      ]
+    },
+    "rowNavigation": {
+      "keys": [
+        "Home End PgUp PgDn"
+      ],
+      "locked": true
+    },
+    "sharp": {
+      "keys": [
+        "s"
+      ]
+    },
+    "simile": {
+      "keys": [
+        "'"
+      ]
+    },
+    "slurDoubleSharp": {
+      "keys": [
+        "S"
+      ]
+    },
+    "split": {
+      "keys": [
+        "x"
+      ]
+    },
+    "staccatissimo": {
+      "keys": [
+        "<"
+      ]
+    },
+    "staccato": {
+      "keys": [
+        ","
+      ]
+    },
+    "staffGroup": {
+      "keys": [
+        "G"
+      ]
+    },
+    "structural": {
+      "keys": [
+        "⊞+ ⊞− ⊞*"
+      ],
+      "locked": true
+    },
+    "system": {
+      "keys": [
+        "⌃s ⌃o ⌃z ⌃y ⌃c ⌃v ⌃± ⌃0"
+      ],
+      "locked": true
+    },
+    "tie": {
+      "keys": [
+        "t"
+      ]
+    },
+    "tuplet": {
+      "keys": [
+        "T"
+      ]
+    },
+    "voltas": {
+      "keys": [
+        "⇧1–9"
+      ],
+      "locked": true
+    }
+  },
+  "azerty": {
+    "accent": {
+      "keys": [
+        ";"
+      ]
+    },
+    "battuta.reflection.cycle": {
+      "keys": [
+        "R"
+      ],
+      "plugin": "battuta.reflection"
+    },
+    "beam": {
+      "keys": [
+        "b"
+      ],
+      "alt": true
+    },
+    "coda": {
+      "keys": [
+        "o"
+      ]
+    },
+    "contextBar": {
+      "keys": [
+        "F6"
+      ]
+    },
+    "dot": {
+      "keys": [
+        ":",
+        "."
+      ],
+      "shift": false
+    },
+    "durations": {
+      "keys": [
+        "1–7"
+      ],
+      "locked": true
+    },
+    "durationStep": {
+      "keys": [
+        "⌥←/→"
+      ],
+      "locked": true
+    },
+    "dynamics": {
+      "keys": [
+        "p"
+      ]
+    },
+    "fermata": {
+      "keys": [
+        "h"
+      ]
+    },
+    "fingerChange": {
+      "keys": [
+        "⌥6–0"
+      ],
+      "locked": true
+    },
+    "fingering": {
+      "keys": [
+        "⌥1–5"
+      ],
+      "locked": true
+    },
+    "flat": {
+      "keys": [
+        "v",
+        "f"
+      ]
+    },
+    "inputMode": {
+      "keys": [
+        "i"
+      ]
+    },
+    "intensity": {
+      "keys": [
+        "I"
+      ]
+    },
+    "lyrics": {
+      "keys": [
+        "l"
+      ]
+    },
+    "marcato": {
+      "keys": [
+        "."
+      ],
+      "shift": true
+    },
+    "measureRepeat": {
+      "keys": [
+        "%"
+      ]
+    },
+    "merge": {
+      "keys": [
+        "m"
+      ]
+    },
+    "natural": {
+      "keys": [
+        "n"
+      ]
+    },
+    "navigation": {
+      "keys": [
+        "←→↑↓"
+      ],
+      "locked": true
+    },
+    "ornament": {
+      "keys": [
+        "w"
+      ]
+    },
+    "pedal": {
+      "keys": [
+        "P"
+      ]
+    },
+    "pitches": {
+      "keys": [
+        "a–g"
+      ],
+      "locked": true
+    },
+    "repeatBarlines": {
+      "keys": [
+        "r"
+      ],
+      "alt": true
+    },
+    "rest": {
+      "keys": [
+        "r"
+      ]
+    },
+    "rowNavigation": {
+      "keys": [
+        "Home End PgUp PgDn"
+      ],
+      "locked": true
+    },
+    "sharp": {
+      "keys": [
+        "s"
+      ]
+    },
+    "simile": {
+      "keys": [
+        "ù"
+      ]
+    },
+    "slurDoubleSharp": {
+      "keys": [
+        "S"
+      ]
+    },
+    "split": {
+      "keys": [
+        "x"
+      ]
+    },
+    "staccatissimo": {
+      "keys": [
+        "?"
+      ]
+    },
+    "staccato": {
+      "keys": [
+        ","
+      ]
+    },
+    "staffGroup": {
+      "keys": [
+        "G"
+      ]
+    },
+    "structural": {
+      "keys": [
+        "⊞+ ⊞− ⊞*"
+      ],
+      "locked": true
+    },
+    "system": {
+      "keys": [
+        "⌃s ⌃o ⌃z ⌃y ⌃c ⌃v ⌃± ⌃0"
+      ],
+      "locked": true
+    },
+    "tie": {
+      "keys": [
+        "t"
+      ]
+    },
+    "tuplet": {
+      "keys": [
+        "T"
+      ]
+    },
+    "voltas": {
+      "keys": [
+        "⇧1–9"
+      ],
+      "locked": true
+    }
+  }
+}

@@ -26,6 +26,21 @@ Two things in the plan were misunderstood, so here they are plainly:
    are the `ctx.query` facade, writes are messages. A plugin that seems
    to need core is asking for an api addition (below), not an import. Do
    not edit this file to permit the code; change the api.
+3. **"Grow the api, never work around it" has a ceiling: the brief.** The
+   second slice-4 attempt (2026-09-14, post-mortem in
+   `onscreen-keyboard/POSTMORTEM-2026-09-14.md`) broke no rule and was
+   still rolled back: it added a host service and fourteen api exports
+   the brief never named, forged key events for the host to interpret,
+   and widened this file to admit it. So: **the api's surface and the
+   host's modules are the user's.** A slice may add only the api exports
+   its PLANNING.md brief lists under *API may grow*, and no host module
+   at all. If the feature cannot be built inside that, **stop** — leave
+   the slice open, write the gap into BUILDING.md §7 and the CHANGELOG,
+   and report. An open slice with a precise gap is a success; a closed
+   slice with a widened contract is a failure. Relocating a forbidden
+   call into the host is not compliance, and a plugin that would need to
+   forge events (`dispatchEvent`, `new KeyboardEvent`) has found a
+   missing host abstraction, not a plugin requirement.
 
 ## Where things are
 
@@ -35,7 +50,8 @@ Two things in the plan were misunderstood, so here they are plainly:
 | `apps/editor/src/host/index.ts` | `createHost()` and the app's `host` singleton: keymap store, slots, panels, registry, notices, confirm, document/editor mirrors, `execute`, `dispatchKey`. |
 | `apps/editor/src/host/registry.ts` | Registration rules, activation events, on/off, `runCommand`. Read its header comment first. |
 | `apps/editor/src/host/keymapStore.ts` | Core keymap ∪ plugin bindings, reactive; overrides per layout. |
-| `apps/editor/src/host/slots.tsx` | `<Slot>` (header / statusBar / menu) and `<Panels>` (bottom / side). |
+| `apps/editor/src/host/actions.ts` | The key dispatcher as a table: rules, gates, modals in the App's order; `run(id)` walks the same table without a key. Read its header before writing an input surface. |
+| `apps/editor/src/host/slots.tsx` | `<Slot>` (header / docHeader / statusBar / menu) and `<Panels>` (bottom / side). Two kinds of item: runtime ones a plugin adds in `activate`, and **manifest-declared** ones the host renders before the plugin's code loads — a plugin's entry point. |
 | `apps/editor/src/host/services.ts` | Settings and storage namespaces, the enabled flag. |
 | `apps/editor/src/host/plugins.ts` | **The list of shipped plugins.** Adding a plugin = adding an entry here. |
 | `apps/editor/src/App.tsx` | The host UI. Plugin keys are dispatched at the END of its key handler (`host.dispatchKey`), slots sit in the header row, the battuta menu and the status bar. |
@@ -55,7 +71,8 @@ packages/plugins/<name>/
   tsconfig.json       strict TS; "jsx": "react-jsx" if the plugin renders panels
                       (NO vitest config: vitest's defaults already find test/**/*.test.ts in a node
                       environment, and "vitest/config" is not an import a plugin package may have)
-  src/manifest.ts     export const manifest: PluginManifest = { … }   — imports @battuta/api and nothing else
+  src/manifest.ts     export const manifest: PluginManifest = { … }   — imports @battuta/api and nothing else;
+                      a UI plugin declares its entry point here (contributes.slotItems), never in activate()
   src/index.ts(x)     export default definePlugin({ activate, deactivate })
   src/<feature>.ts    the feature's own logic (the reflection forms, a lane grammar): pure TS over api data
   test/*.test.ts      vitest, against createHost() with memory settings/storage and a fake session adapter
@@ -126,6 +143,12 @@ The api is a data contract. Nothing in it is a live object of the model.
 | every note on/off from any input | `ctx.midi.onNote(fn)` | `Disposable` |
 | add an input surface (a piano, a chord pad) | `ctx.midi.registerInput(name)` | `MidiVirtualInput` — dispose to unregister |
 | send to every MIDI output | `ctx.midi.openOutputs()` | `MidiOutputs` (`schedule`, `send`, `panic`, `close`) or null |
+| the union keymap as data (id, label, group, when, keys, mods, locked, plugin) | `ctx.keymap` | `Store<KeymapEntry[]>` |
+| **run** an action by id — a keymap id or a locked one (`undo`, `nav.left`, `duration.4`, `pitch.c`, …; the list is in `packages/api/src/actions.ts`) | `ctx.actions.run(id)` | true when it ran; false when the id is unknown or the state forbids it — exactly when the key would have done nothing |
+| every id `run` knows | `ctx.actions.ids()` | `readonly string[]`, in dispatch order |
+| an entry point the user can click BEFORE your code loads (a 🎹 that opens your panel) | `contributes.slotItems: [{ id, slot, label, title?, command, order? }]` in the manifest | the host renders a button; the click runs your command and activates you |
+| a slot item that needs live state | `ctx.slots.add(slot, { id, order?, render })` at runtime | `Disposable` |
+| a panel | `ctx.panels.open({ id, side: "bottom" \| "side", title, render })` | `Disposable` |
 
 Three things to know, each learned the hard way:
 
@@ -138,6 +161,13 @@ Three things to know, each learned the hard way:
   ctx.query.blockOf(ctx.editor.get().selection)` is that rule.
 - **`DocumentInfo.id` is document identity.** A new tab or a reopened
   file gets a new id; key any per-document state on it.
+- **An input surface runs ids; it never presses keys.** Buttons call
+  `ctx.actions.run(id)`; a latched modifier selects the *variant* id
+  (staccato → staccatissimo), not a modified key. The host's table
+  decides what the id does in the current state, exactly as it would for
+  the key, so the surface cannot reach anything the host has not named.
+  Pitches come through `ctx.midi.registerInput`, not through `pitch.c`,
+  when they carry a MIDI note.
 - **Never touch Web MIDI or the shell bridge.** `ctx.midi` is the one
   MIDI service (capability `midi`): a plugin that is an input surface
   registers a virtual input and the host's entry path hears it like a
@@ -145,7 +175,10 @@ Three things to know, each learned the hard way:
   guarantee for free. Declare `capabilities: ["midi"]` in the manifest.
 
 **Adding a message or a query** is an api change, made in the host, never
-worked around in a plugin:
+worked around in a plugin — and only when the slice brief's *API may
+grow* block names it. Anything the brief does not name is a STOP (rule 3
+above), even if it is small, even if it is elegant, even if you have
+already written it:
 
 1. `packages/api/src/messages.ts` (a union member) or `document.ts` (a
    `DocumentQueries` method); every planned slice maps onto a command that
@@ -171,10 +204,28 @@ worked around in a plugin:
 | A handler for a command the manifest did not declare is refused | the registry throws (plugin marked failed) |
 | A plugin binding never shadows a core action id | the keymap store drops it |
 | Mutation only through `ctx.execute(message)`; only published message types | `toCommand` throws on anything else; there is no other door — core is unreachable |
-| API surface changes are visible and versioned | `api-report.d.ts` snapshot test |
+| API surface changes are visible and versioned; a change needs a version bump the user approved (`--unpublished` was withdrawn) | `api-report.d.ts` snapshot test + `api-report.mjs` |
+| No forged input anywhere: no `dispatchEvent`, no `new KeyboardEvent` / `MouseEvent` / `PointerEvent` in the host or a plugin | `apps/editor/test/host-boundaries.test.ts` |
+| The host's module list is an allowlist: a new file under `apps/editor/src/host/` is a user decision recorded in the brief | same test |
+| An extraction adds or changes no binding: the union keymap (core ∪ plugins, both layouts) is byte-identical to `apps/editor/test/keymap.snapshot.json` | `apps/editor/test/keymap-snapshot.test.ts`; changing it deliberately is `npm run keymap:snapshot -w @battuta/editor` |
 | Byte-identical undo for every message | core's command tests and fuzzer cover the mapped commands; the mapping is tested in the host |
 
 Conventions the tests cannot see, still binding:
+
+- **The rule files are the user's during a slice.** This file, the api's
+  README and PLANNING.md's rules and briefs are not edited by a slice; a
+  slice adds dead ends to its own BUILDING.md and one CHANGELOG bullet,
+  and proposes a rule change there. Write the proposal BEFORE the code
+  it would admit: once the code exists, a rule edit that admits it reads
+  as documentation. (Rewritten twice so far — 2026-09-12 and
+  2026-09-14; the second time the sentence was even true of the tree.)
+- **Name the consumer of every api addition you propose.** An addition
+  with no consumer outside its own module is symmetry, not design
+  (`registerSurface`, 2026-09-14).
+- **Ask what the feature needs the editor to DO, not what its code
+  CALLS.** Read an extraction as a list of host capabilities in the
+  host's vocabulary first and the implementation second — otherwise the
+  mechanism the old code used becomes the requirement.
 
 - **No document state outside the document.** Transient state lives in
   memory; small values in `ctx.settings`; larger ones in `ctx.storage`.
@@ -193,6 +244,20 @@ Conventions the tests cannot see, still binding:
   every core branch of the key handler fell through, and never while a
   text lane or the shortcut editor owns the keyboard.
 - **Pin the API.** `engines.battuta: "^<API_VERSION>"`.
+- **Traps every UI plugin will meet** (found 2026-09-14, all real, kept
+  from the rolled-back attempt): activation runs BEFORE the command
+  handler that caused it, so a plugin that opens its UI in `activate()`
+  and toggles it in the handler opens and then closes — write the table
+  of wake-up paths out and test each row; a panel with internal state
+  subscribes to the host's stores itself (`useSyncExternalStore`, six
+  lines) and is never disposed-and-reopened to refresh, which remounts
+  it; a component that moves into a slot loses its own `position: fixed`
+  first; `i` enters input mode, `Insert` toggles it; when a synthesized
+  key "does nothing", prove the event arrived before suspecting the
+  delivery; and anything the host and a plugin share (React, next) needs
+  a name in `manualChunks` or Rollup settles it inside the plugin chunk —
+  ask Rollup what is in the chunk (a `generateBundle` hook printing
+  `Object.keys(chunk.modules)`), do not grep the output.
 
 ## Verifying
 
@@ -202,6 +267,8 @@ npx vitest run --root packages/core
 npx vitest run --root packages/api
 npm test -w @battuta/editor
 npm run test:plugins                          # every packages/plugins/*/test suite (CI runs this too)
+# the editor suite also holds the host boundary test and the union-keymap snapshot; a
+# deliberate binding change is `npm run keymap:snapshot -w @battuta/editor` (then explain it)
 npm run build -w @battuta/editor && npm run budget -w @battuta/editor
 # browser e2e (Vite dev + Playwright's bundled Chromium); each script prints
 # PASS/FAIL lines and exits 1 on any FAIL. Once: fetch the corpus scores.
@@ -210,6 +277,7 @@ mkdir -p /tmp/battuta-e2e
 for s in app phase2 phase3 phase4 phase5; do
   BATTUTA_ROOT=$PWD CHROME=bundled SCRATCH=/tmp/battuta-e2e node spikes/verify-$s.mjs || echo "FAILED: $s"
 done
+BATTUTA_ROOT=$PWD CHROME=bundled SCRATCH=/tmp/battuta-e2e node spikes/verify-onscreen-keyboard.mjs   # the panel, by tapping (24)
 sh spikes/verify-tauri.sh                     # the shell smoke; needs a display and Rust
 ```
 

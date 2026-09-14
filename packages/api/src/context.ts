@@ -16,6 +16,7 @@ import type { DocumentInfo, DocumentQueries, EditorState } from "./document.js";
 import type { PluginManifest, SlotName } from "./manifest.js";
 import type { CommandMessage } from "./messages.js";
 import type { MidiService } from "./midi.js";
+import type { ActionsService, KeymapEntry } from "./actions.js";
 
 /** A value with change notification. `subscribe` fires on every change with the new value. */
 export interface Store<T> {
@@ -76,6 +77,10 @@ export interface PluginContext {
   readonly storage: StorageNamespace;
   /** The MIDI host service (capability "midi"): inputs, a note stream, virtual inputs, outputs. */
   readonly midi: MidiService;
+  /** The union keymap as data (core ∪ every enabled plugin's contributions), republished on every change. */
+  readonly keymap: Store<readonly KeymapEntry[]>;
+  /** Run the host's actions by id — the door for input surfaces. See actions.ts. */
+  readonly actions: ActionsService;
   readonly slots: { add(slot: SlotName, item: SlotItem): Disposable };
   readonly panels: { open(panel: PanelSpec): Disposable };
   /** Disposed on deactivate. Add every subscription here; the host disposes what it handed out itself. */

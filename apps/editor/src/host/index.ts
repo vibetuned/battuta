@@ -9,7 +9,7 @@
  * built-in plugins unless the URL says ?plugins=off); `createHost` is
  * exported for tests, which pass memory-backed settings and storage.
  */
-import { API_VERSION, DisposableStore, type ActivationEvent, type BlockSelection, type CommandMessage, type DocumentInfo, type DocumentQueries, type EditorState, type HostCapability, type PitchEvent, type PluginContext, type PluginEntry, type PluginManifest, type Store } from "@battuta/api";
+import { API_VERSION, DisposableStore, type ActionsService, type ActivationEvent, type BlockSelection, type CommandMessage, type DocumentInfo, type DocumentQueries, type EditorState, type HostCapability, type KeymapEntry, type PitchEvent, type PluginContext, type PluginEntry, type PluginManifest, type Store } from "@battuta/api";
 import type { Command } from "@battuta/core";
 import { toCommand } from "./messages";
 import { keyMatches, type Layout } from "../keymap";
@@ -18,7 +18,8 @@ import { KeymapStore } from "./keymapStore";
 import { SlotStore, PanelStore } from "./slots";
 import { CommandTable, PluginRegistry } from "./registry";
 import { confirmDialog } from "./shell";
-import { createStore, type WritableStore } from "./store";
+import { createStore, mapStore, type WritableStore } from "./store";
+import { ActionTable } from "./actions";
 import { isPluginEnabled, memorySettings, pluginSettings, pluginStorage, setPluginEnabled, webSettings, webStorage, type Notice, type SettingsIO, type StorageLike } from "./services";
 import { BUILTIN_PLUGINS } from "./plugins";
 import { HostMidiService, detectMidiBackend } from "./midi";
@@ -51,6 +52,10 @@ export interface Host {
   /** True when the URL carried ?plugins=off: nothing was registered. */
   readonly noPlugins: boolean;
   readonly keymap: KeymapStore;
+  /** The keymap as data, for plugins (what ctx.keymap hands out). */
+  readonly keymapView: Store<readonly KeymapEntry[]>;
+  /** The host's actions by id: the App installs the table, plugins run ids through ctx.actions. */
+  readonly actions: ActionTable;
   readonly slots: SlotStore;
   readonly panels: PanelStore;
   readonly registry: PluginRegistry;
@@ -95,6 +100,21 @@ export function createHost(options: HostOptions = {}): Host {
   const noPlugins = options.noPlugins ?? false;
 
   const keymap = new KeymapStore(layout);
+  const keymapView = mapStore(keymap, (map): readonly KeymapEntry[] =>
+    Object.entries(map).map(([id, b]) => ({
+      id,
+      label: b.label,
+      group: b.group,
+      ...(b.when !== undefined ? { when: b.when } : {}),
+      keys: [...b.keys],
+      ...(b.shift !== undefined ? { shift: b.shift } : {}),
+      ...(b.alt !== undefined ? { alt: b.alt } : {}),
+      locked: Boolean(b.locked),
+      ...(b.plugin !== undefined ? { plugin: b.plugin } : {}),
+    })),
+  );
+  const actions = new ActionTable();
+  const actionsService: ActionsService = { run: (id) => actions.run(id), ids: () => actions.ids() };
   const slots = new SlotStore();
   const panels = new PanelStore();
   const commands = new CommandTable();
@@ -127,6 +147,8 @@ export function createHost(options: HostOptions = {}): Host {
     settings: pluginSettings(settings, manifest.id),
     storage: pluginStorage(storage, manifest.id),
     midi,
+    keymap: keymapView,
+    actions: actionsService,
     slots: { add: (slot, item) => subscriptions.add(slots.add(slot, item)) },
     panels: { open: (panel) => subscriptions.add(panels.open(panel)) },
     subscriptions,
@@ -138,6 +160,11 @@ export function createHost(options: HostOptions = {}): Host {
     isEnabled: (id) => isPluginEnabled(settings, id),
     persistEnabled: (id, on) => setPluginEnabled(settings, id, on),
     contributeKeybindings: (pluginId, bindings) => keymap.contribute(pluginId, bindings),
+    declareSlotItems: (pluginId, items) => {
+      const store = new DisposableStore();
+      for (const item of items) store.add(slots.declare({ ...item, pluginId }));
+      return store;
+    },
     commands,
     createContext,
     report: notice,
@@ -158,6 +185,8 @@ export function createHost(options: HostOptions = {}): Host {
     apiVersion: options.apiVersion ?? API_VERSION,
     noPlugins,
     keymap,
+    keymapView,
+    actions,
     slots,
     panels,
     registry,
@@ -187,9 +216,18 @@ const detectNoPlugins = (): boolean => {
   }
 };
 
-/** The application's host. Built-in plugins registered; onStartup fired. */
+/** True on a touch-first device: the host fires onPointer:coarse for plugins that open by themselves there (the on-screen keyboard). */
+const coarsePointer = (): boolean => {
+  try {
+    return typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches;
+  } catch {
+    return false;
+  }
+};
+
+/** The application's host. Built-in plugins registered; the startup events fired: onStartup, then onPointer:coarse on a touch device. */
 export const host: Host = createHost({ noPlugins: detectNoPlugins(), plugins: BUILTIN_PLUGINS });
-void host.fire("onStartup");
+void host.fire("onStartup").then(() => (coarsePointer() ? host.fire("onPointer:coarse") : undefined));
 if (typeof window !== "undefined" && (import.meta.env.DEV || "__TAURI__" in window)) (window as unknown as Record<string, unknown>).__HOST__ = host;
 
 export { memorySettings };
@@ -201,4 +239,6 @@ export { toCommand } from "./messages";
 export { HostMidiService, webMidiBackend, shellMidiBackend, noMidiBackend, detectMidiBackend, parseNoteMessage } from "./midi";
 export type { MidiBackend } from "./midi";
 export { MidiSink, NOTE_ON, NOTE_OFF } from "./midiSink";
+export { ActionTable, rule, gate, modal, isMod } from "./actions";
+export type { ActionStep, ActionRule, KeyEvent, Outcome } from "./actions";
 export { confirmDialog, tauriInvoke } from "./shell";

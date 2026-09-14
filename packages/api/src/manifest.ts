@@ -29,8 +29,15 @@ export type HostCapability = "midi" | "workspace" | "playback";
 
 export const HOST_CAPABILITIES: readonly HostCapability[] = ["midi", "workspace", "playback"];
 
-/** UI slots a plugin may place an item in. Panels are a separate mechanism. */
-export type SlotName = "header" | "statusBar" | "menu";
+/**
+ * UI slots a plugin may place an item in. `header` is the first header row
+ * (tabs, view toggle); `docHeader` the second (title, tempo, and the player
+ * in page view — where a playback plugin's controls go); `statusBar` the
+ * bottom bar; `menu` the battuta menu. Panels are a separate mechanism.
+ */
+export type SlotName = "header" | "docHeader" | "statusBar" | "menu";
+
+export const SLOT_NAMES: readonly SlotName[] = ["header", "docHeader", "statusBar", "menu"];
 
 export type KeyboardLayout = "qwerty" | "azerty";
 
@@ -60,9 +67,33 @@ export interface KeybindingContribution {
   layouts?: Partial<Record<KeyboardLayout, { keys: string[]; shift?: boolean }>>;
 }
 
+/**
+ * A slot item DECLARED in the manifest rather than added at runtime: the
+ * host renders it before the plugin's code has ever loaded, and clicking
+ * it runs one of the plugin's commands — which is what activates the
+ * plugin. This is how a plugin's UI gets an entry point: a button that
+ * opens a panel cannot be contributed by the panel's own code, or it would
+ * not be there to open it. Runtime `ctx.slots.add` stays the way to
+ * contribute an item that needs live state.
+ */
+export interface SlotItemContribution {
+  /** Stable within the plugin. */
+  id: string;
+  slot: SlotName;
+  /** The item's face: an emoji or a very short label. */
+  label: string;
+  /** Tooltip. */
+  title?: string;
+  /** Run on click; must be one of the plugin's own `commands`. */
+  command: string;
+  /** Lower renders first among the slot's items. */
+  order?: number;
+}
+
 export interface PluginContributions {
   commands?: CommandContribution[];
   keybindings?: KeybindingContribution[];
+  slotItems?: SlotItemContribution[];
 }
 
 export interface PluginManifest {
@@ -116,6 +147,12 @@ export function validateManifest(input: unknown): string[] {
         else if (commandIds.has(c.id)) problems.push(`duplicate command id ${c.id}`);
         else commandIds.add(c.id);
         if (!c || typeof c.title !== "string" || !c.title.trim()) problems.push(`command ${c?.id ?? "?"} needs a title`);
+      }
+      for (const it of contributes.slotItems ?? []) {
+        if (!it || typeof it.id !== "string" || !it.id.trim()) problems.push("every slot item needs an id");
+        if (!it || typeof it.label !== "string" || !it.label.trim()) problems.push(`slot item ${it?.id ?? "?"} needs a label`);
+        if (!it || !SLOT_NAMES.includes(it.slot)) problems.push(`slot item ${it?.id ?? "?"} needs a slot of ${SLOT_NAMES.join(", ")} (got ${JSON.stringify(it?.slot)})`);
+        if (!it || typeof it.command !== "string" || !commandIds.has(it.command)) problems.push(`slot item ${it?.id ?? "?"} must name one of the plugin's own commands`);
       }
       for (const k of contributes.keybindings ?? []) {
         if (!k || typeof k.command !== "string" || !commandIds.has(k.command)) problems.push(`keybinding ${JSON.stringify(k?.command)} must name one of the plugin's own commands`);

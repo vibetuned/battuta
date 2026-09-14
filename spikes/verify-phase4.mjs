@@ -153,9 +153,13 @@ check("another p re-adds piano", JSON.stringify(await dynVal()) === JSON.stringi
 // reflow while renders settle) — click by id and verify the caret took.
 const clickEvent = async (id) => {
   for (let tries = 0; tries < 5; tries++) {
-    await page.locator(`g[id="${id}"] use`).first().click({ force: true });
+    // The click itself can lose its target to a tile re-render ("Element
+    // is not visible"): treat that like a missed wait and retry.
     const ok = await page
-      .waitForFunction((want) => document.querySelector("main").dataset.caret === want, id, { timeout: 1500 })
+      .locator(`g[id="${id}"] use`)
+      .first()
+      .click({ force: true, timeout: 2000 })
+      .then(() => page.waitForFunction((want) => document.querySelector("main").dataset.caret === want, id, { timeout: 1500 }))
       .catch(() => null);
     if (ok) return;
   }

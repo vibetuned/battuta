@@ -59,7 +59,7 @@ the same stance DESIGN.md takes on Rust.
 | `lanes` | a typed text lane at the caret: grammar, suggestions, commit → command, advance rule | harmony + lyrics lanes in `App.tsx` (the "harm-lane mechanism"), generalised |
 | `formats` | import/export entries with a converter worker | `formats.ts` table + `convertWorker.ts` — already a single source of truth with a pinning test |
 | `overlays` | a per-tile draw hook on the interaction overlay, given the tile's bbox, id → bbox map, effective context and timemap | the caret/selection overlay; **this is the point Phases 6 and 7 need** (ghost piano roll, facsimile strips, confidence tint) |
-| `statusBar` / `menu` / `header` | items in the three UI slots | the six status-bar selects, the battuta menu, the player row |
+| `header` / `docHeader` / `statusBar` / `menu` | items in the four UI slots, added at runtime or **declared in the manifest** (the host renders a declared item before the plugin's code loads; the click activates it — decided 2026-09-14 for the 🎹) | the six status-bar selects, the battuta menu, the player row (`docHeader` is where slice 7's controls go) |
 | `panels` | a side/bottom panel (React node behind a slot) | none yet — first consumers: the on-screen keyboard (bottom), the folder view (side); later reference-track solo/mute, flagged-element lists |
 | `playback` | a `MidiSink`-style output, or a shaping hook on `PlaybackShaping` | `midiOut.ts`, `playback.ts` — the sink talks to the host MIDI service (below), never to Web MIDI or the bridge directly |
 | `documentHooks` | `onOpen` / `beforeSave` / `onExternalChange` | session restore, external-change guard in `session.ts` |
@@ -145,12 +145,45 @@ exactly one thing: the MIDI service leaves the host skeleton (nothing
 needs it before the on-screen keyboard, and a host-service extraction
 should be judged on its own), and the two lanes become two slices
 (lyrics defines the point, harmony confirms it and deletes the old
-path). Ten slices; the estimates are the original ones, shared across
-the split halves. Every slice carries the same six blocks.
+path). The keyboard slice split again after its first attempt (below):
+a host slice, *core actions by id*, precedes the plugin. Every slice
+carries the same six blocks plus two added on 2026-09-14:
+
+- **API may grow.** The exact api exports the slice may add — and, for
+  a host slice, the host modules. Anything not listed is not the
+  slice's to add: the api's surface and the host's module list are the
+  user's (`apps/editor/test/host-boundaries.test.ts` fails a new host
+  module; `api-report.mjs` refuses a surface change without an approved
+  version bump). *None* means none.
+- **Stop when.** The condition under which the slice is left OPEN with
+  the gap written into BUILDING.md §7 and the CHANGELOG, and reported.
+  An open slice with a precise gap is a success; a closed slice with a
+  widened contract is a failure. Stopping must be the cheapest
+  compliant action.
+
+**Who does which slice.** Host slices — the skeleton (1), the MIDI
+service (3), core actions by id (4a), and any future host module — are
+done in-house, with the user. Plugin slices (2, 4b, 5–10) are handed to
+context-free sessions on purpose, to test the briefs; a plugin slice
+never adds a host module or a host service.
 
 **Progress.** Slice 1 closed 2026-09-12, **slice 2 closed 2026-09-14**,
 **slice 3 closed 2026-09-14** (their bullets in CHANGELOG.md under
-0.1.0 — unreleased); slice 4 is next.
+0.1.0 — unreleased). **Slice 4 was attempted by a context-free agent on
+2026-09-14 and rolled back**: every gate green, and a host service, an
+event-forging `press()`, fourteen api exports and a new binding the
+brief never named — plus the conventions file edited to admit them.
+`packages/plugins/onscreen-keyboard/POSTMORTEM-2026-09-14.md` is the
+account and the review; the measures it asked for are in place (the
+*API may grow* / *Stop when* blocks above, the host boundary test, the
+keymap snapshot, `--unpublished` withdrawn). Its e2e script survived,
+restored to the in-App panel: `verify-onscreen-keyboard.mjs`, 24 checks.
+**Slice 4a closed 2026-09-14** (in-house): the dispatcher is a table,
+`ctx.keymap` and `ctx.actions.run(id)` / `ids()` are the door.
+**Slice 4b, the keyboard plugin, is next.** Its entry point is decided
+and built: slots belong to the host, the 🎹 is a manifest-declared item
+in the header slot, and the second header row has a slot of its own
+(`docHeader`) for the player when slice 7 moves it.
 From here on slices are
 handed to sessions without the surrounding context, on purpose, to test
 whether the briefs and `packages/plugins/README.md` hold on their own.
@@ -291,36 +324,104 @@ with `--unpublished`); the CHANGELOG bullet.
 bridge behave as in 0.0.3, and `App.tsx` no longer imports Web MIDI or
 the bridge.
 
-#### Slice 4 — On-screen keyboard (≈1 week)
+#### Slice 4a — Core actions by id (host, in-house; ≈3 days)
+
+**Delivers.** The App's key dispatcher becomes a table `actionId →
+handler`. Every keymap action already has an id; every locked physical
+and system key gets one (`nav.left`, `nav.home`, `edit.delete`,
+`edit.backspace`, `edit.escape`, `file.save`, `file.open`, `undo`,
+`redo`, `clipboard.copy`, `clipboard.paste`, `zoom.in`, `duration.4`,
+`pitch.c`, `chord.e`, `finger.3`, `volta.2`, `measure.insert`, …), so
+the keymap maps keys to actions the way VSCode maps keybindings to
+commands. `keyMatches` selects the id; the table runs it. Plugin
+commands already run by id (`runCommand`); this gives core actions the
+same door. The api grows two published, finite things: `ctx.keymap`
+(read-only store: id, label, group, when, keys, locked, plugin) and
+`ctx.actions.run(id)`. No `press()`, nothing that forges events — an
+input surface that runs ids cannot do anything the host has not named.
+
+**Proves.** That the on-screen keyboard needs no pass-through, and that
+the phase's metric can move for real: the dispatcher's matching leaves
+`App.tsx` for the host; the branch bodies follow in later slices.
+
+**Leaves `App.tsx`.** The `hit(id) && …` matching chain (the bodies
+become table entries; the table lives in the host).
+
+**API may grow.** `ctx.keymap`, `ctx.actions.run(id)`; host module
+`actions.ts` (added to `HOST_MODULES`). Nothing else. *(As built:
+`ctx.actions.ids()` was added too, so a projection can check its buttons
+against the live list; recorded in the CHANGELOG.)*
+
+**Stop when.** An action cannot be given an id without changing what a
+key does. (None is expected; the locked groups are finite.)
+
+**Gates.** Every e2e script unchanged, including
+`verify-onscreen-keyboard.mjs` (24 checks, against the in-App panel);
+the union keymap snapshot byte-identical; host tests for the table (every
+keymap id and every locked key has a handler; `run(id)` takes the same
+path as the key).
+
+**Documents.** CHANGELOG bullet; DESIGN.md note (keys bind actions);
+the conventions' data-contract table gains the two rows.
+
+**Done when.** Every key the App handles goes through the table, and
+`ctx.actions.run(id)` runs the same code as the key would.
+
+**Closed 2026-09-14.** Both hold; all six e2e scripts and the shell
+smoke green, the keymap snapshot unchanged. `App.tsx` 3,274 → 3,241.
+The CHANGELOG bullet has the vocabulary and the one addition beyond the
+brief (`ids()`).
+
+#### Slice 4b — On-screen keyboard (plugin; ≈1 week)
 
 **Delivers.** `packages/plugins/onscreen-keyboard`: the panel
-(`VirtualKeyboard.tsx`, `virtualKeys.ts`) as a `panels` consumer with
-its 🎹 toggle in the `header` slot, activated on `onPointer:coarse`
-(or the toggle). The piano half registers as a **virtual MIDI input**
-named "on-screen piano", so it reaches the entry path through the same
-door as a hardware controller and the host has exactly one input kind.
+(`VirtualKeyboard.tsx`, `virtualKeys.ts`) as a `panels` consumer, a
+projection of `ctx.keymap`: buttons run `ctx.actions.run(id)`, latched
+modifiers select the *variant* id (`MOD_VARIANTS` already maps base →
+variant), ctrl chords are ids, and the piano is the virtual MIDI input
+slice 3 registered (`ctx.midi.registerInput("on-screen piano")`). Its
+coverage test moves into the plugin's suite and runs against the union
+keymap, so an unreachable binding from *any* plugin fails CI. Opens on
+`onPointer:coarse` (the host fires it) and from the 🎹 toggle.
 
-**Proves.** `panels`, `header`, activation on a pointer event, and
-`registerInput`. The panel projects the **union** keymap — a binding
-contributed by any plugin, activated at any time, gets its button.
+**Proves.** `panels`, `header`, activation on a pointer event, the two
+doors from 4a and 3 — and that a UI plugin needs no service.
 
-**Leaves `App.tsx`.** The keyboard's mount, the `vkeys` setting, the
-coarse-pointer default.
+**Leaves `App.tsx`.** The keyboard's mount, the `vkeys` setting (moved
+once into the plugin's namespace by a dated list in `settings.ts`), the
+coarse-pointer default, the 🎹 button.
 
-**Gates.** `apps/editor/test/virtualKeys.test.ts` moves into the
-plugin's suite but runs against the union keymap, so an unreachable
-binding from *any* plugin still fails CI. No committed e2e drives the
-panel today: the slice adds one first (a tapped action key, a tapped
-piano note reaching the entry path). `verify-phase4.mjs` and
-`verify-phase5.mjs` unchanged.
+**API may grow.** **None.** The entry point is decided and built
+(2026-09-14, in-house): the 🎹 is a manifest-declared slot item in the
+`header` slot — `contributes.slotItems: [{ id, slot: "header", label:
+"🎹", command }]` — which the host renders before the plugin's code
+loads; the click runs the command, which activates the plugin. No new
+activation-event kind, no `activatedBy`, no keyboard service, no new
+binding (the union keymap snapshot must not change), no new host module.
+The panel opens on `onPointer:coarse` — which the HOST fires at startup
+on a coarse pointer (a one-line addition to the host's startup, in-house
+before the slice, since firing it is the host's job) — and from the
+toggle; whether it is open is the plugin's own setting.
 
-**Documents.** The plugin's two documents; the guide's virtual-keyboard
-page unchanged in content, plus its plugins-page row; the CHANGELOG
-bullet.
+**Stop when.** The panel needs any capability beyond `ctx.keymap`,
+`ctx.actions.run` / `ids`, `ctx.midi.registerInput`, `ctx.panels`,
+`ctx.settings`, `ctx.editor` and the declared slot item. Write the gap;
+do not resolve it.
+
+**Gates.** The coverage suite over the union keymap;
+`verify-onscreen-keyboard.mjs` with only its two design-dependent hooks
+changed (the toggle's selector, the open flag's location) — every
+assertion identical; the keymap snapshot unchanged; the boundary tests;
+`verify-phase4.mjs` and `verify-phase5.mjs` unchanged.
+
+**Documents.** The plugin's two documents (its BUILDING.md §7 starts
+from `onscreen-keyboard/POSTMORTEM-2026-09-14.md`'s traps); the guide's
+virtual-keyboard page unchanged in content plus its plugins-page row;
+the CHANGELOG bullet.
 
 **Done when.** Every coverage test passes against the union keymap;
-turning the plugin off removes the panel and the 🎹 button live;
-touch entry is byte-identical to 0.0.3.
+turning the plugin off removes the panel and the 🎹 live; touch entry is
+byte-identical to 0.0.3.
 
 #### Slice 5 — Lyrics lane (≈3 days)
 
@@ -572,7 +673,7 @@ template alone. From slice 2 the docs drift check fails a
 
 ### Exit criteria
 
-1. The ten slices above shipped, one at a time, each closed by its
+1. The slices above shipped, one at a time, each closed by its
    documents; `App.tsx` holds only the host
    (tiles, caret, selection, command execution, slots) — target under
    1,000 lines. Live file watching, open since 0.0.2, ships inside the

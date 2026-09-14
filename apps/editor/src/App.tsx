@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent a
 import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, isHarmText, harmSuggestions, HARM_CHARS, type HarmKind, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
 import { RenderPool, type TileResult } from "./render/renderPool";
 import { keyMatches, type Keymap, type Layout } from "./keymap";
-import { host, useStore, Slot, Panels, confirmDialog, tauriInvoke, blockOfEvents } from "./host";
+import { host, useStore, Slot, Panels, confirmDialog, tauriInvoke, blockOfEvents, rule, gate, modal, isMod, type ActionStep, type KeyEvent, type Outcome } from "./host";
 import { ShortcutEditor } from "./ShortcutEditor";
 import { loadSettings, saveSettings, detectLayout } from "./settings";
 import { scorePlayer, type PlayerState } from "./player";
@@ -516,6 +516,11 @@ export default function App() {
   /** The host's reactive keymap: core bindings ∪ what enabled plugins contribute. */
   const keymap: Keymap = useStore(host.keymap);
   const plugins = useStore(host.registry);
+  /** A manifest-declared slot item was clicked: running its command is what
+   * loads the plugin behind it (the registry fires onCommand:). */
+  const runPluginCommand = useCallback((commandId: string) => {
+    void host.registry.runCommand(commandId);
+  }, []);
   const setLayout = (l: Layout) => {
     setLayoutState(l);
     saveSettings({ layout: l });
@@ -1391,67 +1396,203 @@ export default function App() {
     return () => host.bindSession(null);
   }, [session, afterCommand]);
 
-  // Keyboard: navigation, selection, edits, undo/redo.
+  // Keyboard: navigation, selection, edits, undo/redo — as an ACTION TABLE.
+  // Every branch of the old if-chain is a rule with an id (host/actions.ts),
+  // in the old order, because the order is behaviour: a key may match
+  // several rules and the first whose state condition holds wins. A
+  // physical press walks the table; ctx.actions.run(id) walks the same
+  // table without the key, so an input surface (the on-screen keyboard)
+  // reaches exactly what a key reaches, under the same conditions.
   useEffect(() => {
-    if (!session) return;
-    const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
-      if (shortcutsOpen) return; // the shortcut editor owns the keyboard
-      const mod = e.ctrlKey || e.metaKey;
-      const hit = (id: string) => keyMatches(keymap[id], e);
-      // Either input serves every action: the run for event-shaped ones
-      // (from a single-staff block when there is no shift-run), the block
-      // for measure-shaped ones (bounding the shift-run when not dragged).
-      const run = selectionRef.current.length ? selectionRef.current : runFromBlock();
-      const bsel = blockRef.current ?? blockFromSelection();
+    if (!session) {
+      host.actions.install([], () => false);
+      return;
+    }
+    const hit = (id: string, e: KeyEvent) => keyMatches(keymap[id], e);
+    // Either input serves every action: the run for event-shaped ones
+    // (from a single-staff block when there is no shift-run), the block
+    // for measure-shaped ones (bounding the shift-run when not dragged).
+    const runOf = () => (selectionRef.current.length ? selectionRef.current : runFromBlock());
+    const bselOf = () => blockRef.current ?? blockFromSelection();
+    /** The event a mark applies to: the just-entered note in input mode, else the caret's. */
+    const targetOf = () => (entryMode && lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId);
+    /** Non-null below the caret gate; the rules above it never read it. */
+    const c = caret as CaretPosition;
+    const refused = (what: string, err: unknown) => setNotice(`${what} refused: ${err instanceof Error ? err.message : err}`);
+    /** Single markings (tester round): try, re-render, clear the notice. */
+    const markTry = (fn: () => void, what: string): Outcome => {
+      try {
+        fn();
+        afterCommand(session);
+        setNotice(null);
+      } catch (err) {
+        refused(what, err);
+      }
+      return "handled";
+    };
+    const entryNotice = "note input: a–g pitch · shift+A–G chord · 1–7 duration · esc exit · all keys under 🌣";
+    const DUR: Record<string, string> = { "7": "1", "6": "2", "5": "4", "4": "8", "3": "16", "2": "32", "1": "64" };
+    const PITCHES = ["a", "b", "c", "d", "e", "f", "g"] as const;
+    const digitOf = (e: KeyEvent, range: string): string | undefined => new RegExp(`^(?:Digit|Numpad)([${range}])$`).exec(e.code)?.[1];
 
-      if (mod && e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        if (e.shiftKey ? session.stack.canRedo : session.stack.canUndo) {
-          e.shiftKey ? session.redo() : session.undo();
+    // --- row-level navigation (DOM rows = engraved systems) ---
+    /** Slots (staff, voice) of a measure, in traversal order. */
+    const slotsOf = (mi: number): { staffN: number; layerN: number }[] => {
+      const slots: { staffN: number; layerN: number }[] = [];
+      for (const staffN of session.index.stavesPerMeasure.get(mi) ?? []) {
+        for (const layerN of session.index.layersPerStaff.get(`${mi}/${staffN}`) ?? []) slots.push({ staffN, layerN });
+      }
+      return slots;
+    };
+    /** The caret's slot in the target measure, else the edge slot. */
+    const nearSlot = (mi: number, edge: 1 | -1): { staffN: number; layerN: number } | undefined => {
+      const slots = slotsOf(mi);
+      return slots.find((s) => s.staffN === c.staffN && s.layerN === c.layerN) ?? (edge === 1 ? slots[0] : slots[slots.length - 1]);
+    };
+    const rowOfMeasure = (mi: number): Element | null => mainRef.current?.querySelector(`.tile[data-index="${mi}"]`)?.closest(".score-row") ?? null;
+    const rowMeasures = (row: Element): number[] => [...row.querySelectorAll<HTMLElement>(".tile[data-index]")].map((t) => Number(t.dataset["index"]));
+    /**
+     * Cross to the adjacent engraved row: the measure under the caret's x,
+     * nearest event. Slot: "edge" = top slot going down / bottom coming up
+     * (the ↓/↑ text-editor continuation); "same" = keep the caret's
+     * staff+voice when the target measure has it (PageUp/PageDown).
+     */
+    const lineJump = (dir: 1 | -1, pick: "edge" | "same"): CaretPosition | null => {
+      const main = mainRef.current;
+      const caretG = caretId ? main?.querySelector(`g[id="${CSS.escape(caretId)}"]`) : null;
+      const anchorEl = caretG ?? main?.querySelector(`.tile[data-index="${c.measureIndex}"]`);
+      const row = rowOfMeasure(c.measureIndex);
+      const rows = main ? [...main.querySelectorAll(".score-row")] : [];
+      const r = row ? rows.indexOf(row) : -1;
+      const targetRow = r >= 0 ? rows[r + dir] : undefined;
+      if (!targetRow || !anchorEl) return null;
+      const x = anchorEl.getBoundingClientRect().left;
+      let best: { m: number; d: number } | null = null;
+      for (const t of targetRow.querySelectorAll<HTMLElement>(".tile[data-index]")) {
+        const tr = t.getBoundingClientRect();
+        const d = x >= tr.left && x <= tr.right ? 0 : Math.min(Math.abs(x - tr.left), Math.abs(x - tr.right));
+        if (!best || d < best.d) best = { m: Number(t.dataset["index"]), d };
+      }
+      if (!best) return null;
+      const slots = slotsOf(best.m);
+      const slot = pick === "same" ? nearSlot(best.m, dir) : dir === 1 ? slots[0] : slots[slots.length - 1];
+      if (!slot) return null;
+      const events = session.index.eventsAt(best.m, slot.staffN, slot.layerN);
+      if (!events.length) return null;
+      // nearest event to the caret's x within the target measure
+      let ei = 0;
+      let bd = Infinity;
+      events.forEach((id, i) => {
+        const g = main?.querySelector(`g[id="${CSS.escape(id)}"]`);
+        if (!g) return;
+        const d = Math.abs(g.getBoundingClientRect().left - x);
+        if (d < bd) {
+          bd = d;
+          ei = i;
+        }
+      });
+      return { measureIndex: best.m, staffN: slot.staffN, layerN: slot.layerN, eventIndex: ei };
+    };
+    const moveCaret = (next: CaretPosition) => {
+      anchor.current = null;
+      setSelection([]);
+      lastEntered.current = null; // caret moved
+      setCaret(next);
+    };
+    /** alt+1..5 SETS fingering (same number again removes); with shift ADDS one more finger (chords, substitutions). */
+    const fingerSet = (fing: string, add: boolean): Outcome => {
+      const target = targetOf();
+      if (!target) return "declined";
+      try {
+        session.toggleFing(target, fing, add);
+        afterCommand(session);
+        setNotice(null);
+      } catch (err) {
+        refused("fingering", err);
+      }
+      return "handled";
+    };
+    /** alt+6..0 = CHANGE of finger on the same note ("3-1"); needs a plain fingering to change from. */
+    const fingerChange = (finger: string): Outcome => {
+      const target = targetOf();
+      if (!target) return "declined";
+      const texts = session.fingAt(target);
+      const single = texts.length === 1 ? /^([1-5])(?:-([1-5]))?$/.exec(texts[0]!) : null;
+      if (!single) {
+        setNotice(`finger change refused: ${texts.length ? `"${texts.join(",")}" is not a single plain fingering` : "set a starting finger first (alt+1..5)"}`);
+        return "handled";
+      }
+      const [, from, to] = single;
+      try {
+        if (to === finger) session.toggleFing(target, from!, false); // same key: substitution off
+        else if (from === finger && !to) setNotice("finger change refused: same finger as the start");
+        else session.toggleFing(target, `${from}-${finger}`, false);
+        afterCommand(session);
+      } catch (err) {
+        refused("finger change", err);
+      }
+      return "handled";
+    };
+    const arrowNav = (dir: 1 | -1, extend: boolean): Outcome => {
+      const next = dir === 1 ? caretRight(session.index, session.score, c) : caretLeft(session.index, session.score, c);
+      if (!next) return "handled";
+      if (extend) {
+        if (!anchor.current) anchor.current = c;
+        setSelection(eventRange(session.index, session.score, anchor.current, next));
+      } else {
+        anchor.current = null;
+        setSelection([]);
+      }
+      lastEntered.current = null; // caret moved: post-entry modifiers follow it
+      setCaret(next);
+      return "handled";
+    };
+    /** alt+↑/↓ = step, alt+shift+↑/↓ = octave, on the edit targets. dir: musical, up = higher. */
+    const transpose = (dir: 1 | -1, octave: boolean): Outcome => {
+      const ids = editTargets();
+      if (!ids.length) return "handled";
+      octave ? session.transposeOctave(ids, dir) : session.transposeStep(ids, dir);
+      afterCommand(session);
+      return "handled";
+    };
+    /** Accidentals outside input mode (or with nothing just entered): on the edit targets, no notice. */
+    const accidOnTargets = (accid: "s" | "f" | "n"): Outcome => {
+      const ids = editTargets();
+      if (!ids.length) return "declined";
+      if (ids.length === 1 && openAccidPicker(ids[0]!, accid)) return "handled";
+      session.toggleAccidental(ids, accid);
+      afterCommand(session);
+      return "handled";
+    };
+
+    const steps: ActionStep[] = [
+      // The shortcut editor owns the keyboard — for plugins' run(id) too.
+      gate(() => shortcutsOpen),
+      // --- system chords and numpad structure: no caret needed ---
+      rule("undo", (e) => isMod(e) && e.key.toLowerCase() === "z" && !e.shiftKey, () => {
+        if (session.stack.canUndo) {
+          session.undo();
           afterCommand(session);
         }
-        return;
-      }
-      if (mod && (e.key === "+" || e.key === "=")) {
-        e.preventDefault(); // never the browser's page zoom
-        zoomStep(1);
-        return;
-      }
-      if (mod && e.key === "-") {
-        e.preventDefault();
-        zoomStep(-1);
-        return;
-      }
-      if (mod && e.key === "0") {
-        e.preventDefault();
-        setZoom(DEFAULT_ZOOM);
-        return;
-      }
-      if (mod && e.key.toLowerCase() === "s") {
-        e.preventDefault(); // the browser's own save dialog must never win
-        saveActive(e.shiftKey);
-        return;
-      }
-      if (mod && e.key.toLowerCase() === "o") {
-        e.preventDefault();
-        openScore();
-        return;
-      }
-      if (mod && e.key.toLowerCase() === "y") {
-        e.preventDefault();
+        return "handled";
+      }),
+      rule("redo", (e) => isMod(e) && ((e.key.toLowerCase() === "z" && e.shiftKey) || e.key.toLowerCase() === "y"), () => {
         if (session.stack.canRedo) {
           session.redo();
           afterCommand(session);
         }
-        return;
-      }
-      if (mod && e.key.toLowerCase() === "c") {
+        return "handled";
+      }),
+      rule("zoom.in", (e) => isMod(e) && (e.key === "+" || e.key === "="), () => (zoomStep(1), "handled")), // never the browser's page zoom
+      rule("zoom.out", (e) => isMod(e) && e.key === "-", () => (zoomStep(-1), "handled")),
+      rule("zoom.reset", (e) => isMod(e) && e.key === "0", () => (setZoom(DEFAULT_ZOOM), "handled")),
+      rule("file.save", (e) => isMod(e) && e.key.toLowerCase() === "s" && !e.shiftKey, () => (saveActive(false), "handled")), // the browser's own save dialog must never win
+      rule("file.saveAs", (e) => isMod(e) && e.key.toLowerCase() === "s" && e.shiftKey, () => (saveActive(true), "handled")),
+      rule("file.open", (e) => isMod(e) && e.key.toLowerCase() === "o", () => (openScore(), "handled")),
+      rule("clipboard.copy", (e) => isMod(e) && e.key.toLowerCase() === "c", () => {
         // Copy the block selection (falls back to the caret's measure×staff).
-        const b = bsel ?? (caret ? normalizeBlock({ measureIndex: caret.measureIndex, staffN: caret.staffN }, { measureIndex: caret.measureIndex, staffN: caret.staffN }) : null);
-        if (!b) return;
-        e.preventDefault();
+        const b = bselOf() ?? (caret ? normalizeBlock({ measureIndex: caret.measureIndex, staffN: caret.staffN }, { measureIndex: caret.measureIndex, staffN: caret.staffN }) : null);
+        if (!b) return "declined";
         const frag = session.copyBlock(b);
         if (frag) {
           sharedClipboard = frag;
@@ -1459,17 +1600,17 @@ export default function App() {
           setNotice(`copied ${frag.measureCount} measure(s) × ${frag.staves.length} staff/staves`);
           void navigator.clipboard?.writeText(fragmentToText(frag)).catch(() => undefined);
         }
-        return;
-      }
-      if (mod && e.key.toLowerCase() === "v") {
+        return "handled";
+      }),
+      rule("clipboard.paste", (e) => isMod(e) && e.key.toLowerCase() === "v", () => {
         // Replace-measures paste at the block corner or the caret.
+        const bsel = bselOf();
         const target = bsel ? { measureIndex: bsel.measureFrom, staffN: bsel.staffFrom } : caret ? { measureIndex: caret.measureIndex, staffN: caret.staffN } : null;
-        if (!target || !sharedClipboard) return;
-        e.preventDefault();
+        if (!target || !sharedClipboard) return "declined";
         const plan = session.planPaste(sharedClipboard, target.measureIndex, target.staffN);
         if (!plan.ok) {
           setNotice(`paste refused: ${plan.reason}`);
-          return;
+          return "handled";
         }
         const clip = sharedClipboard;
         const doPaste = () => {
@@ -1479,68 +1620,60 @@ export default function App() {
         };
         if (plan.warnings.length) {
           void confirmDialog(`Paste with differences?\n\n${plan.warnings.join("\n")}`).then((ok) => ok && doPaste());
-          return;
+          return "handled";
         }
         doPaste();
-        return;
-      }
-      if (hit("contextBar")) {
-        e.preventDefault();
-        const first = document.querySelector<HTMLSelectElement>("[data-statusbar] select.sbsel:not(:disabled)");
-        first?.focus();
-        return;
-      }
-      // Numpad +/−/* mirror the +m/−m/⧉m buttons (physical codes: layout-proof).
-      if (!mod && (e.code === "NumpadAdd" || e.code === "NumpadSubtract" || e.code === "NumpadMultiply")) {
-        e.preventDefault();
-        structural(e.code === "NumpadAdd" ? "insert" : e.code === "NumpadSubtract" ? "delete" : "duplicate");
-        return;
-      }
-      if (!caret) return;
+        return "handled";
+      }),
+      rule("contextBar", (e) => hit("contextBar", e), () => {
+        document.querySelector<HTMLSelectElement>("[data-statusbar] select.sbsel:not(:disabled)")?.focus();
+        return "handled";
+      }),
+      // Numpad +/−/* — physical codes: layout-proof.
+      rule("measure.insert", (e) => !isMod(e) && e.code === "NumpadAdd", () => (structural("insert"), "handled")),
+      rule("measure.delete", (e) => !isMod(e) && e.code === "NumpadSubtract", () => (structural("delete"), "handled")),
+      rule("measure.duplicate", (e) => !isMod(e) && e.code === "NumpadMultiply", () => (structural("duplicate"), "handled")),
+      // Everything below needs a caret — plugin bindings included, as before.
+      gate(() => !caret),
 
       // --- note input mode: letters enter, digits set duration ---
-      // The Insert key toggles input mode in both directions (i only
-      // enters; inside the mode "i" stays available to future bindings).
-      // NumLock off makes numpad-0 arrive as key "Insert" (code Numpad0):
-      // in input mode that key means REST (handled below), not mode toggle.
-      if (e.key === "Insert" && !mod && !(entryMode && e.code === "Numpad0")) {
-        e.preventDefault();
+      // Insert toggles input mode in both directions (i only enters; inside
+      // the mode "i" stays available to future bindings). NumLock off makes
+      // numpad-0 arrive as key "Insert" (code Numpad0): in input mode that
+      // key means REST (below), not mode toggle.
+      rule("entry.toggle", (e) => e.key === "Insert" && !isMod(e) && !(entryMode && e.code === "Numpad0"), () => {
         setEntryMode(!entryMode);
-        setNotice(entryMode ? null : "note input: a–g pitch · shift+A–G chord · 1–7 duration · esc exit · all keys under 🌣");
-        return;
-      }
-      if (!entryMode && hit("inputMode") && !mod) {
-        e.preventDefault();
+        setNotice(entryMode ? null : entryNotice);
+        return "handled";
+      }),
+      rule("inputMode", (e) => hit("inputMode", e) && !isMod(e), () => {
         setEntryMode(true);
-        setNotice("note input: a–g pitch · shift+A–G chord · 1–7 duration · esc exit · all keys under 🌣");
-        return;
-      }
-      if (accidPick) {
-        // The picker owns the keyboard: letter (or number) picks the chord
-        // note, anything else cancels.
+        setNotice(entryNotice);
+        return "handled";
+      }, { when: () => !entryMode }),
+
+      // The picker owns the keyboard: letter (or number) picks the chord
+      // note, anything else cancels.
+      modal(() => !!accidPick, (e) => {
         e.preventDefault();
-        const pick = /^[1-9]$/.test(e.key)
-          ? accidPick.notes[Number(e.key) - 1]
-          : /^[a-g]$/i.test(e.key)
-            ? accidPick.notes.find((n) => n.pname === e.key.toLowerCase())
-            : undefined;
+        const pick = /^[1-9]$/.test(e.key) ? accidPick!.notes[Number(e.key) - 1] : /^[a-g]$/i.test(e.key) ? accidPick!.notes.find((n) => n.pname === e.key.toLowerCase()) : undefined;
+        const { chordId, accid } = accidPick!;
         setAccidPick(null);
         if (pick) {
           try {
-            session.chordNoteAccidental(accidPick.chordId, pick.id, accidPick.accid);
+            session.chordNoteAccidental(chordId, pick.id, accid);
             afterCommand(session);
             setNotice(null);
           } catch (err) {
-            setNotice(`accidental refused: ${err instanceof Error ? err.message : err}`);
+            refused("accidental", err);
           }
         }
-        return;
-      }
-      if (harmLane === "lyrics") {
-        // The lyrics lane owns the keyboard, MuseScore-style: type the
-        // syllable, space/enter commits and advances to the NEXT NOTE
-        // (rests skipped), "-" commits with a continuation hyphen, and
-        // word position (i/m/t) follows from the previous note's state.
+      }),
+      // The lyrics lane owns the keyboard, MuseScore-style: type the
+      // syllable, space/enter commits and advances to the NEXT NOTE (rests
+      // skipped), "-" commits with a continuation hyphen, and word position
+      // (i/m/t) follows from the previous note's state.
+      modal(() => harmLane === "lyrics", (e) => {
         e.preventDefault();
         if (!caret || !caretId) {
           if (e.key === "Escape") setHarmLane(null);
@@ -1580,7 +1713,7 @@ export default function App() {
             setNotice(null);
             return true;
           } catch (err) {
-            setNotice(`lyric refused: ${err instanceof Error ? err.message : err}`);
+            refused("lyric", err);
             return false;
           }
         };
@@ -1610,33 +1743,33 @@ export default function App() {
           setHarmBuffer((b) => b.slice(0, -1));
           return;
         }
-        if (e.key.length === 1 && !mod && !e.altKey) setHarmBuffer((b) => b + e.key);
-        return;
-      }
-      if (harmLane) {
-        // The harmony lane owns the keyboard: a closed grammar of chord
-        // symbols / numerals, Enter commits + advances, Tab autocompletes,
-        // arrows commit + move, Escape leaves the lane.
+        if (e.key.length === 1 && !isMod(e) && !e.altKey) setHarmBuffer((b) => b + e.key);
+      }),
+      // The harmony lane owns the keyboard: a closed grammar of chord
+      // symbols / numerals, Enter commits + advances, Tab autocompletes,
+      // arrows commit + move, Escape leaves the lane.
+      modal(() => !!harmLane, (e) => {
         e.preventDefault();
+        const lane = harmLane as HarmKind;
         if (!caret || !caretId) {
           if (e.key === "Escape") setHarmLane(null);
           return;
         }
         const buf = harmBufRef.current; // ref, not closure: see declaration
         const commit = (): boolean => {
-          const existing = session.harmAt(caretId, harmLane);
+          const existing = session.harmAt(caretId, lane);
           if (buf === existing) return true; // nothing to do
-          if (buf !== "" && !isHarmText(harmLane, buf)) {
-            setNotice(`incomplete ${harmLane === "rna" ? "numeral" : "chord symbol"}: "${buf}"`);
+          if (buf !== "" && !isHarmText(lane, buf)) {
+            setNotice(`incomplete ${lane === "rna" ? "numeral" : "chord symbol"}: "${buf}"`);
             return false;
           }
           try {
-            session.setHarm(caretId, buf, harmLane);
+            session.setHarm(caretId, buf, lane);
             afterCommand(session);
             setNotice(null);
             return true;
           } catch (err) {
-            setNotice(`harmony refused: ${err instanceof Error ? err.message : err}`);
+            refused("harmony", err);
             return false;
           }
         };
@@ -1658,128 +1791,88 @@ export default function App() {
           return;
         }
         if (e.key === "Tab") {
-          const s = harmSuggestions(harmLane, buf)[0];
+          const s = harmSuggestions(lane, buf)[0];
           if (s) setHarmBuffer(s);
           return;
         }
         if (e.key.length === 1) {
           let ch = e.key;
-          if (harmLane === "rna") {
+          if (lane === "rna") {
             if (ch === "o") ch = "°";
             if (ch === "0") ch = "ø";
           }
-          if (HARM_CHARS[harmLane].test(ch)) setHarmBuffer((b) => b + ch);
+          if (HARM_CHARS[lane].test(ch)) setHarmBuffer((b) => b + ch);
         }
-        return;
-      }
-      if (hit("lyrics") && !mod && !e.altKey && !entryMode && caretId) {
-        e.preventDefault();
+      }),
+
+      rule("lyrics", (e) => hit("lyrics", e) && !isMod(e) && !e.altKey, () => {
         setHarmLane("lyrics");
         setNotice("lyrics: type at the caret · space/enter advances · - hyphenates · esc leaves");
-        return;
-      }
-      if (hit("slurDoubleSharp") && !mod) {
-        e.preventDefault();
-        // With a selection: slur between its ends (unchanged). On a single
-        // target: DOUBLE SHARP — shift+s, mirroring plain s (tester ask).
+        return "handled";
+      }, { when: () => !entryMode && !!caretId }),
+      rule("slurDoubleSharp", (e) => hit("slurDoubleSharp", e) && !isMod(e), () => {
+        // With a selection: slur between its ends. On a single target:
+        // DOUBLE SHARP — shift+s, mirroring plain s (tester ask).
+        const run = runOf();
         if (run.length >= 2) {
           try {
             session.toggleSlur(run[0]!, run[run.length - 1]!);
             afterCommand(session);
             setNotice("slur toggled");
           } catch (err) {
-            setNotice(`slur refused: ${err instanceof Error ? err.message : err}`);
+            refused("slur", err);
           }
-          return;
+          return "handled";
         }
-        const target = entryMode && lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId;
-        if (!target) return;
+        const target = targetOf();
+        if (!target) return "handled";
         try {
-          if (openAccidPicker(target, "x")) return;
+          if (openAccidPicker(target, "x")) return "handled";
           session.toggleAccidental([target], "x");
           afterCommand(session);
           setNotice(null);
         } catch (err) {
-          setNotice(`double sharp refused: ${err instanceof Error ? err.message : err}`);
+          refused("double sharp", err);
         }
-        return;
-      }
-      if (!mod && !e.altKey) {
-        // Single markings (tester round). Same target rule as the dot.
-        const target = entryMode && lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId;
-        const markTry = (fn: () => void, what: string) => {
-          e.preventDefault();
+        return "handled";
+      }),
+      // Single markings (tester round). Same target rule as the dot.
+      // marcato: the accent key SHIFTED · staccatissimo: the staccato key
+      // shifted · simile slash: the ù/' key replaces one beat.
+      ...(
+        [
+          ["marcato", (t: string) => session.toggleArtic([t], "marc"), "marcato"],
+          ["staccatissimo", (t: string) => session.toggleArtic([t], "stacciss"), "staccatissimo"],
+          ["fermata", (t: string) => session.toggleMark(t, "fermata"), "fermata"],
+          ["coda", (t: string) => session.toggleMark(t, "coda"), "coda"],
+          ["simile", (t: string) => session.simile(t), "simile"],
+        ] as [string, (t: string) => void, string][]
+      ).map(([id, fn, what]) => rule(id, (e) => hit(id, e) && !isMod(e) && !e.altKey, () => markTry(() => fn(targetOf()!), what), { when: () => !!targetOf() })),
+      // measure repeats: shift on the same key cycles content → % → %% → empty at the caret's voice
+      rule("measureRepeat", (e) => hit("measureRepeat", e) && !isMod(e) && !e.altKey, () => markTry(() => session.measureRepeat(c), "measure repeat")),
+      // attack intensity (I — plain i toggles note input): a dynam cycling sf → sfz → rinf → rfz → off
+      rule("intensity", (e) => hit("intensity", e) && !isMod(e) && !e.altKey, () => markTry(() => session.cycleDynam(targetOf()!, ["sf", "sfz", "rinf", "rfz"]), "intensity"), { when: () => !!targetOf() }),
+      // one key circles the four ornaments: arpeggio (chords) → tremolo → trill → mordent → off
+      rule("ornament", (e) => hit("ornament", e) && !isMod(e) && !e.altKey, () => markTry(() => session.cycleOrnament(targetOf()!), "ornament"), { when: () => !!targetOf() }),
+      rule("tie", (e) => hit("tie", e) && !isMod(e), () => {
+        const run = runOf();
+        if (run.length >= 2) {
+          // Multi-measure tie: the selected run becomes one tie chain
+          // (i/m/t), one undo step; same selection again unties it.
           try {
-            fn();
+            session.tieChain(run);
             afterCommand(session);
-            setNotice(null);
+            setNotice("tie chain toggled");
           } catch (err) {
-            setNotice(`${what} refused: ${err instanceof Error ? err.message : err}`);
+            refused("tie", err);
           }
-        };
-        // marcato: the accent key SHIFTED (AZERTY shift+; = "." · QWERTY
-        // shift+; = ":" · shift+. = ">"); the dot keeps the unshifted forms
-        if (hit("marcato") && target) {
-          markTry(() => session.toggleArtic([target], "marc"), "marcato");
-          return;
+          return "handled";
         }
-        // staccatissimo: the staccato key shifted ("<" QWERTY, "?" AZERTY)
-        if (hit("staccatissimo") && target) {
-          markTry(() => session.toggleArtic([target], "stacciss"), "staccatissimo");
-          return;
-        }
-        if (hit("fermata") && target) {
-          markTry(() => session.toggleMark(target, "fermata"), "fermata");
-          return;
-        }
-        if (hit("coda") && target) {
-          markTry(() => session.toggleMark(target, "coda"), "coda");
-          return;
-        }
-        // simile slash: the ù/' key (physical Quote) replaces one beat
-        if (hit("simile") && target) {
-          markTry(() => session.simile(target), "simile");
-          return;
-        }
-        // measure repeats: shift on the same key ("%" AZERTY, '"' QWERTY)
-        // cycles content → % → %% → empty at the caret's voice
-        if (hit("measureRepeat") && caret) {
-          markTry(() => session.measureRepeat(caret), "measure repeat");
-          return;
-        }
-        // attack intensity (I — plain i toggles note input): a dynam
-        // cycling sf → sfz → rinf → rfz → off at the target
-        if (hit("intensity") && target) {
-          markTry(() => session.cycleDynam(target, ["sf", "sfz", "rinf", "rfz"]), "intensity");
-          return;
-        }
-        // one key circles the four ornaments: arpeggio (chords) → tremolo
-        // → trill → mordent → off
-        if (hit("ornament") && target) {
-          markTry(() => session.cycleOrnament(target), "ornament");
-          return;
-        }
-      }
-      if (hit("tie") && !mod && run.length >= 2) {
-        e.preventDefault();
-        // Multi-measure tie: the selected run becomes one tie chain
-        // (i/m/t), one undo step; same selection again unties it.
-        try {
-          session.tieChain(run);
-          afterCommand(session);
-          setNotice("tie chain toggled");
-        } catch (err) {
-          setNotice(`tie refused: ${err instanceof Error ? err.message : err}`);
-        }
-        return;
-      }
-      if (hit("tie") && !mod) {
         // Tie the note back to its predecessor — ACROSS the barline when it
         // opens the measure (same gesture everywhere); only with no previous
         // note at all (piece start, rest before) does it tie forward.
-        const applyTo = entryMode && lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId;
-        if (!applyTo) return;
-        e.preventDefault();
+        const applyTo = targetOf();
+        if (!applyTo) return "declined";
         const ref = session.index.byId.get(applyTo);
         const prevId = ref
           ? ref.eventIndex > 0
@@ -1790,288 +1883,234 @@ export default function App() {
           session.toggleTie(prevId && session.index.byId.get(prevId)?.tag === "note" ? prevId : applyTo);
           afterCommand(session);
         } catch (err) {
-          setNotice(`tie refused: ${err instanceof Error ? err.message : err}`);
+          refused("tie", err);
         }
-        return;
-      }
-      if (hit("merge") && !mod && run.length === 2) {
+        return "handled";
+      }),
+      rule("merge", (e) => hit("merge", e) && !isMod(e), () => {
         // Two selected notes: same pitch still merges; DIFFERENT pitches
         // cycle the first into a grace note — acciaccatura → appoggiatura
         // → none — folding its time into the second (tester ask).
+        const run = runOf();
+        if (run.length !== 2) return "fallthrough";
         const [aId, bId] = [run[0]!, run[1]!];
         const a = session.index.byId.get(aId);
         const b = session.index.byId.get(bId);
-        if (a?.tag === "note" && b?.tag === "note" && a.staffN === b.staffN && a.layerN === b.layerN) {
-          e.preventDefault();
-          try {
-            const samePitch = (() => {
-              const pick = (rid: string) => {
-                const m = session.score.measures[session.index.byId.get(rid)!.measureIndex]!;
-                const walk = (e2: import("@battuta/core").CoreElement): import("@battuta/core").CoreElement | null => {
-                  if (e2.attrs["xml:id"] === rid) return e2;
-                  for (const c of e2.children) if (typeof c !== "string") { const r = walk(c); if (r) return r; }
-                  return null;
-                };
-                return walk(m);
+        if (!(a?.tag === "note" && b?.tag === "note" && a.staffN === b.staffN && a.layerN === b.layerN)) return "fallthrough";
+        try {
+          const samePitch = (() => {
+            const pick = (rid: string) => {
+              const m = session.score.measures[session.index.byId.get(rid)!.measureIndex]!;
+              const walk = (e2: import("@battuta/core").CoreElement): import("@battuta/core").CoreElement | null => {
+                if (e2.attrs["xml:id"] === rid) return e2;
+                for (const ch of e2.children) if (typeof ch !== "string") { const r = walk(ch); if (r) return r; }
+                return null;
               };
-              const na = pick(aId);
-              const nb = pick(bId);
-              return !!na && !!nb && na.attrs["pname"] === nb.attrs["pname"] && na.attrs["oct"] === nb.attrs["oct"];
-            })();
-            if (samePitch) session.mergeWithNext(aId);
-            else session.toggleGrace(aId, bId);
-            afterCommand(session);
-            setNotice(null);
-          } catch (err) {
-            setNotice(`grace/merge refused: ${err instanceof Error ? err.message : err}`);
-          }
-          return;
+              return walk(m);
+            };
+            const na = pick(aId);
+            const nb = pick(bId);
+            return !!na && !!nb && na.attrs["pname"] === nb.attrs["pname"] && na.attrs["oct"] === nb.attrs["oct"];
+          })();
+          if (samePitch) session.mergeWithNext(aId);
+          else session.toggleGrace(aId, bId);
+          afterCommand(session);
+          setNotice(null);
+        } catch (err) {
+          refused("grace/merge", err);
         }
-      }
-      if (hit("tuplet") && !mod && run.length >= 1) {
-        // shift+t: 3 selected notes -> triplet, 6 -> sextuplet; a selection
-        // inside a tuplet unwraps it (freed time <-> rests after).
-        e.preventDefault();
+        return "handled";
+      }),
+      // shift+t: 3 selected notes -> triplet, 6 -> sextuplet; a selection
+      // inside a tuplet unwraps it (freed time <-> rests after).
+      rule("tuplet", (e) => hit("tuplet", e) && !isMod(e), () => {
         try {
           session.toggleTuplet(selection);
           afterCommand(session);
           setNotice(null);
         } catch (err) {
-          setNotice(`tuplet refused: ${err instanceof Error ? err.message : err}`);
+          refused("tuplet", err);
         }
-        return;
-      }
-      if (hit("pedal") && !mod && run.length >= 2) {
-        // Pedal line over the selection: down at the first note, up at the
-        // last; the same selection removes it.
-        e.preventDefault();
+        return "handled";
+      }, { when: () => runOf().length >= 1 }),
+      // Pedal line over the selection: down at the first note, up at the last; the same selection removes it.
+      rule("pedal", (e) => hit("pedal", e) && !isMod(e), () => {
+        const run = runOf();
         try {
           session.togglePedal(run[0]!, run[run.length - 1]!);
           afterCommand(session);
           setNotice("pedal toggled");
         } catch (err) {
-          setNotice(`pedal refused: ${err instanceof Error ? err.message : err}`);
+          refused("pedal", err);
         }
-        return;
-      }
-      if (e.shiftKey && !mod && !e.altKey && !entryMode && bsel) {
-        // shift+G on a block spanning staves: group symbol cycle
-        // none -> brace -> bracket (bar-through follows the symbol).
-        if (keyMatches(keymap["staffGroup"], e) && bsel.staffTo > bsel.staffFrom) {
-          e.preventDefault();
+        return "handled";
+      }, { when: () => runOf().length >= 2 }),
+      // shift+G on a block spanning staves: group symbol cycle none -> brace -> bracket.
+      rule("staffGroup", (e) => e.shiftKey && !isMod(e) && !e.altKey && hit("staffGroup", e), () => {
+        const bsel = bselOf()!;
+        try {
+          const state = session.cycleStaffGroup(bsel.staffFrom, bsel.staffTo);
+          afterCommand(session);
+          setNotice(`staves ${bsel.staffFrom}–${bsel.staffTo}: ${state === "none" ? "ungrouped" : `grouped with a ${state}`} (page view draws the symbol)`);
+        } catch (err) {
+          refused("staff group", err);
+        }
+        return "handled";
+      }, { when: () => { const b = bselOf(); return !entryMode && !!b && b.staffTo > b.staffFrom; } }),
+      // shift+1..9 toggles that volta number on the block's bracket — mixes
+      // like [1, 2][3] build up number by number; removing the last number
+      // removes the bracket. Barlines renormalize across the group.
+      ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) =>
+        rule(`volta.${n}`, (e) => e.shiftKey && !isMod(e) && !e.altKey && e.code === `Digit${n}`, () => {
+          const bsel = bselOf()!;
           try {
-            const state = session.cycleStaffGroup(bsel.staffFrom, bsel.staffTo);
+            session.toggleVolta(bsel.measureFrom, bsel.measureTo, n);
             afterCommand(session);
-            setNotice(`staves ${bsel.staffFrom}–${bsel.staffTo}: ${state === "none" ? "ungrouped" : `grouped with a ${state}`} (page view draws the symbol)`);
+            setNotice(`volta ${n} toggled on m${bsel.measureFrom + 1}–m${bsel.measureTo + 1}`);
           } catch (err) {
-            setNotice(`staff group refused: ${err instanceof Error ? err.message : err}`);
+            refused("volta", err);
           }
-          return;
-        }
-        // shift+1..9 toggles that volta number on the block's bracket —
-        // mixes like [1, 2][3] build up number by number; removing the
-        // last number removes the bracket. Barlines renormalize across
-        // the group (rptend before a later bracket, dbl on the last).
-        const volta = /^Digit([1-9])$/.exec(e.code)?.[1];
-        if (volta) {
-          e.preventDefault();
-          try {
-            session.toggleVolta(bsel.measureFrom, bsel.measureTo, Number(volta));
-            afterCommand(session);
-            setNotice(`volta ${volta} toggled on m${bsel.measureFrom + 1}–m${bsel.measureTo + 1}`);
-          } catch (err) {
-            setNotice(`volta refused: ${err instanceof Error ? err.message : err}`);
-          }
-          return;
-        }
-      }
-      if (hit("repeatBarlines") && !mod) {
-        // alt+r, INPUT MODE INCLUDED (plain r keeps entering rests): a
-        // block selection gets 𝄆 𝄇 around it; without a selection the
-        // caret's measure gets an END repeat 𝄇 — playback loops it back
-        // to the last 𝄆, or the top of the piece.
-        e.preventDefault();
+          return "handled";
+        }, { when: () => !entryMode && !!bselOf() }),
+      ),
+      // alt+r, INPUT MODE INCLUDED (plain r keeps entering rests): a block
+      // selection gets 𝄆 𝄇 around it; without a selection the caret's
+      // measure gets an END repeat 𝄇 — playback loops it back to the last
+      // 𝄆, or the top of the piece.
+      rule("repeatBarlines", (e) => hit("repeatBarlines", e) && !isMod(e), () => {
+        const bsel = bselOf();
         try {
           if (bsel) {
             session.toggleRepeat(bsel.measureFrom, bsel.measureTo);
             afterCommand(session);
             setNotice(`repeat toggled around m${bsel.measureFrom + 1}–m${bsel.measureTo + 1} (𝄆 𝄇)`);
-          } else if (caret) {
-            const on = session.toggleEndRepeat(caret.measureIndex);
+          } else {
+            const on = session.toggleEndRepeat(c.measureIndex);
             afterCommand(session);
-            setNotice(on ? `end repeat 𝄇 at m${caret.measureIndex + 1} — playback loops from the last 𝄆 or the top` : `end repeat removed at m${caret.measureIndex + 1}`);
+            setNotice(on ? `end repeat 𝄇 at m${c.measureIndex + 1} — playback loops from the last 𝄆 or the top` : `end repeat removed at m${c.measureIndex + 1}`);
           }
         } catch (err) {
-          setNotice(`repeat refused: ${err instanceof Error ? err.message : err}`);
+          refused("repeat", err);
         }
-        return;
-      }
-      if (hit("dynamics") && !mod && run.length >= 2) {
-        // With a block of notes selected, "p" cycles a hairpin over it:
-        // none -> crescendo -> decrescendo -> none (single-note "p" still
-        // cycles p/f dynamics).
-        e.preventDefault();
+        return "handled";
+      }),
+      // With a block of notes selected, "p" cycles a hairpin over it: none
+      // -> crescendo -> decrescendo -> none (single-note "p" still cycles
+      // p/f dynamics, below).
+      rule("dynamics", (e) => hit("dynamics", e) && !isMod(e), () => {
+        const run = runOf();
         try {
           session.cycleHairpin(run[0]!, run[run.length - 1]!);
           afterCommand(session);
           setNotice("hairpin: none → < → > → none");
         } catch (err) {
-          setNotice(`hairpin refused: ${err instanceof Error ? err.message : err}`);
+          refused("hairpin", err);
         }
-        return;
-      }
-      if (hit("beam") && !mod) {
-        // alt+b: auto-beam the caret's measure (or every measure the
-        // selection touches) — beam groups span at most half the measure.
-        e.preventDefault();
+        return "handled";
+      }, { when: () => runOf().length >= 2 }),
+      // alt+b: auto-beam the caret's measure (or every measure the
+      // selection touches) — beam groups span at most half the measure.
+      rule("beam", (e) => hit("beam", e) && !isMod(e), () => {
         const measures = selection.length
           ? [...new Set(selection.map((id) => session.index.byId.get(id)?.measureIndex).filter((m): m is number => m !== undefined))]
-          : caret
-            ? [caret.measureIndex]
-            : [];
+          : [c.measureIndex];
         if (!measures.length) {
           setNotice("place the caret or select notes first");
-          return;
+          return "handled";
         }
         try {
           session.autoBeam(measures);
           afterCommand(session);
           setNotice(`auto-beamed ${measures.length > 1 ? `${measures.length} measures` : `m${measures[0]! + 1}`} (groups of half a measure)`);
         } catch (err) {
-          setNotice(`beam refused: ${err instanceof Error ? err.message : err}`);
+          refused("beam", err);
         }
-        return;
-      }
-      if (e.altKey && !mod) {
-        // alt+1..5 = SET fingering (same number again removes); with shift
-        // = ADD one more finger (chords, substitutions). Physical-key match
-        // so AZERTY's shifted digit row works identically.
-        const fing = /^(?:Digit|Numpad)([1-5])$/.exec(e.code)?.[1];
-        if (fing) {
-          const target = entryMode && lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId;
-          if (!target) return;
-          e.preventDefault();
-          try {
-            session.toggleFing(target, fing, e.shiftKey);
-            afterCommand(session);
-            setNotice(null);
-          } catch (err) {
-            setNotice(`fingering refused: ${err instanceof Error ? err.message : err}`);
-          }
-          return;
-        }
-        // alt+6..0 = CHANGE of finger on the same note ("3-1"): the second
-        // half of the digit row maps to the new finger (6→1 … 0→5). Needs a
-        // plain fingering to change from; the same key again removes the
-        // substitution, a different one replaces it.
-        const subKey = /^(?:Digit|Numpad)([6-9]|0)$/.exec(e.code)?.[1];
-        if (subKey) {
-          const target = entryMode && lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId;
-          if (!target) return;
-          e.preventDefault();
-          const finger = subKey === "0" ? "5" : String(Number(subKey) - 5);
-          const texts = session.fingAt(target);
-          const single = texts.length === 1 ? /^([1-5])(?:-([1-5]))?$/.exec(texts[0]!) : null;
-          if (!single) {
-            setNotice(`finger change refused: ${texts.length ? `"${texts.join(",")}" is not a single plain fingering` : "set a starting finger first (alt+1..5)"}`);
-            return;
-          }
-          const [, from, to] = single;
-          try {
-            if (to === finger) session.toggleFing(target, from!, false); // same key: substitution off
-            else if (from === finger && !to) setNotice("finger change refused: same finger as the start");
-            else session.toggleFing(target, `${from}-${finger}`, false);
-            afterCommand(session);
-          } catch (err) {
-            setNotice(`finger change refused: ${err instanceof Error ? err.message : err}`);
-          }
-          return;
-        }
-      }
-      if (entryMode && !mod) {
-        const DUR: Record<string, string> = { "7": "1", "6": "2", "5": "4", "4": "8", "3": "16", "2": "32", "1": "64" };
-        const applyTo = lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId;
-        if (e.key === "Escape") {
-          setEntryMode(false);
-          setNotice(null);
-          return;
-        }
-        // Layout-independence: digits and the dot are matched by PHYSICAL key
-        // (e.code) too — on AZERTY the number row and "." need Shift, but the
-        // physical positions are the same on every layout.
-        // The physical fallback applies only unshifted: AZERTY's shifted
-        // digits already arrive as "1".."7", and QWERTY's shift+1 ("!") must
-        // stay available as the accent key.
-        const digit = /^[1-7]$/.test(e.key) ? e.key : !e.shiftKey ? /^(?:Digit|Numpad)([1-7])$/.exec(e.code)?.[1] : undefined;
-        if (digit && DUR[digit]) {
-          e.preventDefault();
-          setEntryDur(DUR[digit]!);
+        return "handled";
+      }),
+      // Fingering: physical-key match so AZERTY's shifted digit row works identically.
+      ...[1, 2, 3, 4, 5].flatMap((n) => [
+        rule(`finger.${n}`, (e) => e.altKey && !isMod(e) && !e.shiftKey && digitOf(e, "1-5") === String(n), () => fingerSet(String(n), false)),
+        rule(`finger.add.${n}`, (e) => e.altKey && !isMod(e) && e.shiftKey && digitOf(e, "1-5") === String(n), () => fingerSet(String(n), true)),
+      ]),
+      // alt+6..0 = change of finger: the second half of the digit row maps to the new finger (6→1 … 0→5).
+      ...[1, 2, 3, 4, 5].map((n) => rule(`fingerChange.${n}`, (e) => e.altKey && !isMod(e) && digitOf(e, "6-90") === (n === 5 ? "0" : String(n + 5)), () => fingerChange(String(n)))),
+
+      // --- input mode: a fresh duration starts plain; letters enter at the caret ---
+      rule("edit.escape", (e) => e.key === "Escape" && !isMod(e), () => {
+        setEntryMode(false);
+        setNotice(null);
+        return "handled";
+      }, { when: () => entryMode, preventDefault: false }),
+      // Layout-independence: digits are matched by PHYSICAL key (e.code) too
+      // — the fallback only unshifted, so QWERTY's shift+1 ("!") stays free.
+      ...[1, 2, 3, 4, 5, 6, 7].map((n) =>
+        rule(`duration.${n}`, (e) => !isMod(e) && (e.key === String(n) || (!e.shiftKey && digitOf(e, "1-7") === String(n))), () => {
+          setEntryDur(DUR[String(n)]!);
           setEntryDots(0); // a fresh duration starts plain: dot it deliberately
-          return;
-        }
-        if (/^[a-g]$/.test(e.key) && !e.altKey) {
-          e.preventDefault();
-          enterAtCaret({ kind: "note", pname: e.key, oct: nearestOctave(e.key, caret) });
-          return;
-        }
-        if (/^[A-G]$/.test(e.key) && applyTo) {
-          e.preventDefault();
-          const pname = e.key.toLowerCase();
+          return "handled";
+        }, { when: () => entryMode }),
+      ),
+      ...PITCHES.map((p) =>
+        rule(`pitch.${p}`, (e) => !isMod(e) && e.key === p && !e.altKey, () => {
+          enterAtCaret({ kind: "note", pname: p, oct: nearestOctave(p, c) });
+          return "handled";
+        }, { when: () => entryMode }),
+      ),
+      ...PITCHES.map((p) =>
+        rule(`chord.${p}`, (e) => !isMod(e) && e.key === p.toUpperCase(), () => {
+          const applyTo = targetOf()!;
           try {
-            const chordId = session.addChordNote(applyTo, pname, nearestOctave(pname, caret));
+            const chordId = session.addChordNote(applyTo, p, nearestOctave(p, c));
             if (chordId && lastEntered.current) lastEntered.current = chordId;
             afterCommand(session);
           } catch (err) {
-            setNotice(`chord refused: ${err instanceof Error ? err.message : err}`);
+            refused("chord", err);
           }
-          return;
-        }
-        // Numpad 0 = rest: the numpad digits already set durations, so 0
-        // completes the row (alt+numpad-0 stays the finger-change key).
-        if (hit("rest") || (e.code === "Numpad0" && !e.shiftKey && !e.altKey && !mod)) {
-          e.preventDefault();
-          enterAtCaret({ kind: "rest" });
-          return;
-        }
-        if ((hit("sharp") || hit("flat") || hit("natural")) && applyTo) {
-          e.preventDefault();
-          const accid: "s" | "f" | "n" = hit("flat") ? "f" : hit("sharp") ? "s" : "n";
-          if (openAccidPicker(applyTo, accid)) return;
+          return "handled";
+        }, { when: () => entryMode && !!targetOf() }),
+      ),
+      // Numpad 0 = rest: the numpad digits already set durations, so 0 completes the row (alt+numpad-0 stays the finger-change key).
+      rule("rest", (e) => !isMod(e) && (hit("rest", e) || (e.code === "Numpad0" && !e.shiftKey && !e.altKey)), () => {
+        enterAtCaret({ kind: "rest" });
+        return "handled";
+      }, { when: () => entryMode }),
+      ...(["sharp", "flat", "natural"] as const).map((id) =>
+        rule(id, (e) => !isMod(e) && hit(id, e), () => {
+          const applyTo = targetOf()!;
+          const accid: "s" | "f" | "n" = id === "flat" ? "f" : id === "sharp" ? "s" : "n";
+          if (openAccidPicker(applyTo, accid)) return "handled";
           session.toggleAccidental([applyTo], accid);
           afterCommand(session);
-          return;
-        }
-        if ((hit("staccato") || hit("accent")) && applyTo) {
-          e.preventDefault();
-          session.toggleArtic([applyTo], hit("staccato") ? "stacc" : "acc");
+          return "handled";
+        }, { when: () => entryMode && !!targetOf() }),
+      ),
+      ...(["staccato", "accent"] as const).map((id) =>
+        rule(id, (e) => !isMod(e) && hit(id, e), () => {
+          session.toggleArtic([targetOf()!], id === "staccato" ? "stacc" : "acc");
           afterCommand(session);
-          return;
-        }
-        // Dynamics: plain "p" cycles none -> p -> f -> none (layout-proof;
-        // alt+f/p kept as a secondary, though browsers may steal alt+F).
-        if (hit("dynamics") && applyTo) {
-          e.preventDefault();
-          session.cycleDynam(applyTo);
+          return "handled";
+        }, { when: () => entryMode && !!targetOf() }),
+      ),
+      // Dynamics: plain "p" cycles none -> p -> f -> none (layout-proof; alt+f/p kept as a secondary).
+      rule("dynamics", (e) => hit("dynamics", e) && !isMod(e), () => {
+        session.cycleDynam(targetOf()!);
+        afterCommand(session);
+        return "handled";
+      }, { when: () => entryMode && !!targetOf() }),
+      ...(["f", "p"] as const).map((d) =>
+        rule(`dynamic.${d}`, (e) => !isMod(e) && e.altKey && e.key === d, () => {
+          session.toggleDynam(targetOf()!, d);
           afterCommand(session);
-          return;
-        }
-        if (e.altKey && (e.key === "f" || e.key === "p") && applyTo) {
-          e.preventDefault();
-          session.toggleDynam(applyTo, e.key);
-          afterCommand(session);
-          return;
-        }
-        // arrows and everything else fall through to navigation
-      }
+          return "handled";
+        }, { when: () => entryMode && !!targetOf() }),
+      ),
 
       // Dot: "." (QWERTY) or ":" (AZERTY's dedicated unshifted key). Always
       // applies to a real event — the just-entered note, or the note/rest at
-      // the caret (existing notes includable). Subsequent entries inherit
-      // the resulting dot state; there is no separate prospective toggle.
-      if ((hit("dot") || (e.code === "NumpadDecimal" && !e.altKey)) && !mod) {
-        const target = entryMode && lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId;
-        if (!target) return;
-        e.preventDefault();
+      // the caret. Subsequent entries inherit the resulting dot state.
+      rule("dot", (e) => !isMod(e) && (hit("dot", e) || (e.code === "NumpadDecimal" && !e.altKey)), () => {
+        const target = targetOf();
+        if (!target) return "declined";
         try {
           const result = session.toggleDot(target);
           if (entryMode) {
@@ -2081,178 +2120,96 @@ export default function App() {
           afterCommand(session);
           setNotice(null);
         } catch (err) {
-          setNotice(`dot refused: ${err instanceof Error ? err.message : err}`);
+          refused("dot", err);
         }
-        return;
-      }
-
+        return "handled";
+      }),
       // merge with next / split in half — same-pitch cleanup for AMT output.
-      if ((hit("merge") || hit("split")) && !mod) {
-        const target = entryMode && lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId;
-        if (!target) return;
-        e.preventDefault();
-        try {
-          if (hit("merge")) session.mergeWithNext(target);
-          else session.splitInHalf(target);
-          afterCommand(session);
-          setNotice(null);
-        } catch (err) {
-          setNotice(`${hit("merge") ? "merge" : "split"} refused: ${err instanceof Error ? err.message : err}`);
-        }
-        return;
-      }
-
-      // alt+←/→ shortens/lengthens the duration — same target rule as the
-      // dot (last entered until the caret moves, else the caret event).
-      if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && e.altKey) {
-        const target = entryMode && lastEntered.current && session.index.byId.has(lastEntered.current) ? lastEntered.current : caretId;
-        if (!target) return;
-        e.preventDefault();
-        try {
-          const r = session.changeDurationStep(target, e.key === "ArrowRight" ? 1 : -1);
-          if (entryMode) {
-            setEntryDur(r.dur);
-            setEntryDots(r.dots);
+      ...(["merge", "split"] as const).map((id) =>
+        rule(id, (e) => hit(id, e) && !isMod(e), () => {
+          const target = targetOf();
+          if (!target) return "declined";
+          try {
+            if (id === "merge") session.mergeWithNext(target);
+            else session.splitInHalf(target);
+            afterCommand(session);
+            setNotice(null);
+          } catch (err) {
+            refused(id, err);
           }
-          afterCommand(session);
-          setNotice(null);
-        } catch (err) {
-          setNotice(`duration refused: ${err instanceof Error ? err.message : err}`);
-        }
-        return;
-      }
-
-      // --- row-level navigation (DOM rows = engraved systems) ---
-      /** Slots (staff, voice) of a measure, in traversal order. */
-      const slotsOf = (mi: number): { staffN: number; layerN: number }[] => {
-        const slots: { staffN: number; layerN: number }[] = [];
-        for (const staffN of session.index.stavesPerMeasure.get(mi) ?? []) {
-          for (const layerN of session.index.layersPerStaff.get(`${mi}/${staffN}`) ?? []) slots.push({ staffN, layerN });
-        }
-        return slots;
-      };
-      /** The caret's slot in the target measure, else the edge slot. */
-      const nearSlot = (mi: number, edge: 1 | -1): { staffN: number; layerN: number } | undefined => {
-        const slots = slotsOf(mi);
-        return slots.find((s) => s.staffN === caret.staffN && s.layerN === caret.layerN) ?? (edge === 1 ? slots[0] : slots[slots.length - 1]);
-      };
-      const rowOfMeasure = (mi: number): Element | null => mainRef.current?.querySelector(`.tile[data-index="${mi}"]`)?.closest(".score-row") ?? null;
-      const rowMeasures = (row: Element): number[] => [...row.querySelectorAll<HTMLElement>(".tile[data-index]")].map((t) => Number(t.dataset["index"]));
-      /**
-       * Cross to the adjacent engraved row: the measure under the caret's x,
-       * nearest event. Slot: "edge" = top slot going down / bottom coming up
-       * (the ↓/↑ text-editor continuation); "same" = keep the caret's
-       * staff+voice when the target measure has it (PageUp/PageDown).
-       */
-      const lineJump = (dir: 1 | -1, pick: "edge" | "same"): CaretPosition | null => {
-        const main = mainRef.current;
-        const caretG = caretId ? main?.querySelector(`g[id="${CSS.escape(caretId)}"]`) : null;
-        const anchorEl = caretG ?? main?.querySelector(`.tile[data-index="${caret.measureIndex}"]`);
-        const row = rowOfMeasure(caret.measureIndex);
-        const rows = main ? [...main.querySelectorAll(".score-row")] : [];
-        const r = row ? rows.indexOf(row) : -1;
-        const targetRow = r >= 0 ? rows[r + dir] : undefined;
-        if (!targetRow || !anchorEl) return null;
-        const x = anchorEl.getBoundingClientRect().left;
-        let best: { m: number; d: number } | null = null;
-        for (const t of targetRow.querySelectorAll<HTMLElement>(".tile[data-index]")) {
-          const tr = t.getBoundingClientRect();
-          const d = x >= tr.left && x <= tr.right ? 0 : Math.min(Math.abs(x - tr.left), Math.abs(x - tr.right));
-          if (!best || d < best.d) best = { m: Number(t.dataset["index"]), d };
-        }
-        if (!best) return null;
-        const slots = slotsOf(best.m);
-        const slot = pick === "same" ? nearSlot(best.m, dir) : dir === 1 ? slots[0] : slots[slots.length - 1];
-        if (!slot) return null;
-        const events = session.index.eventsAt(best.m, slot.staffN, slot.layerN);
-        if (!events.length) return null;
-        // nearest event to the caret's x within the target measure
-        let ei = 0;
-        let bd = Infinity;
-        events.forEach((id, i) => {
-          const g = main?.querySelector(`g[id="${CSS.escape(id)}"]`);
-          if (!g) return;
-          const d = Math.abs(g.getBoundingClientRect().left - x);
-          if (d < bd) {
-            bd = d;
-            ei = i;
+          return "handled";
+        }),
+      ),
+      // alt+←/→ shortens/lengthens the duration — same target rule as the dot.
+      ...([["duration.shorter", "ArrowLeft", -1], ["duration.longer", "ArrowRight", 1]] as [string, string, 1 | -1][]).map(([id, key, dir]) =>
+        rule(id, (e) => e.key === key && e.altKey, () => {
+          const target = targetOf();
+          if (!target) return "declined";
+          try {
+            const r = session.changeDurationStep(target, dir);
+            if (entryMode) {
+              setEntryDur(r.dur);
+              setEntryDots(r.dots);
+            }
+            afterCommand(session);
+            setNotice(null);
+          } catch (err) {
+            refused("duration", err);
           }
-        });
-        return { measureIndex: best.m, staffN: slot.staffN, layerN: slot.layerN, eventIndex: ei };
-      };
-      const moveCaret = (next: CaretPosition) => {
-        anchor.current = null;
-        setSelection([]);
-        lastEntered.current = null; // caret moved
-        setCaret(next);
-      };
-      if ((e.key === "Home" || e.key === "End") && !mod) {
-        // Start / end of the current row, like a text editor line.
-        e.preventDefault();
-        const row = rowOfMeasure(caret.measureIndex);
-        const list = row ? rowMeasures(row) : [];
-        const mi = e.key === "Home" ? list[0] : list[list.length - 1];
-        if (mi === undefined) return;
-        const slot = nearSlot(mi, e.key === "Home" ? 1 : -1);
-        if (!slot) return;
-        const events = session.index.eventsAt(mi, slot.staffN, slot.layerN);
-        if (!events.length) return;
-        moveCaret({ measureIndex: mi, staffN: slot.staffN, layerN: slot.layerN, eventIndex: e.key === "Home" ? 0 : events.length - 1 });
-        return;
-      }
-      if ((e.key === "PageUp" || e.key === "PageDown") && !mod) {
-        // Previous / next row, keeping the caret's staff and voice when the
-        // landing measure has them.
-        e.preventDefault();
-        const next = lineJump(e.key === "PageUp" ? -1 : 1, "same");
-        if (next) moveCaret(next);
-        return;
-      }
+          return "handled";
+        }),
+      ),
 
-      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-        e.preventDefault();
-        const next = e.key === "ArrowRight" ? caretRight(session.index, session.score, caret) : caretLeft(session.index, session.score, caret);
-        if (!next) return;
-        if (e.shiftKey) {
-          if (!anchor.current) anchor.current = caret;
-          setSelection(eventRange(session.index, session.score, anchor.current, next));
-        } else {
-          anchor.current = null;
-          setSelection([]);
-        }
-        lastEntered.current = null; // caret moved: post-entry modifiers follow it
-        setCaret(next);
-      } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-        e.preventDefault();
-        const dir = e.key === "ArrowUp" ? 1 : -1; // musical direction: up = higher pitch
-        if (e.altKey) {
-          const ids = editTargets();
-          if (!ids.length) return;
-          e.shiftKey ? session.transposeOctave(ids, dir) : session.transposeStep(ids, dir);
-          afterCommand(session);
-        } else {
-          const dir = e.key === "ArrowUp" ? -1 : 1;
-          // Out of (staff, voice) slots in this measure: continue to the
-          // adjacent LINE like a text editor — top slot going down, bottom
-          // slot coming up, nearest event under the caret's x (lineJump).
-          const next = caretVertical(session.index, caret, dir) ?? lineJump(dir, "edge");
+      // --- navigation ---
+      // Start / end of the current row, like a text editor line.
+      ...([["nav.home", "Home", 1], ["nav.end", "End", -1]] as [string, string, 1 | -1][]).map(([id, key, edge]) =>
+        rule(id, (e) => e.key === key && !isMod(e), () => {
+          const row = rowOfMeasure(c.measureIndex);
+          const list = row ? rowMeasures(row) : [];
+          const mi = edge === 1 ? list[0] : list[list.length - 1];
+          if (mi === undefined) return "handled";
+          const slot = nearSlot(mi, edge);
+          if (!slot) return "handled";
+          const events = session.index.eventsAt(mi, slot.staffN, slot.layerN);
+          if (!events.length) return "handled";
+          moveCaret({ measureIndex: mi, staffN: slot.staffN, layerN: slot.layerN, eventIndex: edge === 1 ? 0 : events.length - 1 });
+          return "handled";
+        }),
+      ),
+      // Previous / next row, keeping the caret's staff and voice when the landing measure has them.
+      ...([["nav.pageUp", "PageUp", -1], ["nav.pageDown", "PageDown", 1]] as [string, string, 1 | -1][]).map(([id, key, dir]) =>
+        rule(id, (e) => e.key === key && !isMod(e), () => {
+          const next = lineJump(dir, "same");
           if (next) moveCaret(next);
-        }
-      } else if (hit("sharp") || hit("flat") || hit("natural")) {
-        const ids = editTargets();
-        if (!ids.length) return;
-        const accid: "s" | "f" | "n" = hit("flat") ? "f" : hit("sharp") ? "s" : "n";
-        if (ids.length === 1 && openAccidPicker(ids[0]!, accid)) return;
-        session.toggleAccidental(ids, accid);
-        afterCommand(session);
-      } else if (e.key === "Delete" || e.key === "Backspace") {
-        e.preventDefault();
-        // Backspace erases BACKWARD like a text editor: the previous event
-        // becomes a rest and the caret moves onto it. (With a selection it
-        // deletes the selection, same as Delete.)
-        if (e.key === "Backspace" && selection.length === 0) {
-          const prev = caretLeft(session.index, session.score, caret);
-          if (!prev) return;
+          return "handled";
+        }),
+      ),
+      rule("nav.left", (e) => e.key === "ArrowLeft" && !e.shiftKey, () => arrowNav(-1, false)),
+      rule("nav.right", (e) => e.key === "ArrowRight" && !e.shiftKey, () => arrowNav(1, false)),
+      rule("select.left", (e) => e.key === "ArrowLeft" && e.shiftKey, () => arrowNav(-1, true)),
+      rule("select.right", (e) => e.key === "ArrowRight" && e.shiftKey, () => arrowNav(1, true)),
+      // ↑/↓: out of (staff, voice) slots in this measure, continue to the
+      // adjacent LINE like a text editor. With alt: transpose (musical direction).
+      rule("transpose.up", (e) => e.key === "ArrowUp" && e.altKey && !e.shiftKey, () => transpose(1, false)),
+      rule("transpose.down", (e) => e.key === "ArrowDown" && e.altKey && !e.shiftKey, () => transpose(-1, false)),
+      rule("transpose.octaveUp", (e) => e.key === "ArrowUp" && e.altKey && e.shiftKey, () => transpose(1, true)),
+      rule("transpose.octaveDown", (e) => e.key === "ArrowDown" && e.altKey && e.shiftKey, () => transpose(-1, true)),
+      ...([["nav.up", "ArrowUp", -1], ["nav.down", "ArrowDown", 1]] as [string, string, 1 | -1][]).map(([id, key, dir]) =>
+        rule(id, (e) => e.key === key && !e.altKey, () => {
+          const next = caretVertical(session.index, c, dir) ?? lineJump(dir, "edge");
+          if (next) moveCaret(next);
+          return "handled";
+        }),
+      ),
+      // Accidentals with nothing just entered: on the edit targets.
+      ...(["sharp", "flat", "natural"] as const).map((id) => rule(id, (e) => hit(id, e), () => accidOnTargets(id === "flat" ? "f" : id === "sharp" ? "s" : "n"), { preventDefault: false })),
+      // Backspace erases BACKWARD like a text editor: the previous event
+      // becomes a rest and the caret moves onto it. (With a selection it
+      // deletes the selection, same as Delete.)
+      rule("edit.backspace", (e) => e.key === "Backspace", () => {
+        if (selection.length === 0) {
+          const prev = caretLeft(session.index, session.score, c);
+          if (!prev) return "handled";
           const prevId = session.index.eventIdAt(prev);
           const ref = prevId ? session.index.byId.get(prevId) : undefined;
           if (ref && (ref.tag === "note" || ref.tag === "chord")) {
@@ -2262,21 +2219,36 @@ export default function App() {
           anchor.current = null;
           lastEntered.current = null; // caret moved
           setCaret(prev); // steps back even over rests, like a cursor
-          return;
+          return "handled";
         }
         const ids = editTargets();
-        if (!ids.length) return;
+        if (!ids.length) return "handled";
         session.deleteToRests(ids);
         afterCommand(session);
-      } else if (e.key === "Escape") {
+        return "handled";
+      }),
+      rule("edit.delete", (e) => e.key === "Delete", () => {
+        const ids = editTargets();
+        if (!ids.length) return "handled";
+        session.deleteToRests(ids);
+        afterCommand(session);
+        return "handled";
+      }),
+      rule("edit.escape", (e) => e.key === "Escape", () => {
         anchor.current = null;
         setSelection([]);
         setBlock(null);
-      } else if (!mod && host.dispatchKey(e)) {
-        // A plugin's binding — reached only after every core branch fell
-        // through, so a plugin can never shadow a core key.
-        e.preventDefault();
-      }
+        return "handled";
+      }, { preventDefault: false }),
+    ];
+    // Plugin bindings are the last resort for a key, as before — never
+    // for run(id): plugin commands run through the registry.
+    host.actions.install(steps, (e) => host.dispatchKey(e));
+
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      host.actions.dispatchKey(e);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -2707,7 +2679,7 @@ export default function App() {
                 >
                   ⟲ regenerate ids
                 </button>
-                <Slot store={host.slots} name="menu" />
+                <Slot store={host.slots} name="menu" onCommand={runPluginCommand} />
               </div>
             </>
           )}
@@ -2757,7 +2729,7 @@ export default function App() {
         <button title="on-screen keyboard — piano + every shortcut, for touch devices" data-vkeys-toggle onClick={() => toggleVk(!vkOpen)} style={{ opacity: vkOpen ? 1 : 0.45 }}>
           🎹
         </button>
-        <Slot store={host.slots} name="header" />
+        <Slot store={host.slots} name="header" onCommand={runPluginCommand} />
         <span style={{ color: "#666", fontSize: 13 }} data-status>
           {showPerf ? status : ""}
         </span>
@@ -2840,6 +2812,8 @@ export default function App() {
             onBlur={() => setTempoOpen(null)}
           />
         )}
+        {/* Second-row slot: where a playback plugin's controls go (slice 7). */}
+        <Slot store={host.slots} name="docHeader" onCommand={runPluginCommand} />
         {view === "pages" && (
           <>
             <button data-player-toggle title={playerState === "playing" ? "pause" : "play (repeats, voltas and one D.S./D.C. jump follow the form)"} onClick={onPlayPause} disabled={playerState === "loading"}>
@@ -3227,7 +3201,7 @@ export default function App() {
             <option key={m}>{m}</option>
           ))}
         </select>
-        <Slot store={host.slots} name="statusBar" />
+        <Slot store={host.slots} name="statusBar" onCommand={runPluginCommand} />
         <span style={{ position: "relative" }}>
           {zoomPanel && (
             <div data-zoom-panel style={{ position: "absolute", right: 0, bottom: 26, background: "#233040", color: "#dde", padding: "6px 8px", borderRadius: 4, whiteSpace: "nowrap", boxShadow: "0 2px 10px rgba(0,0,0,.4)", display: "flex", gap: 6, alignItems: "center" }}>
