@@ -26,6 +26,8 @@ jobs:
       - run: npx vitest run --root packages/core
       - run: npx vitest run --root packages/api
       - run: npm test -w @battuta/editor
+      # Every plugin package's own suite (packages/plugins/*/test).
+      - run: npm run test:plugins
       # Bundle budget: build for real, then measure the initial chunk.
       - run: npm run build -w @battuta/editor
       - run: npm run budget -w @battuta/editor

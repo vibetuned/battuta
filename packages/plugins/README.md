@@ -192,6 +192,7 @@ npm run typecheck -w @battuta/editor
 npx vitest run --root packages/core
 npx vitest run --root packages/api
 npm test -w @battuta/editor
+npm run test:plugins                          # every packages/plugins/*/test suite (CI runs this too)
 npm run build -w @battuta/editor && npm run budget -w @battuta/editor
 # browser e2e (Vite dev + Playwright's bundled Chromium); each script prints
 # PASS/FAIL lines and exits 1 on any FAIL. Once: fetch the corpus scores.

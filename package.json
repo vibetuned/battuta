@@ -17,7 +17,8 @@
     "spike:c": "node spikes/spike-c-persistent-select.mjs",
     "bench:browser": "node spikes/browser-bench/run.mjs",
     "docs": "npm --prefix docs run dev",
-    "docs:build": "npm --prefix docs run build"
+    "docs:build": "npm --prefix docs run build",
+    "test:plugins": "node packages/plugins/run-tests.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",

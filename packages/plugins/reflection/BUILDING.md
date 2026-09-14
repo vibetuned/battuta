@@ -203,12 +203,12 @@ capture.
 | Suite | Pins | Run |
 | --- | --- | --- |
 | `test/forms.test.ts` (12) | the transforms themselves — the four assertions of core's old `reflect.test.ts` carried over verbatim, plus ids, accidentals, chords, refusals and the cycle's shape | `npx vitest run --root packages/plugins/reflection` |
-| `test/reflection.test.ts` (19) | registration, counted lazy loading, the four-form cycle, base-capture-once, re-basing (external edit, block change, document change), every refusal, off/on, no settings or storage written | same |
+| `test/reflection.test.ts` (20) | registration, counted lazy loading, the four-form cycle, base-capture-once, re-basing (external edit, block change, document change), every refusal, off/on, no settings or storage written | same |
 | `packages/core/test/pitches.test.ts` (8) | the half that stayed: `collectPitchEvents` (voices, chords, spans) and `SetPitchesCommand` (write, byte-identical revert, accidentals, arity refusal, dirty regions, default label) | `npx vitest run --root packages/core` |
 | `packages/core/test/property.test.ts` | `SetPitchesCommand` in the core fuzz pool; case 33 rebuilt without the forms | same |
 | `apps/editor/test/virtualKeys.test.ts` (23) | the modifier-variant rules against the **union** keymap, plus the plugin-off case (§7.6) | `npm test -w @battuta/editor` |
 | `apps/editor/test/plugin-boundaries.test.ts` | this package obeys every hard rule | same |
-| `apps/editor/test/host.test.ts` (15) | the host's guarantees, unchanged | same |
+| `apps/editor/test/host.test.ts` (20) | the host's guarantees, unchanged | same |
 | `packages/api/test/api-surface.test.ts` | the api surface is unchanged at 0.1.0 | `npx vitest run --root packages/api` |
 
 The plugin's suite runs against a **real host** (`createHost` with

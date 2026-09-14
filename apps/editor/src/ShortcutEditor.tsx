@@ -100,7 +100,6 @@ export function ShortcutEditor({
               </button>
             ))}
           </span>
-          <span style={{ color: "#89a" }}>{tab === "shortcuts" ? "click a binding, press the new key · esc closes" : "off = deactivated now, remembered · esc closes"}</span>
           <span style={{ flex: 1 }} />
           {tab === "shortcuts" && (
             <>
@@ -124,6 +123,10 @@ export function ShortcutEditor({
           <button onClick={onClose} style={{ fontSize: 12 }}>
             close
           </button>
+        </div>
+        {/* The hint gets its own row: in the title row it squeezed the tabs, the layout toggle and the buttons. */}
+        <div data-editor-hint style={{ color: "#89a", fontSize: 12, margin: "0 0 8px" }}>
+          {tab === "shortcuts" ? "click a binding, press the new key · esc closes" : "off = deactivated now, remembered · esc closes"}
         </div>
         {tab === "plugins" && (
           <div data-plugins-tab>
