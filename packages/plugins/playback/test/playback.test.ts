@@ -101,6 +101,7 @@ function fixture(saved: Record<string, unknown> = {}, opts: { outputs?: string[]
     harmAt: () => "",
     timemap: async () => TIMEMAP,
     notation: () => ({ ties: {}, marks: {} }),
+    mei: () => "",
   };
   host.bindSession(adapter);
   host.bindView({

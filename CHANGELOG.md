@@ -55,6 +55,34 @@ is taken, and each slice as it closes, with the `App.tsx` line count
   refusals) and the query test extended; editor 122, api 18, plugins 105;
   `verify-phase5` 222 (its two harmony hooks now read `select[data-lanes]`; one flaky voice-navigation check in a back-to-back run passed on its own), `verify-lyrics` 26, `verify-app` 18, the keyboard 25, all green.
   `App.tsx` **3,117 → 3,109**; initial chunk **599.0 kB** (ceiling 605.5).
+- **Slice 8b stopped, and its one gap closed (2026-09-16, in-house; api
+  0.1.13 → 0.1.14).** The formats plugin's first attempt delivered
+  nothing and left `packages/plugins/formats/POSTMORTEM-2026-09-16.md`
+  (its BUILDING.md, renamed as the earlier attempts' were) — the right
+  outcome, and the reasons are the document's. **The gap:** an export
+  producer takes no argument, and nothing on the api yields the
+  document's MEI; 8a's three internal export registrations had it by
+  closing over the App's session, which a plugin cannot do. So the export
+  half was rehearsed against the registry — the menu row, the wake-up,
+  the save path — and not against the contract. Closed: `ctx.query.mei()`
+  returns the document as MEI text, score-based (what the pages are
+  engraved from and a converter reads), null without a document; the
+  App's own export registrations now read through it, so the rehearsal
+  holds only what a plugin holds. **The lesson, now a convention:**
+  rehearse a point from something that has only `ctx` in scope — an
+  internal registration that closes over the session hides exactly what a
+  plugin lacks, and this was the second sighting (7b's export file name
+  was the first). Also established by the attempt and kept in its
+  BUILDING.md for the next: a plugin can own a Vite worker with no host
+  edit (a worker is a separate Rollup sub-build, out of `manualChunks`'
+  reach — the opposite of 7b's preload helper); one id per FORMAT, not
+  per direction (PAE and Humdrum go both ways: six ids, six wake-ups);
+  the table lives in the manifest (rule 3 forbids a third module) and
+  SVG is not in it (engraving, the host's); a plugin's `verovio.d.ts`
+  should declare only the converter calls, so rule 1b becomes a type
+  error; and a half-moved worker would have shipped as two byte-identical
+  copies Vite deduplicates by content hash — until the first edit. Tests:
+  `host.test.ts` +1; editor 136, api 20, plugins 162.
 - **Decision: Verovio's converter build may live in a plugin; engraving
   may not (2026-09-15, the user's).** The boundary test forbade `verovio`
   outright, to keep engraving out of plugins. The formats plugin's target

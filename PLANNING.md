@@ -316,7 +316,14 @@ dialog's accept list and the shell's filter fed by the registry,
 multi-file export payloads for the SVG pages, and the App's five Verovio
 imports and four exports running as internal registrations —
 `verify-formats.mjs` (14 checks) written first and green unchanged after.
-**8b is next.**
+**8b was attempted on 2026-09-16 and stopped**, the good way: nothing
+delivered half-way (the budget is the slice's point, and a half-moved
+worker would have shipped as two byte-identical copies Vite deduplicates
+until the first edit), the gap written up — an export producer had no
+way to read the document, because 8a's rehearsal had it by closure — and
+closed in-house the same day: `ctx.query.mei()` (api 0.1.14), the App's
+own registrations rewritten to read through it. **8b reopens and is
+next.**
 
 From here on slices are
 handed to sessions without the surrounding context, on purpose, to test
@@ -1163,6 +1170,12 @@ the host's own before a plugin's, where 0.0.3 had the playback export
 first — a menu order, not a behaviour); `open_score` in the shell lost
 its extension constant and takes `exts` and `binaryExts` from the
 frontend; the SVG export names its files from `DocumentInfo.name`.
+*What the rehearsal missed (found by 8b's first attempt, 2026-09-16):*
+the App's export registrations read the document by closing over the
+session, which a plugin cannot do — so the export half was rehearsed
+against the registry, not the contract, and `ctx.query.mei()` had to be
+added in-house afterwards (api 0.1.14). The rule that follows is in the
+conventions: rehearse a point from something that holds only `ctx`.
 
 #### Slice 8b — Format converters (plugin; ≈2 days)
 
@@ -1187,10 +1200,16 @@ worker of its own.
 three converter-backed export registrations; `converter.ts` leaves
 `apps/editor/src`.
 
-**API may grow.** **None.** Everything is in 8a. Host edits allowed: the
-worker's chunk naming in `vite.config.ts` if Rollup needs telling (the
-5a / 7b lesson: anything the host and a plugin share must be named),
-`verovio/wasm-hum` moved from the editor's dependencies to the plugin's.
+**API may grow.** **None.** Everything is in 8a — *and, amended
+2026-09-16 after the first attempt stopped on one gap
+(`packages/plugins/formats/POSTMORTEM-2026-09-16.md` §7.1), in `ctx.query.mei()`* (api
+0.1.14): the document as MEI text, score-based, which is what an export
+producer converts; the App's own export registrations now read it
+through the query too, so the rehearsal proves the contract rather than
+closing over the session. Host edits allowed: `verovio/wasm-hum` moved
+from the editor's dependencies to the plugin's. The `vite.config.ts`
+edit the first draft allowed was measured unnecessary (§7.3: a worker is
+a separate Rollup sub-build, out of `manualChunks`' reach).
 
 **Stop when.** A converter needs anything beyond `ctx.formats`'
 registrations, the file it is handed and the MEI it returns, or a
@@ -1212,9 +1231,11 @@ and the dist without `convertWorker` under the host's assets; the shell
 smoke.
 
 **Documents.** The plugin's two documents (BUILDING.md §7 starts from
-the playback plugin's §7.1 and §7.4); the guide's files page unchanged in
-content plus its plugins-page row; the CHANGELOG bullet with the dist
-figure.
+this package's `POSTMORTEM-2026-09-16.md` §7 — the first attempt's
+account, which also settles the ids, the table's home and the worker —
+and the playback plugin's §7.1 and §7.4); the guide's files page
+unchanged in content plus its plugins-page row; the CHANGELOG bullet with
+the dist figure.
 
 **Done when.** Every import and export format works as in 0.0.3 with the
 plugin on; with it off the open dialog lists `.mei` only and the menu's

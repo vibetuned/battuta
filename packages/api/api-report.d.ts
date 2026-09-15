@@ -1,4 +1,4 @@
-// @battuta/api 0.1.13 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
+// @battuta/api 0.1.14 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
 
 // ---- ../dist/.tsbuildinfo
 {"version":"5.9.3"}
@@ -337,6 +337,14 @@ export interface DocumentQueries {
     timemap(): Promise<Timemap | null>;
     /** The notation facts a performance interprets: which note ties into which, which marks a note carries. Empty without a document. */
     notation(): NotationFacts;
+    /**
+     * The document as MEI text — the score-based serialisation the pages are
+     * engraved from and a converter reads (not the on-disk file, which may
+     * carry a header the engraver does not). Null without a document. Added
+     * 2026-09-16 for export producers: the formats plugin's three Verovio
+     * exports are its first consumers.
+     */
+    mei(): string | null;
 }
 
 // ---- formats.d.ts
@@ -430,7 +438,7 @@ export interface FormatsService {
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export declare const API_VERSION = "0.1.13";
+export declare const API_VERSION = "0.1.14";
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";
 export type { Disposable } from "./disposable.js";

@@ -67,6 +67,7 @@ function fixture(saved?: { open?: boolean; enabled?: boolean }): Fixture {
     harmAt: () => "",
     timemap: async () => ({ events: [], notes: {}, idMap: {} }),
     notation: () => ({ ties: {}, marks: {} }),
+    mei: () => "",
   };
   host.bindSession(adapter);
   host.document.set({ id: "doc-1", name: "score", version: 1, measureCount: 4, staffCount: 2, title: "", tempo: null });

@@ -49,6 +49,8 @@ export interface SessionAdapter {
   timemap(): Promise<Timemap>;
   /** The notation facts a performance interprets. */
   notation(): NotationFacts;
+  /** The document as MEI text, score-based (what the pages are engraved from and converters read). */
+  mei(): string;
 }
 
 /**
@@ -180,6 +182,7 @@ export function createHost(options: HostOptions = {}): Host {
     harmValid: (kind, text) => isHarmText(kind, text), // core's grammar; a question about text, not about a document
     timemap: () => (adapter ? adapter.timemap() : Promise.resolve(null)),
     notation: () => adapter?.notation() ?? { ties: {}, marks: {} },
+    mei: () => adapter?.mei() ?? null,
   };
   let viewAdapter: ViewAdapter | null = null;
   const view: ViewService = {

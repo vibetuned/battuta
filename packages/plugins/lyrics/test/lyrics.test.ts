@@ -80,6 +80,7 @@ function fixture(opts: { entryMode?: boolean } = {}): Fixture {
     harmAt: () => "",
     timemap: async () => ({ events: [], notes: {}, idMap: {} }),
     notation: () => ({ ties: {}, marks: {} }),
+    mei: () => "",
   };
   host.bindSession(session);
 

@@ -1177,9 +1177,12 @@ export default function App() {
    * formats registry (slice 8a) — exactly what the formats plugin declares
    * and registers in 8b: the five Verovio imports and the three Verovio
    * exports through the lazy converter worker, SVG through the render
-   * pool (engraving: the host's, and it stays). Registered once, reading
-   * the live session and pool through refs, so the menu rows and the
-   * accept list are there with or without a document.
+   * pool (engraving: the host's, and it stays). Registered once, so the
+   * menu rows and the accept list are there with or without a document —
+   * and reading the document through `host.query.mei()`, as a plugin must,
+   * never through the App's own session: the first 8b attempt stopped on
+   * a producer that had no document at all, because this rehearsal had
+   * closed over the session and hidden the gap (formats/POSTMORTEM-2026-09-16.md §7.1).
    */
   const poolRef = useRef<RenderPool | null>(null);
   poolRef.current = pool;
@@ -1191,20 +1194,20 @@ export default function App() {
       // In the table's order — that is the menu's order.
       ...EXPORT_FORMATS.map((f) =>
         host.formats.register({ id: f.id, label: f.label, ext: f.ext, mime: f.mime }, async () => {
-          const s = sessionRef.current;
-          if (!s) throw new Error("no document is open");
+          const mei = host.query.mei();
+          if (mei === null) throw new Error("no document is open");
           if (f.id === "svg") {
             const p = poolRef.current;
             if (!p) throw new Error("the renderer is not ready");
             const name = host.document.get()?.name || "score";
             // The page-view engraving, one file per page (1-based indices).
             const svgs: string[] = [];
-            const count = await p.renderDocumentPages(s.serializeForPageView(), (i, svg) => {
+            const count = await p.renderDocumentPages(mei, (i, svg) => {
               svgs[i - 1] = svg;
             });
             return { files: svgs.slice(0, count).map((svg, i) => ({ bytes: svg, filename: count > 1 ? `${name}-p${i + 1}.svg` : `${name}.svg` })) };
           }
-          const out = await converter.fromMEI(f.id, s.serializeForPageView());
+          const out = await converter.fromMEI(f.id, mei);
           // The worker returns MIDI as base64 (a standard .mid file's bytes).
           return { bytes: f.binary ? Uint8Array.from(atob(out), (c) => c.charCodeAt(0)) : out };
         }),
@@ -1295,6 +1298,7 @@ export default function App() {
         return timemap;
       },
       notation: () => session.notationFacts(),
+      mei: () => session.serializeForPageView(),
     });
     // The lanes' view of this document: the caret path and what sits on it.
     host.lanes.bind({

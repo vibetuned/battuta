@@ -145,6 +145,7 @@ The api is a data contract. Nothing in it is a live object of the model.
 | send to every MIDI output | `ctx.midi.openOutputs()` | `MidiOutputs` (`schedule`, `send`, `panic`, `close`) or null |
 | make a sound (capability `audio`) | `ctx.audio.unlock()` FIRST in your click handler, before any await; then connect your own instrument to `ctx.audio.context()`; schedule attacks at `ctx.audio.timeAt(atMs)` for the same `atMs` you would hand a MIDI sink | the host owns the app's one AudioContext, never an instrument: bring your own (Tone.js is allowed) |
 | Verovio's timemap of the document (expanded form) | `ctx.query.timemap()` | `Promise<Timemap \| null>` — `events`, `notes` (sounding pitch per id), `idMap` (clone → engraved id); rejects with the render error |
+| the document as MEI text, for an export producer to convert | `ctx.query.mei()` | `string` (score-based, what the pages are engraved from) or null without a document |
 | the notation facts a performance interprets | `ctx.query.notation()` | `NotationFacts` — `ties` (note → the note it ties into), `marks` (note → `slur` / `tenuto` / `staccato` / `staccatissimo`). What they MEAN in sound is yours to decide |
 | light the notation as it sounds (page view) | `ctx.view.highlight({ on, off, measureOn? })` in engraved ids; `ctx.view.clearHighlight()` | the view scrolls to `measureOn` when it leaves the window |
 | an export in the battuta menu, listed BEFORE your code loads | `contributes.exports: [{ id, label, ext, mime, title? }]`; activate on `onFormat:<id>`; in `activate`, `ctx.formats.registerExport(id, async () => ({ bytes, filename? }))` | the host saves it (download or the shell's dialog) as `<document>.<ext>` unless you name it |
@@ -246,6 +247,14 @@ Conventions the tests cannot see, still binding:
   host's vocabulary first and the implementation second — otherwise the
   mechanism the old code used becomes the requirement.
 
+- **A point is rehearsed from outside the App, or it is not rehearsed.**
+  When the host half of a slice registers the App's own version of a
+  contribution (an internal lane, export, import), that registration
+  must hold only what a plugin holds — `ctx`-shaped access, never the
+  session, the pool or the tab by closure. Twice a rehearsal that closed
+  over App state hid exactly what a plugin lacked (7b: the file's name;
+  8b: the document's MEI), and each cost a plugin slice a stop. Found
+  2026-09-16.
 - **If the api validates, it validates every time.** A message whose text
   has a grammar is refused by core, and the same grammar is askable
   through a query (`harmValid`). Validity sits below every writer because

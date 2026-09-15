@@ -92,4 +92,12 @@ export interface DocumentQueries {
   timemap(): Promise<Timemap | null>;
   /** The notation facts a performance interprets: which note ties into which, which marks a note carries. Empty without a document. */
   notation(): NotationFacts;
+  /**
+   * The document as MEI text — the score-based serialisation the pages are
+   * engraved from and a converter reads (not the on-disk file, which may
+   * carry a header the engraver does not). Null without a document. Added
+   * 2026-09-16 for export producers: the formats plugin's three Verovio
+   * exports are its first consumers.
+   */
+  mei(): string | null;
 }

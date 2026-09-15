@@ -77,6 +77,7 @@ const fakeAdapter = (execute = vi.fn()): SessionAdapter & { execute: ReturnType<
   harmAt: (id, kind) => (id === "n1" && kind === "chord" ? "Cmaj7" : ""),
   timemap: async () => ({ events: [{ tstamp: 0, on: ["n1"] }, { tstamp: 500, off: ["n1"] }], notes: { n1: { pitch: 60, duration: 500 } }, idMap: {} }),
   notation: () => ({ ties: { n1: "n2" }, marks: { n1: ["slur"] } }),
+  mei: () => '<mei meiversion="5.0"><music/></mei>',
   execute,
   pitchEventsIn: (block) => [[{ eventId: `e-${block.measureFrom}`, pitches: [{ pname: "c", oct: 4 }] }]],
   blockOf: (ids) => (ids.length ? { measureFrom: 0, measureTo: ids.length - 1, staffFrom: 1, staffTo: 1 } : null),
@@ -508,6 +509,13 @@ describe("the render, view and audio services (slice 7a)", () => {
     expect(host.query.notation().ties).toEqual({ n1: "n2" });
     host.bindSession({ ...fakeAdapter(), timemap: async () => { throw new Error("render failed"); } });
     await expect(host.query.timemap()).rejects.toThrow("render failed");
+  });
+
+  it("query.mei() is the document as MEI text from the adapter — what an export producer converts; null without a document", () => {
+    const host = makeHost([]);
+    expect(host.query.mei()).toBeNull();
+    host.bindSession(fakeAdapter());
+    expect(host.query.mei()).toContain("<mei");
   });
 
   it("view.highlight and clearHighlight reach the bound view adapter, and are no-ops without one", () => {
