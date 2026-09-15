@@ -68,7 +68,7 @@ function fakeEditor(): Fake {
 
   const host = createHost({ layout: "qwerty", plugins: [entry], settings: memorySettings(), storage: memoryStorage(), confirm: async () => true });
 
-  const publish = () => host.document.set({ id: state.docId, version: state.version, measureCount: 4, staffCount: 2, title: "", tempo: null });
+  const publish = () => host.document.set({ id: state.docId, name: "score", version: state.version, measureCount: 4, staffCount: 2, title: "", tempo: null });
 
   const adapter: SessionAdapter = {
     execute: (cmd) => {
@@ -329,7 +329,7 @@ describe("state", () => {
     const entry: PluginEntry = { manifest, load: async () => ({ default: plugin }) };
     const host = createHost({ layout: "qwerty", plugins: [entry], settings, storage, confirm: async () => true });
     host.bindSession({ execute: () => undefined, pitchEventsIn: () => [VOICE], blockOf: () => BLOCK });
-    host.document.set({ id: "doc-1", version: 1, measureCount: 4, staffCount: 2, title: "", tempo: null });
+    host.document.set({ id: "doc-1", name: "score", version: 1, measureCount: 4, staffCount: 2, title: "", tempo: null });
     host.editor.set({ ...host.editor.get(), block: BLOCK });
     for (let i = 0; i < 4; i++) {
       host.dispatchKey({ key: "R", shiftKey: true, altKey: false });
@@ -358,7 +358,7 @@ describe("state", () => {
     await f.press();
     f.host.document.set(null);
     await flush();
-    f.host.document.set({ id: "doc-1", version: 9, measureCount: 4, staffCount: 2, title: "", tempo: null });
+    f.host.document.set({ id: "doc-1", name: "score", version: 9, measureCount: 4, staffCount: 2, title: "", tempo: null });
     await f.press();
     expect(f.executed).toEqual(["inversion", "inversion"]);
   });

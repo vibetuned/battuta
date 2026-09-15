@@ -8,8 +8,6 @@ import type { Layout } from "./keymap";
 export interface Settings {
   layout?: Layout;
   zoom?: number;
-  /** Playback tempo multiplier (1 = as encoded). */
-  tempo?: number;
   /** Folder of the last opened/saved score — the next dialog starts there. */
   lastDir?: string;
   /**
@@ -19,9 +17,16 @@ export interface Settings {
    * declared so the migration can read an old blob.
    */
   vkeys?: boolean;
-  /** Playback goes to MIDI outputs instead of the built-in piano. */
+  /**
+   * LEGACY (0.0.2–0.0.3): the page-view player's three choices — the speed
+   * multiplier (1 = as encoded), playback to the MIDI outputs instead of
+   * the built-in piano, and the semitone offset on the MIDI sends and the
+   * playback-MIDI export. The player became @battuta/plugin-playback in
+   * slice 7b; `migrate` moves all three into its namespace. Kept declared
+   * so the migration can read an old blob.
+   */
+  tempo?: number;
   midiOut?: boolean;
-  /** Semitone offset on MIDI sends and the playback-MIDI export. */
   midiTranspose?: number;
   /** Per plugin: the on/off switch from the Plugins tab and the plugin's own small settings. */
   plugins?: Record<string, PluginSettings>;
@@ -37,27 +42,52 @@ const STORE = "battuta.settings.v1";
 
 /**
  * One-time moves of a setting that changed owner, as a DATED, EXPLICIT
- * LIST rather than a migration framework — there is one entry and it is
- * cheaper to read than a mechanism.
+ * LIST rather than a migration framework — there are two entries and they
+ * are cheaper to read than a mechanism.
  *
  * A plugin cannot do this itself: it sees only its own namespace, and the
  * whole point is that the old value is somewhere else.
  *
  * - 2026-09-14 (slice 4b): `vkeys` → plugin `battuta.onscreen-keyboard`,
- *   key `open`. Pure: the migrated shape is persisted by the next
- *   `saveSettings`, so reading settings never writes.
+ *   key `open`.
+ * - 2026-09-15 (slice 7b): `tempo`, `midiOut`, `midiTranspose` → plugin
+ *   `battuta.playback`, under the same three key names.
+ *
+ * Both are pure: the migrated shape is persisted by the next
+ * `saveSettings`, so reading settings never writes. A value the plugin has
+ * already written wins in both — the user has used the plugin since, and
+ * the legacy key is stale.
  */
 const VKEYS_OWNER = "battuta.onscreen-keyboard";
+const PLAYER_OWNER = "battuta.playback";
+/** The player's three keys, spelled the same on both sides of the move. */
+const PLAYER_KEYS = ["tempo", "midiOut", "midiTranspose"] as const;
 
-export function migrate(s: Settings): Settings {
+/** 4b: the on-screen keyboard's `vkeys`, which also changed NAME (→ `open`). */
+function moveVkeys(s: Settings): Settings {
   if (s.vkeys === undefined) return s;
   const { vkeys, ...rest } = s;
   const plugins = rest.plugins ?? {};
   const mine = plugins[VKEYS_OWNER] ?? {};
-  // A value the plugin has already written wins: the user has used the
-  // plugin since, and the legacy key is stale.
   if (mine.values?.["open"] !== undefined) return rest;
   return { ...rest, plugins: { ...plugins, [VKEYS_OWNER]: { ...mine, values: { ...(mine.values ?? {}), open: vkeys } } } };
+}
+
+/** 7b: the player's speed, MIDI-out and transpose, keeping their names. */
+function movePlayer(s: Settings): Settings {
+  const moving = PLAYER_KEYS.filter((k) => s[k] !== undefined);
+  if (moving.length === 0) return s;
+  const { tempo, midiOut, midiTranspose, ...rest } = s;
+  const legacy: Record<string, unknown> = { tempo, midiOut, midiTranspose };
+  const plugins = rest.plugins ?? {};
+  const mine = plugins[PLAYER_OWNER] ?? {};
+  const values = { ...(mine.values ?? {}) };
+  for (const key of moving) if (values[key] === undefined) values[key] = legacy[key];
+  return { ...rest, plugins: { ...plugins, [PLAYER_OWNER]: { ...mine, values } } };
+}
+
+export function migrate(s: Settings): Settings {
+  return movePlayer(moveVkeys(s));
 }
 
 export function loadSettings(): Settings {

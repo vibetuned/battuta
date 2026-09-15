@@ -15,12 +15,15 @@ fi
 npm run build -w @battuta/editor >/dev/null
 ( cd apps/editor/src-tauri && cargo build --features custom-protocol )
 OUT=$(mktemp -d)/selftest.mei
-LOG=$(BATTUTA_SHELL_TEST_FILE="$OUT" BATTUTA_MIDI_TEST=1 run_for 15 ./apps/editor/src-tauri/target/debug/battuta-editor 2>&1 || true)
+LOG=$(BATTUTA_SHELL_TEST_FILE="$OUT" BATTUTA_MIDI_TEST=1 run_for 18 ./apps/editor/src-tauri/target/debug/battuta-editor 2>&1 || true)
 echo "$LOG" | grep -q "page loaded: tauri://localhost" && echo "PASS  embedded assets load over tauri://" || { echo "FAIL  page never loaded"; exit 1; }
 echo "$LOG" | grep -qE "probe: __TAURI__=present tiles=[1-9]" && echo "PASS  the score renders (tiles > 0)" || { echo "FAIL  no tiles rendered"; exit 1; }
 echo "$LOG" | grep -q "selftest: saved" && grep -q "<mei" "$OUT" && echo "PASS  save_score writes real MEI to disk" || { echo "FAIL  save self-test"; exit 1; }
 echo "$LOG" | grep -q "probe2: midi=MIDI <>" && echo "PASS  native MIDI bridge reaches the status bar" || { echo "FAIL  MIDI bridge (device list)"; exit 1; }
 echo "$LOG" | grep -q "MIDI note received" && echo "PASS  bridged note events reach the editor" || { echo "FAIL  MIDI bridge (notes)"; exit 1; }
+# probe3 drives the real player: page view wakes the playback plugin (its
+# chunk and Tone's over tauri://), play decodes the mp3 piano, a note lights.
+echo "$LOG" | grep -q "probe3: playback ok" && echo "PASS  the playback plugin plays in the shell (lazy chunks over tauri://, mp3 piano decoded)" || { echo "FAIL  playback in the shell: $(echo "$LOG" | grep -o 'probe3: .*' | head -1)"; exit 1; }
 
 # Launch with a .mei argument (what a file-manager double-click does once
 # the association is installed): the file must open as the active tab.

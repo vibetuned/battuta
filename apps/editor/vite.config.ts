@@ -43,6 +43,16 @@ export default defineConfig(({ command }) => ({
           // core in slice 2 and react in slice 4's first attempt: anything
           // the host and a plugin share must be named.
           if (/\/node_modules\/(react|react-dom|scheduler)\//.test(f)) return "battuta-shared";
+          // Vite's `__vitePreload` helper, for the same reason. It is
+          // emitted once and shared by every module with a dynamic import:
+          // the host's plugin loader, and since slice 7b the playback
+          // plugin (Tone.js and its samples). Unnamed, Rollup settled the
+          // 700-byte helper inside `plugin-playback` — and the entry then
+          // imported that chunk STATICALLY to get it, which the budget
+          // check reports, correctly, as plugin code reached from the
+          // initial chunk. Third instance of the one rule: anything the
+          // host and a plugin share must be named here.
+          if (f.includes("vite/preload-helper")) return "battuta-shared";
           return undefined;
         },
       },

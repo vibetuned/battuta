@@ -88,7 +88,11 @@ export function checkSource({ pluginRoot, file, source }: SourceCheck): string[]
   }
   if (!isTest) {
     const code = codeOnly(source);
-    const dom = /(^|[^.\w$])(window|document|navigator|localStorage|sessionStorage)\s*[.[(]/g;
+    // Any use of the global as a VALUE: `window.x`, `window[...]`, `(window as
+    // T)`, `typeof window`, `window,` — not a property (`ctx.document`) and
+    // not a key or type member (`document:`). Tightened 2026-09-15 after the
+    // playback slice noticed a cast slipped past the old `[.[(]` tail.
+    const dom = /(^|[^.\w$])(window|document|navigator|localStorage|sessionStorage)\b(?!\s*:)/g;
     for (const m of code.matchAll(dom)) problems.push(`${file}: DOM global "${m[2]}" — plugins never touch the DOM (use ctx.document, ctx.storage, slots and panels)`);
   }
   return problems;
@@ -176,6 +180,9 @@ describe("the rules, on samples", () => {
   it("refuses DOM globals but not ctx.document, comments or strings", () => {
     expect(src("src/index.ts", "const el = document.querySelector('x');")).toEqual(['src/index.ts: DOM global "document" — plugins never touch the DOM (use ctx.document, ctx.storage, slots and panels)']);
     expect(src("src/index.ts", "window.addEventListener('resize', f); localStorage.getItem('k');")).toHaveLength(2);
+    expect(src("src/index.ts", '(window as unknown as Record<string, unknown>)["__SAMPLE_URL__"] = url;')).toHaveLength(1); // the cast that slipped past the old rule
+    expect(src("src/index.ts", 'if (typeof window !== "undefined") f(window);')).toHaveLength(2);
+    expect(src("src/index.ts", "const o = { document: 1 }; type T = { readonly document: Store<X> };")).toEqual([]); // keys and members, not the global
     expect(src("src/index.ts", "const v = ctx.document.get()?.version; // window.x in a comment\nctx.notice(\"document.body\");")).toEqual([]);
   });
 

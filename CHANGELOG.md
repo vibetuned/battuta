@@ -55,6 +55,92 @@ is taken, and each slice as it closes, with the `App.tsx` line count
   refusals) and the query test extended; editor 122, api 18, plugins 105;
   `verify-phase5` 222 (its two harmony hooks now read `select[data-lanes]`; one flaky voice-navigation check in a back-to-back run passed on its own), `verify-lyrics` 26, `verify-app` 18, the keyboard 25, all green.
   `App.tsx` **3,117 → 3,109**; initial chunk **599.0 kB** (ceiling 605.5).
+- **Slice 7b's gaps closed (2026-09-15, in-house; api 0.1.11 → 0.1.12).**
+  The plugin slice stopped at two gaps and named a weakness, as its brief
+  said to; each was the host's to take. **`DocumentInfo.name`**: the tab's
+  name — the file's base name without its extension — beside the MEI
+  `title`, which is often empty and never the file's name. The playback
+  plugin's export returns `filename: <name>-playback.mid` again, as 0.0.3
+  saved it, and no longer collides with the written-score MIDI export;
+  slice 9's folder view is the second consumer. Every fake snapshot in the
+  test suites gained the field. **The shell's playback probe** is alive
+  again and asserted for the first time: `main.rs`'s probe3 no longer
+  fetches a `window.__SAMPLE_URL__` a plugin may not set — it clicks page
+  view (waking the playback plugin: its lazy chunk, then Tone's, over
+  `tauri://`), presses ▶ once the pages render, and waits for a lit note,
+  which the player only produces after `decodeAudioData` has accepted the
+  Salamander mp3s — so one line proves the lazy chunks resolve in the
+  shell AND WebKitGTK's mp3 support, the check the old hook made;
+  `verify-tauri.sh` grew a seventh PASS and an 18 s window, and is green
+  7 of 7. **The DOM-global rule** in `plugin-boundaries` was tightened
+  from "`window` followed by `.`, `[` or `(`" to any use of the global as
+  a value — `(window as T)`, `typeof window`, `window,` — still ignoring
+  `ctx.document`, object keys and type members; the cast that slipped past
+  in 7b's first draft is a test case now, and every shipped plugin passes
+  the tighter rule unchanged. Left as written up: §7.4 (a dynamic import
+  inside a plugin buys lazy execution, not a lazy chunk — the host's
+  `manualChunks` is coarser than a plugin's imports, and a 2 kB saving is
+  not worth an exception) and §7.8's few milliseconds of already-scheduled
+  sound after an edit (a synchronous "an edit is about to happen" hook
+  has no second consumer). Tests: editor 135, api 19, plugins 162.
+- **Slice 7b — playback is a plugin (2026-09-15). CLOSED.**
+  `packages/plugins/playback` — the last of the "move a whole feature
+  out" slices, and the first where the bundle budget was the point.
+  `player.ts`, `performance.ts`, `midiExport.ts`, the 30-file Salamander
+  subset and the transport row left `apps/editor/src` as they stood after
+  7a; `host.audio` / `host.view` / `host.query` became `ctx.*` and
+  nothing else in them changed. The manifest declares
+  `capabilities: ["midi", "audio"]`, wakes on `onView:pages` (page view
+  is the gesture that means "I want to listen") and on
+  `onFormat:battuta.playback.midi`, and contributes ONE export — no
+  command, no keybinding, no declared slot item: the row is not an entry
+  point that opens something, it IS the feature, and the view that would
+  show it is the view that wakes the plugin. `activate` adds one
+  `docHeader` item whose component subscribes to a view store and renders
+  `null` outside page view, so the item is never added and removed and
+  never remounts mid-play (4b's §7.6 again); every `data-player-*` /
+  `data-midi-*` hook and every inline style is verbatim.
+  **The budget, for real:** Tone.js (332.5 kB) is behind a dynamic
+  `import()` and is its own lazy chunk, the piano is ~2 MB of assets
+  fetched on the first attack, and the initial chunk fell **596.0 kB →
+  360.8 kB**; `budget.json` lowered 620,000 → **377,000** bytes (measured
+  369,473 + ~2%), with the entry importing neither the plugin chunk nor
+  the Tone chunk. Getting there cost one host edit the brief did not list
+  and this bullet therefore names: **Vite's `__vitePreload` helper** is
+  emitted once and shared by everything with a dynamic import — until now
+  only the host's plugin loader — so with the plugin's own dynamic
+  imports it became shared, `manualChunks` had no opinion, and Rollup put
+  the 700-byte helper inside `plugin-playback`, which the entry then had
+  to import statically. One line in `vite.config.ts` names it
+  `battuta-shared`, next to the two lines already there for core and
+  React: third instance of one rule — anything the host and a plugin
+  share must be named — and the slice's own gate cannot pass without it.
+  Found with the `generateBundle` hook `packages/plugins/README.md`
+  prescribes, not by grepping the bundle. **Settings:** `tempo`,
+  `midiOut` and `midiTranspose` moved into the plugin's namespace through
+  a second dated entry in `apps/editor/src/settings.ts` (the 4b
+  precedent), with its seven cases. **`@battuta/api` 0.1.11, unchanged** —
+  *API may grow: None* held, and the one place it shows is written up
+  rather than taken: the export used to save as `<score>-playback.mid`
+  and now saves as `<score>.mid`, colliding with the written-score MIDI
+  export, because `DocumentInfo` carries the score's `title` and not the
+  open file's NAME. The gap is BUILDING.md §7.2 with the addition it
+  wants (`DocumentInfo.name`, consumers: this export and slice 9's folder
+  view) — the user's to approve, not the slice's to take. Also honest:
+  the shell's mp3-decode probe (probe3) is now inert, because
+  `window.__SAMPLE_URL__` was a plugin-forbidden DOM global and the
+  samples no longer exist at startup — §7.3, with the two ways back and
+  neither taken; `verify-tauri.sh` never asserted it and stays 6 of 6.
+  Tests: `performance.test.ts` (8) and `midiExport.test.ts` (6) moved
+  with their assertions unchanged, `playback.test.ts` (16) new — the MIDI
+  sink makes the whole transport runnable in node, so stop-on-edit,
+  stop-on-leaving-page-view, the transpose, the no-output notice and the
+  switch taking row and export away together are assertions rather than
+  hopes; editor 135, core 224, api 19, plugins **162**. E2e all green and
+  every hook untouched: phase 5 **222** (its playback section not edited),
+  app 18, phase 2 20, phase 3 21, phase 4 67, lyrics 26, keyboard 25, and
+  the shell smoke 6 of 6. Union keymap snapshot byte-identical (playback
+  has no key). `App.tsx` **3,133 → 2,945** (−188).
 - **Slice 7a — the audio context, the timemap and the facts (2026-09-15,
   in-house). CLOSED.** What a player needs from the host and cannot make
   itself, built and consumed by the in-App player first, so 7b finds

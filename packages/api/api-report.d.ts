@@ -1,4 +1,4 @@
-// @battuta/api 0.1.11 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
+// @battuta/api 0.1.12 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
 
 // ---- ../dist/.tsbuildinfo
 {"version":"5.9.3"}
@@ -288,6 +288,15 @@ export interface EditorState {
 export interface DocumentInfo {
     /** Stable for the life of an open tab; reopening a file yields a new id. */
     id: string;
+    /**
+     * The document's NAME as the tab shows it — the file's base name without
+     * its extension, or what the user was given for an untitled score. Not
+     * the MEI title (that is `title`, often empty). For naming what you
+     * derive from the document: an export, a sidecar. Added 2026-09-15 for
+     * the playback-MIDI export (`<name>-playback.mid`) and slice 9's folder
+     * view.
+     */
+    name: string;
     version: number;
     measureCount: number;
     staffCount: number;
@@ -381,7 +390,7 @@ export interface FormatsService {
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export declare const API_VERSION = "0.1.11";
+export declare const API_VERSION = "0.1.12";
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";
 export type { Disposable } from "./disposable.js";

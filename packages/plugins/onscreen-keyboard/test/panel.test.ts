@@ -69,7 +69,7 @@ function fixture(saved?: { open?: boolean; enabled?: boolean }): Fixture {
     notation: () => ({ ties: {}, marks: {} }),
   };
   host.bindSession(adapter);
-  host.document.set({ id: "doc-1", version: 1, measureCount: 4, staffCount: 2, title: "", tempo: null });
+  host.document.set({ id: "doc-1", name: "score", version: 1, measureCount: 4, staffCount: 2, title: "", tempo: null });
 
   return {
     host,

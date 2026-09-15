@@ -371,18 +371,38 @@ fn main() {
                    if (inv) inv('js_log', { msg: 'probe: __TAURI__=' + (window.__TAURI__ ? 'present' : 'MISSING') + ' tiles=' + document.querySelectorAll('.tile').length }); \
                  }, 3000);",
             );
-            // probe3: mp3 decode — the page-view player's samples depend on
-            // WebKitGTK's gstreamer plugins, which vary per system.
+            // probe3: playback end to end — switch to page view (which wakes
+            // the playback plugin: its lazy chunk, then Tone's, must resolve
+            // over tauri://), press play, and wait for the first note to
+            // light. The player loads the Salamander mp3s through
+            // decodeAudioData before it starts, so a lit note also proves
+            // WebKitGTK's gstreamer mp3 support on this system — the check
+            // the old __SAMPLE_URL__ hook made, now through the real UI
+            // (slice 7b moved the samples into a plugin, which may not set
+            // globals). Without a user gesture the context stays suspended,
+            // so nothing sounds; the schedule and the highlight run anyway.
             let _ = webview.eval(
                 "setTimeout(() => { \
                    const inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke; \
-                   if (!inv || !window.__SAMPLE_URL__) return; \
-                   fetch(window.__SAMPLE_URL__) \
-                     .then((r) => r.arrayBuffer()) \
-                     .then((b) => new AudioContext().decodeAudioData(b)) \
-                     .then((a) => inv('js_log', { msg: 'probe3: mp3 decode ok (' + a.length + ' frames)' })) \
-                     .catch((e) => inv('js_log', { msg: 'probe3: mp3 decode FAILED: ' + e })); \
-                 }, 5000);",
+                   if (!inv) return; \
+                   const byText = (t) => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === t); \
+                   const pv = byText('page view'); \
+                   if (!pv) { inv('js_log', { msg: 'probe3: playback FAILED: no page view button' }); return; } \
+                   pv.click(); \
+                   const t0 = Date.now(); \
+                   const step = () => { \
+                     const toggle = document.querySelector('[data-player-toggle]'); \
+                     if (toggle && !toggle.dataset.probed && document.querySelector('.pages .page svg')) { toggle.dataset.probed = '1'; toggle.click(); } \
+                     const lit = document.querySelectorAll('.pages g.playing').length; \
+                     const tm = window.__PLAYBACK__ ? window.__PLAYBACK__.events.length : 0; \
+                     if (lit > 0) { inv('js_log', { msg: 'probe3: playback ok (plugin + Tone chunks loaded over tauri://, piano decoded, ' + tm + ' timemap events, ' + lit + ' lit)' }); return; } \
+                     const notice = document.querySelector('[data-notice]'); \
+                     if (notice && notice.textContent.includes('playback failed')) { inv('js_log', { msg: 'probe3: playback FAILED: ' + notice.textContent.trim() }); return; } \
+                     if (Date.now() - t0 > 9000) { inv('js_log', { msg: 'probe3: playback FAILED: timeout (toggle=' + Boolean(toggle) + ' timemap=' + tm + ')' }); return; } \
+                     setTimeout(step, 250); \
+                   }; \
+                   step(); \
+                 }, 4000);",
             );
             let _ = webview.eval(
                 "setTimeout(() => { \

@@ -321,7 +321,7 @@ describe("the --no-plugins property", () => {
   });
 
   it("registering, activating and disabling a plugin never touches the document: only execute does", async () => {
-    const doc: DocumentInfo = { id: "doc-1", version: 7, measureCount: 10, staffCount: 2, title: "Synthetic", tempo: null };
+    const doc: DocumentInfo = { id: "doc-1", name: "score", version: 7, measureCount: 10, staffCount: 2, title: "Synthetic", tempo: null };
     const before = JSON.stringify(doc);
     const adapter = fakeAdapter();
     const plugin = echoPlugin();

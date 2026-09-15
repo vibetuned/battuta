@@ -1,0 +1,32 @@
+{
+  "name": "@battuta/plugin-playback",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "description": "The page-view player: the transport row, the sampled piano, the MIDI-out sink and the playback-MIDI export — one performance, two sinks.",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./manifest": "./src/manifest.ts",
+    "./performance": "./src/performance.ts"
+  },
+  "//": [
+    "exports point at src/, NOT a built dist/: Vite and tsc both consume linked TypeScript, so a plugin has no build step and no prepare.",
+    "./performance is exported so the performance model can be read from outside the package without reaching into src/ by path; nothing in the app imports it.",
+    "dependencies: @battuta/api, react (the transport row renders into the docHeader slot) and tone (the instrument — the host owns the AudioContext, a plugin brings its own sampler; allowed since slice 7a). Nothing else of the workspace."
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@battuta/api": "*",
+    "react": "^18.3.0",
+    "tone": "^15.1.22"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

@@ -16,6 +16,7 @@ import type { PluginEntry } from "@battuta/api";
 import { manifest as harmony } from "@battuta/plugin-harmony/manifest";
 import { manifest as lyrics } from "@battuta/plugin-lyrics/manifest";
 import { manifest as onscreenKeyboard } from "@battuta/plugin-onscreen-keyboard/manifest";
+import { manifest as playback } from "@battuta/plugin-playback/manifest";
 import { manifest as reflection } from "@battuta/plugin-reflection/manifest";
 
 export const BUILTIN_PLUGINS: readonly PluginEntry[] = [
@@ -23,4 +24,5 @@ export const BUILTIN_PLUGINS: readonly PluginEntry[] = [
   { manifest: onscreenKeyboard, load: () => import("@battuta/plugin-onscreen-keyboard") },
   { manifest: lyrics, load: () => import("@battuta/plugin-lyrics") },
   { manifest: harmony, load: () => import("@battuta/plugin-harmony") },
+  { manifest: playback, load: () => import("@battuta/plugin-playback") },
 ];

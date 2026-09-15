@@ -19,10 +19,10 @@
     "@battuta/plugin-harmony": "*",
     "@battuta/plugin-lyrics": "*",
     "@battuta/plugin-onscreen-keyboard": "*",
+    "@battuta/plugin-playback": "*",
     "@battuta/plugin-reflection": "*",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
-    "tone": "^15.1.22",
     "verovio": "^6.2.0"
   },
   "devDependencies": {

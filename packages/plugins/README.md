@@ -134,7 +134,7 @@ The api is a data contract. Nothing in it is a live object of the model.
 
 | Need | Call | Returns |
 | --- | --- | --- |
-| which document, how many measures, its version | `ctx.document.get()` | `DocumentInfo` (`id`, `version`, `measureCount`, `staffCount`, `title`, `tempo`) or null |
+| which document, how many measures, its version | `ctx.document.get()` | `DocumentInfo` (`id`, `name` — the tab's file name, for naming what you derive: an export, a sidecar —, `version`, `measureCount`, `staffCount`, `title`, `tempo`) or null |
 | caret, event selection, block, view, input mode | `ctx.editor.get()` | `EditorState` |
 | the pitched events of a block, per voice | `ctx.query.pitchEventsIn(block)` | `PitchEvent[][]` |
 | the block an event selection covers | `ctx.query.blockOf(ids)` | `BlockSelection` or null |

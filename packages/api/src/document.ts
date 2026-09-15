@@ -42,6 +42,15 @@ export interface EditorState {
 export interface DocumentInfo {
   /** Stable for the life of an open tab; reopening a file yields a new id. */
   id: string;
+  /**
+   * The document's NAME as the tab shows it — the file's base name without
+   * its extension, or what the user was given for an untitled score. Not
+   * the MEI title (that is `title`, often empty). For naming what you
+   * derive from the document: an export, a sidecar. Added 2026-09-15 for
+   * the playback-MIDI export (`<name>-playback.mid`) and slice 9's folder
+   * view.
+   */
+  name: string;
   version: number;
   measureCount: number;
   staffCount: number;

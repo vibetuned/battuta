@@ -1,4 +1,4 @@
 {
-  "initialBytes": 620000,
-  "//": "Ceiling for the initial chunk (the HTML entry's static JS + CSS closure; workers and dynamic imports excluded). Set 2026-09-12 from the measured 607,010 bytes (592.8 kB) with ~2% headroom. Lower it when a slice moves code out (playback, formats); raise it only deliberately, with the reason in CHANGELOG.md."
+  "initialBytes": 377000,
+  "//": "Ceiling for the initial chunk (the HTML entry's static JS + CSS closure; workers and dynamic imports excluded). Lowered 2026-09-15 (slice 7b) from 620,000 to the measured 369,473 bytes (360.8 kB) with ~2% headroom, once Tone.js (332.5 kB, its own lazy chunk) and the ~2 MB Salamander subset left with the playback plugin. Set originally 2026-09-12 from 607,010 bytes. Lower it when a slice moves code out (formats is next); raise it only deliberately, with the reason in CHANGELOG.md."
 }

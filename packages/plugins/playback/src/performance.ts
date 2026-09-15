@@ -8,9 +8,10 @@
  * contrast); repeat-pass clones sounding as themselves but LIGHTING the
  * engraved note the page actually contains.
  *
- * Moved out of core on 2026-09-15 (slice 7a): core reports ties and
- * marks as facts; what they mean in sound is decided here, and a second
- * player may decide otherwise. Moves into the playback plugin in 7b.
+ * Left core on 2026-09-15 (slice 7a) and the app on the same day (7b):
+ * core reports ties and marks as facts, the host hands out the timemap,
+ * and what they mean in sound is decided HERE — in the plugin, where a
+ * second player may decide otherwise without touching either.
  */
 import type { NotationFacts, NoteMark, Timemap, TimemapEvent } from "@battuta/api";
 

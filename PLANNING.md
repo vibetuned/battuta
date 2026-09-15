@@ -291,7 +291,25 @@ closed 2026-09-15** (in-house): `ctx.audio`, `ctx.query.timemap()` and
 `notation()`, `ctx.view`, `onView:` fired, the export half of `formats`
 — and the in-App player rewritten onto them as a wall-clock scheduler
 with its own performance, the interpretation out of core; api 0.1.11;
-phase 5's playback section green unchanged. **7b is next.**
+phase 5's playback section green unchanged. **Slice 7b closed
+2026-09-15**: `packages/plugins/playback` holds the player, the row, the
+export, Tone.js and the samples; the api did not grow (0.1.11 unchanged),
+the initial chunk fell 596.0 → 360.8 kB and its ceiling to 377,000 bytes,
+and `App.tsx` is 3,133 → 2,945. Two things the slice would not resolve
+itself, both written into its BUILDING.md §7 and the CHANGELOG: the
+export can no longer be named `<score>-playback.mid`, because
+`DocumentInfo` carries the score's TITLE and not the open file's name
+(the addition to consider is `DocumentInfo.name`, with this export and
+slice 9's folder view as its two consumers), and the shell's mp3-decode
+probe is inert now that `window.__SAMPLE_URL__` — a DOM global a plugin
+may not set — is gone. One host edit beyond the brief's list, named
+rather than passed over: Vite's `__vitePreload` helper had to be named in
+`manualChunks`, the third module the host and a plugin share (after core
+and React) and the first that is Vite's own. Its two gaps closed in-house
+the same day (api 0.1.12: `DocumentInfo.name`, so the export is
+`<name>-playback.mid` again; the shell's playback probe revived through
+the real UI and asserted; the DOM-global rule tightened). **Slice 8 is
+next.**
 
 From here on slices are
 handed to sessions without the surrounding context, on purpose, to test
@@ -1020,6 +1038,26 @@ with the `App.tsx` count and the budget figure.
 byte-identically to 0.0.3; turning the plugin off removes the row and the
 export entry together; the initial chunk contains neither Tone.js nor
 the samples, and the budget check enforces the new ceiling.
+
+**Closed 2026-09-15.** All hold but one clause of the first: play, MIDI
+out and transpose are byte-identical, and the export's CONTENT is, but
+its FILE NAME is not — `<score>.mid` where 0.0.3 wrote
+`<score>-playback.mid`, which collides with the written-score MIDI
+export. Reproducing it needs the open document's file name and
+`DocumentInfo` has only its title; *API may grow: None*, so the gap is
+written (BUILDING.md §7.2) and not resolved. *As built, beyond the
+brief:* one line in `apps/editor/vite.config.ts` naming Vite's
+`__vitePreload` helper into `battuta-shared` — shared by the host's
+plugin loader and, newly, this plugin's own dynamic imports, and without
+it Rollup puts the helper in the plugin chunk and the entry imports that
+chunk statically, which is exactly what this slice's budget gate
+forbids. *Inert, and recorded:* the shell's probe3 (mp3 decode in
+WebKitGTK) no longer runs, because its `window.__SAMPLE_URL__` hook was
+a DOM global a plugin may not set; `verify-tauri.sh` never asserted it
+and is still 6 of 6. The row is one slot item that renders `null`
+outside page view rather than an item added and removed with the view
+(§7.5), and the plugin has no `deactivate()` — everything it owns is a
+disposable the host already tracks (§7.6).
 
 #### Slice 8 — Format converters (days)
 

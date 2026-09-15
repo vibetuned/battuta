@@ -7,39 +7,31 @@
  * and the notation highlight ride the same wall clock, so they cannot
  * drift.
  *
- * Since slice 7a the host owns only the AudioContext (`host.audio`) and
- * the highlight (`host.view`); everything about HOW the score sounds —
- * the performance, the instrument, the transport — is here, and moves
- * into the playback plugin in 7b. No Tone transport: notes and cues are
- * scheduled a lookahead ahead from `performance.now()`, attacks converted
- * to the audio clock with `host.audio.timeAt`, MIDI sends handed to the
- * sink with the same wall-clock instant.
+ * The host owns only the AudioContext (`ctx.audio`) and the highlight
+ * (`ctx.view`); everything about HOW the score sounds — the performance,
+ * the instrument, the transport — is here. No Tone transport: notes and
+ * cues are scheduled a lookahead ahead from `performance.now()`, attacks
+ * converted to the audio clock with `ctx.audio.timeAt`, MIDI sends handed
+ * to the sink with the same wall-clock instant.
+ *
+ * Tone.js and the samples arrive through a dynamic `import()` at the
+ * first attack on the piano: opening page view costs the transport row,
+ * pressing play costs the engine — and a session spent playing to MIDI
+ * never loads either.
  */
-import * as Tone from "tone";
-import type { MidiOutputs } from "@battuta/api";
-import { host } from "./host";
-import { NOTE_ON, NOTE_OFF } from "./host/midiSink";
+import type { AudioService, MidiOutputs, PluginContext, ViewService } from "@battuta/api";
 import type { Performance } from "./performance";
 
-// Vite inlines these as hashed asset URLs — embedded in the app bundle,
-// never a CDN (local-first, and the Tauri custom protocol serves them).
-const SAMPLE_FILES = import.meta.glob("./assets/salamander/*.mp3", { eager: true, query: "?url", import: "default" }) as Record<string, string>;
+/** The two host services a player needs; the whole context satisfies it. */
+export type PlayerHost = Pick<PluginContext, "audio" | "view">;
 
-/** "./assets/salamander/Ds4.mp3" -> "D#4" (Tone.Sampler note names). */
-const sampleUrls = (): Record<string, string> => {
-  const urls: Record<string, string> = {};
-  for (const [path, url] of Object.entries(SAMPLE_FILES)) {
-    const m = /([A-G])(s?)(\d)\.mp3$/.exec(path);
-    if (m) urls[`${m[1]}${m[2] ? "#" : ""}${m[3]}`] = url;
-  }
-  return urls;
-};
+type ToneModule = typeof import("tone");
 
-// The shell smoke probes one sample through decodeAudioData: WebKitGTK's
-// mp3 support rides gstreamer plugins, so it must be VERIFIED, not assumed.
-if (typeof window !== "undefined") {
-  (window as unknown as Record<string, unknown>)["__SAMPLE_URL__"] = Object.values(SAMPLE_FILES)[0];
-}
+// MIDI channel-voice status bytes. Protocol constants, not a host
+// contract: `MidiOutputs.schedule` takes raw bytes, and the host's own
+// sink names the same two numbers on its side of the door.
+const NOTE_ON = 0x90;
+const NOTE_OFF = 0x80;
 
 export type PlayerState = "idle" | "loading" | "playing" | "paused";
 
@@ -65,13 +57,21 @@ interface Run {
 }
 
 export class ScorePlayer {
-  private sampler: Tone.Sampler | null = null;
+  private readonly audio: AudioService;
+  private readonly view: ViewService;
+  private tone: ToneModule | null = null;
+  private sampler: InstanceType<ToneModule["Sampler"]> | null = null;
   private state: PlayerState = "idle";
   private perf: Performance | null = null;
   private run: Run | null = null;
   /** Listening position (ms) while not running: paused, or 0. */
   private pausedPos = 0;
   private factor = 1; // tempo multiplier: 2 = double speed
+
+  constructor(host: PlayerHost) {
+    this.audio = host.audio;
+    this.view = host.view;
+  }
 
   onStateChange: (s: PlayerState) => void = () => undefined;
 
@@ -84,21 +84,24 @@ export class ScorePlayer {
    * handler, before any await — autoplay policies tie the unlock to the
    * gesture, and a slow timemap render could outlive the activation window. */
   unlock(): Promise<void> {
-    return host.audio.unlock();
+    return this.audio.unlock();
   }
 
-  private ensureSampler(): Promise<Tone.Sampler> {
-    if (this.sampler) return Promise.resolve(this.sampler);
+  private async ensureSampler(): Promise<void> {
+    if (this.sampler) return;
+    // The engine and the 2 MB piano, on first sound only.
+    const [Tone, { sampleUrls }] = await Promise.all([import("tone"), import("./samples")]);
+    this.tone = Tone;
     // The host's context, not one of Tone's own: every sound in the app
     // shares the one unlock.
-    const ctx = host.audio.context();
+    const ctx = this.audio.context();
     if (ctx && Tone.getContext().rawContext !== ctx) Tone.setContext(ctx);
-    return new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const sampler = new Tone.Sampler({
         urls: sampleUrls(),
         onload: () => {
           this.sampler = sampler;
-          resolve(sampler);
+          resolve();
         },
         onerror: (e) => reject(e),
       }).toDestination();
@@ -184,8 +187,8 @@ export class ScorePlayer {
         const pitch = Math.min(127, Math.max(0, n.pitch + this.midiTranspose));
         this.midiSink.schedule([NOTE_ON, pitch, MIDI_VELOCITY], at);
         this.midiSink.schedule([NOTE_OFF, pitch, 0], at + durMs);
-      } else if (this.sampler) {
-        this.sampler.triggerAttackRelease(Tone.Frequency(n.pitch, "midi").toFrequency(), durMs / 1000, host.audio.timeAt(at), VELOCITY);
+      } else if (this.sampler && this.tone) {
+        this.sampler.triggerAttackRelease(this.tone.Frequency(n.pitch, "midi").toFrequency(), durMs / 1000, this.audio.timeAt(at), VELOCITY);
       }
     }
     while (run.nextCue < perf.cues.length && perf.cues[run.nextCue]!.atMs <= horizonMusical) {
@@ -193,7 +196,7 @@ export class ScorePlayer {
       const t = setTimeout(
         () => {
           run.timers.delete(t);
-          if (this.state === "playing" && this.run === run) host.view.highlight(cue);
+          if (this.state === "playing" && this.run === run) this.view.highlight(cue);
         },
         Math.max(0, wallFor(cue.atMs) - now),
       );
@@ -238,7 +241,7 @@ export class ScorePlayer {
     this.stop();
     this.setState("loading");
     try {
-      await host.audio.unlock(); // resume the context inside the gesture
+      await this.audio.unlock(); // resume the context inside the gesture
       // MIDI destination: the 2 MB piano never has to load.
       if (!this.midiSink) await this.ensureSampler();
       this.perf = perf;
@@ -262,7 +265,7 @@ export class ScorePlayer {
     const wasPlaying = this.run !== null;
     this.endRun();
     this.silence(); // pending sends and sounding notes belong to the old position
-    host.view.clearHighlight(); // stale lit notes: clear, the next cues relight
+    this.view.clearHighlight(); // stale lit notes: clear, the next cues relight
     this.pausedPos = target;
     if (wasPlaying) this.startRun(target);
   }
@@ -282,7 +285,7 @@ export class ScorePlayer {
     this.silence(); // pending sends belong to the OLD schedule
     this.factor = f;
     this.pausedPos = musicalPos / f;
-    host.view.clearHighlight();
+    this.view.clearHighlight();
     if (wasPlaying) this.startRun(this.pausedPos);
   }
 
@@ -300,17 +303,31 @@ export class ScorePlayer {
   }
 
   stop(): void {
-    // afterCommand calls this on EVERY edit. When nothing is scheduled
-    // (never played, or already stopped) it must be a PURE no-op — no
-    // audio stack is touched on the editing path.
+    // Called on EVERY edit (the document publishes a new version). When
+    // nothing is scheduled (never played, or already stopped) it must be a
+    // PURE no-op — no audio stack is touched on the editing path.
     if (this.state === "idle" && !this.run) return;
     this.endRun();
     this.silence();
     this.pausedPos = 0;
     if (this.state !== "idle") this.setState("idle");
-    host.view.clearHighlight();
+    this.view.clearHighlight();
+  }
+
+  /**
+   * Off, or the plugin deactivating: stop, then give the instrument back.
+   * The MIDI sink belongs to whoever opened it (`index.tsx` closes it) —
+   * the player only ever silences it.
+   */
+  dispose(): void {
+    this.stop();
+    try {
+      this.sampler?.dispose();
+    } catch {
+      /* an audio-stack failure must not poison deactivation */
+    }
+    this.sampler = null;
+    this.tone = null;
+    this.perf = null;
   }
 }
-
-/** One player for the app — playback is inherently a singleton resource. */
-export const scorePlayer = new ScorePlayer();

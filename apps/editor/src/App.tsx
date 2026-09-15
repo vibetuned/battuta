@@ -5,7 +5,6 @@ import { keyMatches, type Keymap, type Layout } from "./keymap";
 import { host, useStore, Slot, Panels, LaneInput, laneFace, confirmDialog, tauriInvoke, blockOfEvents, rule, gate, modal, isMod, type ActionStep, type KeyEvent, type Outcome } from "./host";
 import { ShortcutEditor } from "./ShortcutEditor";
 import { loadSettings, saveSettings, detectLayout } from "./settings";
-import { scorePlayer, type PlayerState } from "./player";
 import { DocumentSession } from "./session";
 import { converter } from "./converter";
 // Musical Unicode (𝅝 𝅗𝅥 𝅘𝅥𝅯 𝄆 𝄇 𝄐 𝄪 …) has NO macOS system font — the UI
@@ -13,9 +12,7 @@ import { converter } from "./converter";
 // exactly those blocks via @font-face unicode-range below.
 import notoMusicUrl from "./assets/fonts/NotoMusic-Regular.woff2?url";
 import { detectImport, IMPORT_FORMATS, EXPORT_FORMATS, OPEN_EXTENSIONS, type ExportFormat } from "./formats";
-import { playbackToMidi } from "./midiExport";
-import { buildPerformance } from "./performance";
-import type { LaneSpec, MidiOutputs } from "@battuta/api";
+import type { LaneSpec } from "@battuta/api";
 import { saveStoredSession, loadStoredSession, clearStoredSession, type StoredSession } from "./sessionStore";
 
 /** savedMarks sentinel for restored-dirty docs: never equals an editMark,
@@ -159,11 +156,6 @@ const durIndicator = (dur: string, dots: number): string => {
 
 export const ZOOM_LEVELS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5] as const;
 export const DEFAULT_ZOOM = 1;
-
-/** Playback tempo multipliers offered by the page-view player. */
-const TEMPO_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
-/** mm:ss for the player readout. */
-const fmtTime = (s: number): string => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
 /**
  * Virtualized, edit-aware tile grid. Visibility (IntersectionObserver) and
@@ -462,24 +454,6 @@ export default function App() {
   const [docs, setDocs] = useState<OpenDoc[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [view, setView] = useState<"tiles" | "pages">("tiles");
-  const [playerState, setPlayerState] = useState<PlayerState>("idle");
-  const [playerPos, setPlayerPos] = useState(0);
-  const [playerTotal, setPlayerTotal] = useState(0);
-  /** MIDI checkbox: play to connected MIDI outputs, not the sampler. */
-  const [midiOutOn, setMidiOutOn] = useState(() => loadSettings().midiOut === true);
-  /** Semitone offset on MIDI sends + the playback-MIDI export. */
-  const [midiTranspose, setMidiTransposeState] = useState(() => {
-    const t = loadSettings().midiTranspose;
-    return typeof t === "number" && Number.isInteger(t) && Math.abs(t) <= 24 ? t : 0;
-  });
-  useEffect(() => {
-    scorePlayer.setMidiTranspose(midiTranspose); // live: next attacks use it
-  }, [midiTranspose]);
-  const midiSinkRef = useRef<MidiOutputs | null>(null);
-  const [playerTempo, setPlayerTempo] = useState(() => {
-    const t = loadSettings().tempo;
-    return t !== undefined && TEMPO_STEPS.includes(t as (typeof TEMPO_STEPS)[number]) ? t : 1;
-  });
   const [version, setVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -631,7 +605,6 @@ export default function App() {
     setNotice(null);
     setEntryMode(false);
     lastEntered.current = null;
-    scorePlayer.stop();
   }, []);
 
   /** Disk mtime per open path, recorded at open/save — the save path
@@ -894,7 +867,6 @@ export default function App() {
   const afterCommand = useCallback(
     (s: DocumentSession) => {
       pendingEdit.current = true;
-      scorePlayer.stop(); // an edit invalidates the scheduled timemap
       setVersion(s.version);
       setSelection((sel) => sel.filter((id) => s.index.byId.has(id)));
       setCaret((c) => {
@@ -906,11 +878,10 @@ export default function App() {
     [],
   );
 
-  // --- page-view player: audio + highlight ride the same timemap ---
+  // --- the notation highlight: the App's view adapter ---
+  // The notation on screen is the host's; a player (the playback plugin
+  // since 7b) lights it through `ctx.view`, and this is what answers.
   useEffect(() => {
-    scorePlayer.onStateChange = setPlayerState;
-    // The notation on screen is the host's: the player (and, from 7b, a
-    // plugin) lights it through host.view; this is the App's adapter.
     host.bindView({
       highlight: ({ on, off, measureOn }) => {
         const root = document.querySelector(".pages");
@@ -930,63 +901,8 @@ export default function App() {
         for (const el of document.querySelectorAll(".pages g.playing")) el.classList.remove("playing");
       },
     });
-    scorePlayer.setTempo(playerTempo); // restore the persisted tempo
-    return () => {
-      scorePlayer.stop();
-      host.bindView(null);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => host.bindView(null);
   }, []);
-  useEffect(() => {
-    if (view !== "pages") scorePlayer.stop();
-  }, [view]);
-  // Progress polling: 4 Hz while the player is active.
-  useEffect(() => {
-    if (playerState === "idle" || playerState === "loading") {
-      setPlayerPos(0);
-      setPlayerTotal(0);
-      return;
-    }
-    const tick = () => {
-      setPlayerPos(scorePlayer.position());
-      setPlayerTotal(scorePlayer.total());
-    };
-    tick();
-    const t = setInterval(tick, 250);
-    return () => clearInterval(t);
-  }, [playerState]);
-  const onPlayPause = useCallback(() => {
-    if (playerState === "playing") {
-      scorePlayer.pause();
-      return;
-    }
-    if (playerState === "paused") {
-      scorePlayer.resume();
-      return;
-    }
-    if (playerState === "loading" || !session || !pool) return;
-    void scorePlayer.unlock(); // inside the gesture, before any await
-    // MIDI mode: open the outputs once (kept for the session); if none
-    // exist, say so and fall back to the piano rather than playing silence.
-    const sink = midiOutOn
-      ? (midiSinkRef.current ? Promise.resolve(midiSinkRef.current) : host.midi.openOutputs())
-      : Promise.resolve(null);
-    // The host renders the timemap and reports the notation facts; the
-    // PERFORMANCE — ties merged, gates applied, clones mapped — is the
-    // player's own reading of them (performance.ts).
-    Promise.all([sink, host.query.timemap()])
-      .then(([s, timemap]) => {
-        if (midiOutOn && !s) setNotice("no MIDI outputs found — playing through the built-in piano");
-        if (midiOutOn && s && !midiSinkRef.current) {
-          midiSinkRef.current = s;
-          setNotice(`MIDI playback → ${s.names.join(", ")}`);
-        }
-        scorePlayer.setMidiSink(midiOutOn ? s : null);
-        if (!timemap) return;
-        return scorePlayer.play(buildPerformance(timemap, host.query.notation()));
-      })
-      .catch((e) => setNotice(`playback failed: ${e instanceof Error ? e.message : e}`));
-  }, [playerState, session, pool, midiOutOn]);
 
   /** Choose the octave that puts pname nearest the previous note (or oct 4). */
   const nearestOctave = useCallback(
@@ -1294,30 +1210,6 @@ export default function App() {
     [session, active, pool, saveExport],
   );
 
-  /**
-   * battuta's playback as MIDI — the SOLVED form the player performs
-   * (repeats/voltas/jump expanded, ties merged, articulation gates), not
-   * Verovio's written-score MIDI — registered as an INTERNAL export in
-   * the host's registry (slice 7a), the way a plugin's export is declared
-   * and produced; it moves into the playback plugin in 7b. Registered
-   * once, reading the live values through refs, so the menu row is there
-   * with or without a document.
-   */
-  const exportRefs = useRef({ name: null as string | null, transpose: 0 });
-  exportRefs.current = { name: active?.name ?? null, transpose: midiTranspose };
-  useEffect(() => {
-    const d = host.formats.register(
-      { id: "playback-midi", label: "playback MIDI", ext: "mid", mime: "audio/midi", title: "the player's interpretation: repeats, voltas and D.S./D.C. expanded, ties merged, staccato/legato gates applied" },
-      async () => {
-        const timemap = await host.query.timemap();
-        if (!timemap) throw new Error("no document is open");
-        if (timemap.events.length === 0) throw new Error("nothing to play");
-        const { name, transpose } = exportRefs.current;
-        return { bytes: playbackToMidi(buildPerformance(timemap, host.query.notation()), { transpose }), filename: `${name ?? "score"}-playback.mid` };
-      },
-    );
-    return () => d.dispose();
-  }, []);
   const exportOptions = useStore(host.formats.exports);
   /** Run one export of the registry — the App owns the SAVE path, the registry who produces. */
   const runExport = useCallback(
@@ -1360,10 +1252,10 @@ export default function App() {
     // A snapshot, not the model: plugins get data, never CoreScore.
     host.document.set(
       session && activeId !== null
-        ? { id: `doc-${activeId}`, version: session.version, measureCount: session.score.measures.length, staffCount: session.staffCount, title: session.title(), tempo: session.tempo() ?? null }
+        ? { id: `doc-${activeId}`, name: active?.name ?? "", version: session.version, measureCount: session.score.measures.length, staffCount: session.staffCount, title: session.title(), tempo: session.tempo() ?? null }
         : null,
     );
-  }, [session, version, activeId]);
+  }, [session, version, activeId, active]);
   useEffect(() => {
     host.editor.set({ caret, selection, block, view, entryMode });
   }, [caret, selection, block, view, entryMode]);
@@ -2694,89 +2586,9 @@ export default function App() {
             onBlur={() => setTempoOpen(null)}
           />
         )}
-        {/* Second-row slot: where a playback plugin's controls go (slice 7). */}
+        {/* Second-row slot: the playback plugin's transport row lives here
+            (slice 7b) — it renders itself only in page view. */}
         <Slot store={host.slots} name="docHeader" onCommand={runPluginCommand} plugins={host.registry} />
-        {view === "pages" && (
-          <>
-            <button data-player-toggle title={playerState === "playing" ? "pause" : "play (repeats, voltas and one D.S./D.C. jump follow the form)"} onClick={onPlayPause} disabled={playerState === "loading"}>
-              {playerState === "playing" ? "⏸" : playerState === "loading" ? "…" : "▶"}
-            </button>
-            <button data-player-stop title="stop" onClick={() => scorePlayer.stop()} disabled={playerState === "idle"}>
-              ⏹
-            </button>
-            <select
-              data-player-tempo
-              title="playback speed (× the score tempo)"
-              value={playerTempo}
-              onChange={(e) => {
-                const f = Number(e.target.value);
-                e.target.blur();
-                setPlayerTempo(f);
-                saveSettings({ tempo: f });
-                scorePlayer.setTempo(f);
-              }}
-              style={{ fontSize: 12 }}
-            >
-              {TEMPO_STEPS.map((f) => (
-                <option key={f} value={f}>
-                  {f}×
-                </option>
-              ))}
-            </select>
-            <label data-midi-out title="send playback to every connected MIDI output (each one is a synth's input) instead of the built-in piano" style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={midiOutOn}
-                onChange={(e) => {
-                  const on = e.target.checked;
-                  scorePlayer.stop(); // the destination changes: reschedule on next play
-                  scorePlayer.setMidiSink(null);
-                  midiSinkRef.current?.close(); // release the ports (the shell retracts its virtual source)
-                  midiSinkRef.current = null; // re-enumerate outputs on next play
-                  setMidiOutOn(on);
-                  saveSettings({ midiOut: on });
-                }}
-              />
-              MIDI
-            </label>
-            <select
-              data-midi-transpose
-              title="transpose the MIDI sends (and the playback-MIDI export) by this many semitones — the built-in piano is never transposed"
-              value={midiTranspose}
-              onChange={(e) => {
-                const t = Number(e.target.value);
-                e.target.blur();
-                setMidiTransposeState(t);
-                saveSettings({ midiTranspose: t });
-              }}
-              style={{ fontSize: 12 }}
-            >
-              {Array.from({ length: 25 }, (_, i) => 12 - i).map((t) => (
-                <option key={t} value={t}>
-                  {t > 0 ? `+${t}` : t} st
-                </option>
-              ))}
-            </select>
-            {playerState !== "idle" && playerState !== "loading" && (
-              <>
-                <span
-                  data-player-progress
-                  title="seek"
-                  onClick={(e) => {
-                    const r = e.currentTarget.getBoundingClientRect();
-                    scorePlayer.seek((e.clientX - r.left) / r.width);
-                  }}
-                  style={{ width: 140, height: 8, background: "#dde3ea", borderRadius: 4, display: "inline-block", cursor: "pointer", position: "relative", alignSelf: "center", overflow: "hidden" }}
-                >
-                  <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${playerTotal ? Math.min(100, (playerPos / playerTotal) * 100) : 0}%`, background: "#4a7dbd", pointerEvents: "none" }} />
-                </span>
-                <span data-player-time style={{ fontSize: 12, color: "#567", fontVariantNumeric: "tabular-nums" }}>
-                  {fmtTime(playerPos)} / {fmtTime(playerTotal)}
-                </span>
-              </>
-            )}
-          </>
-        )}
       </div>
       </header>
       {/* Toasts, bottom-right above the status bar. The notice element stays
