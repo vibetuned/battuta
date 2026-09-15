@@ -55,6 +55,66 @@ is taken, and each slice as it closes, with the `App.tsx` line count
   refusals) and the query test extended; editor 122, api 18, plugins 105;
   `verify-phase5` 222 (its two harmony hooks now read `select[data-lanes]`; one flaky voice-navigation check in a back-to-back run passed on its own), `verify-lyrics` 26, `verify-app` 18, the keyboard 25, all green.
   `App.tsx` **3,117 → 3,109**; initial chunk **599.0 kB** (ceiling 605.5).
+- **Decision: Verovio's converter build may live in a plugin; engraving
+  may not (2026-09-15, the user's).** The boundary test forbade `verovio`
+  outright, to keep engraving out of plugins. The formats plugin's target
+  is precise — take the Humdrum-enabled build out of the host — so the
+  rule is relaxed to match the intent instead of the package name:
+  `verovio/wasm-hum` and `verovio/esm` are allowed imports and `verovio`
+  an allowed dependency; the render build (`verovio/wasm`, or the bare
+  package) stays refused; and a new rule refuses any Verovio engraving or
+  layout call in a plugin (`renderToSVG`, `renderToTimemap`,
+  `getPageWithElement`, …) — rendering is a host service, a plugin's
+  Verovio converts formats only. Tone in 7a, Verovio in 8a: each
+  relaxation for one plugin's stated purpose, with the intent kept as a
+  testable rule rather than dropped with the package name.
+- **Slice 8a — the import half of `formats` (2026-09-15, in-house).
+  CLOSED; slice 8 split into 8a and 8b the same day.** Written first:
+  `spikes/verify-formats.mjs`, 14 checks through what a user touches — an
+  `.mxl` through the file input opens as a new tab named after the file,
+  an ABC file imports as text, a `.xml` holding MusicXML is told apart
+  from MEI by its root, an unknown extension is refused with a notice,
+  the accept list covers every format, and the four Verovio exports
+  download real files (an SMF header, `**kern`, PAE, `<svg`) from menu
+  rows in order. Green before, green after. **The registry grew its
+  import half** (`host/formats.ts`, now `FormatStore`): a manifest's
+  `contributes.imports: [{ id, label, exts, binary?, roots? }]` widens the
+  open dialog's accept list — the browser input's and the shell's native
+  filter, which now takes `exts` and `binaryExts` from the frontend
+  instead of a Rust constant — before the plugin's code loads; opening
+  such a file fires `onFormat:<id>`, waits for
+  `ctx.formats.registerImport(id, convert)`, hands the converter the file
+  as text or, for a `binary` import, as bytes, and opens the MEI that
+  comes back as a NEW unsaved document (0.0.3's rule: a plain save must
+  never overwrite the `.musicxml` source). **Detection is the host's:**
+  `.mei` is native, an extension one import claims is that import, `.xml`
+  is MEI unless an import claiming it declares `roots` and the content's
+  root element is one of them (MusicXML's `score-partwise` /
+  `score-timewise`), nothing claiming it is unsupported — a plugin
+  declares extensions and roots, never a sniffer; `detectImport` and
+  `OPEN_EXTENSIONS` left `formats.ts` with their tests, which now run
+  against `host.formats.detect`. **Multi-file exports:** `ExportPayload`
+  may be `{ files: [{ bytes, filename }] }`, which is what the SVG export
+  is (a page per file) — and SVG stays the host's, since it is engraving
+  from the render pool, not a converter. **The App's converters are
+  internal registrations:** the five Verovio imports and the three Verovio
+  exports through the lazy converter worker, SVG through the pool, so the
+  open path (`openFile`, one function where there were two) and the menu
+  run on the registry alone — `exportAs`, the `EXPORT_FORMATS` rows, the
+  `.mxl` special case (now "whatever declares `binary`") and the two
+  import functions' format knowledge left `App.tsx`; `IMPORT_FORMATS` /
+  `EXPORT_FORMATS` stay the pinned table of what the bundled Verovio can
+  do. `@battuta/api` 0.1.12 → **0.1.13** (`ImportContribution`,
+  `ImportFile`, `ExportFile`, `registerImport`). Tests: `host.test.ts` +3
+  (declared imports widen the accept list before the plugin loads and
+  `importFile` wakes it with `onFormat:`; the detection table; ownership),
+  the `files` payload through `produce`, the api's import validation;
+  editor 135, api 20, plugins 162; e2e `verify-formats` 14, `verify-phase3`
+  21, `verify-app` 18, and the shell smoke 7 of 7 with the new
+  `open_score` signature — all green. Not moved yet, by design: the converter
+  worker and the Humdrum-enabled Verovio build stay the App's until 8b,
+  so the dist is unchanged; initial chunk **365.1 kB** (ceiling 368.2).
+  `App.tsx` 2,945 → 2,942. 8b is next.
 - **Slice 7b's gaps closed (2026-09-15, in-house; api 0.1.11 → 0.1.12).**
   The plugin slice stopped at two gaps and named a weakness, as its brief
   said to; each was the host's to take. **`DocumentInfo.name`**: the tab's

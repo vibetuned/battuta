@@ -57,7 +57,7 @@ the same stance DESIGN.md takes on Rust.
 | `commands` | `Command` factories (apply/revert, dirty regions) reached by id | `packages/core/src/commands.ts` `Command` interface, executed via `DocumentSession.stack` |
 | `keybindings` | `KeyBinding` entries with default keys per layout | `keymap.ts` `defaultKeymap()` — becomes core map ∪ plugin contributions; **ShortcutEditor and VirtualKeyboard already generate from the keymap**, so plugin actions appear in both for free |
 | `lanes` | a typed text lane at the caret: grammar, suggestions, commit → command, advance rule | harmony + lyrics lanes in `App.tsx` (the "harm-lane mechanism"), generalised |
-| `formats` | import/export entries with a converter worker | `formats.ts` table + `convertWorker.ts` — already a single source of truth with a pinning test |
+| `formats` | exports (`contributes.exports` + `registerExport`, since 7a) and imports (`contributes.imports` — extensions, text-or-bytes, root elements for a shared `.xml` — + `registerImport`, since 8a): the menu row and the open dialog's accept list exist before the plugin loads, `onFormat:<id>` wakes it, detection is the host's | `host/formats.ts` (the registry); the App's Verovio converters as internal registrations until 8b moves them, with `formats.ts`' table and its pinning test |
 | `overlays` | a per-tile draw hook on the interaction overlay, given the tile's bbox, id → bbox map, effective context and timemap | the caret/selection overlay; **this is the point Phases 6 and 7 need** (ghost piano roll, facsimile strips, confidence tint) |
 | `header` / `docHeader` / `statusBar` / `menu` | items in the four UI slots, added at runtime or **declared in the manifest** (the host renders a declared item before the plugin's code loads; the click activates it — decided 2026-09-14 for the 🎹) | the six status-bar selects, the battuta menu, the player row (`docHeader` is where slice 7's controls go) |
 | `panels` | a side/bottom panel (React node behind a slot) | none yet — first consumers: the on-screen keyboard (bottom), the folder view (side); later reference-track solo/mute, flagged-element lists |
@@ -308,8 +308,15 @@ rather than passed over: Vite's `__vitePreload` helper had to be named in
 and React) and the first that is Vite's own. Its two gaps closed in-house
 the same day (api 0.1.12: `DocumentInfo.name`, so the export is
 `<name>-playback.mid` again; the shell's playback probe revived through
-the real UI and asserted; the DOM-global rule tightened). **Slice 8 is
-next.**
+the real UI and asserted; the DOM-global rule tightened). **Slice 8 was
+split into 8a and 8b the same day, and 8a closed** (in-house, api
+0.1.13): `contributes.imports` and `ctx.formats.registerImport`, detection
+as the host's (`.xml` told from MEI by declared root elements), the open
+dialog's accept list and the shell's filter fed by the registry,
+multi-file export payloads for the SVG pages, and the App's five Verovio
+imports and four exports running as internal registrations —
+`verify-formats.mjs` (14 checks) written first and green unchanged after.
+**8b is next.**
 
 From here on slices are
 handed to sessions without the surrounding context, on purpose, to test
@@ -1059,39 +1066,159 @@ outside page view rather than an item added and removed with the view
 (§7.5), and the plugin has no `deactivate()` — everything it owns is a
 disposable the host already tracks (§7.6).
 
-#### Slice 8 — Format converters (days)
+#### Slice 8a — The import half of `formats` (host, in-house; ≈2 days)
 
-**Delivers.** `packages/plugins/formats`: the import table, the
-converter worker and the Humdrum-enabled Verovio build, declared
-through `formats`. The table stays the single source of truth and its
-pinning test moves with it.
+**Delivers.** The other half of the point 7a opened, built and consumed
+by the App's own converters FIRST so the plugin slice finds every door
+open:
 
-**Proves.** `formats` fully (import and export), and the second budget
-drop: the 4.6 MB Humdrum build leaves the host.
+1. **Declared imports.** `contributes.imports: [{ id, label, exts,
+   binary?, roots? }]` — the extensions a plugin's converter claims,
+   whether the file is read as text or bytes, and, for an extension MEI
+   shares (`.xml`), the root elements that mark the file as this format
+   rather than MEI. Validated (ids unique, a label, lowercase alnum
+   extensions). Declared imports widen the open dialog's accept list —
+   the browser input's and the shell's native filter — before the plugin's
+   code has loaded, and picking such a file fires `onFormat:<id>` and
+   waits for the converter: the same lesson as slot items, lanes and
+   exports.
+2. **`ctx.formats.registerImport(id, convert)`** — `convert(file: { name,
+   text?, bytes? }) => Promise<string>` returns MEI; the host opens what
+   comes back as a NEW unsaved document named after the file (a plain save
+   must never overwrite the `.musicxml` source with MEI — 0.0.3's rule).
+3. **Detection is the host's.** `host.formats.detect(name, content?)`:
+   `.mei` is native; an extension one import claims is that import; `.xml`
+   is MEI unless an import claiming `xml` declares `roots` and the content
+   matches one (MusicXML's `score-partwise` / `score-timewise`); nothing
+   claiming it → unsupported. `formats.ts`' `detectImport` and
+   `OPEN_EXTENSIONS` leave the App for the store, with their tests.
+4. **Multi-file exports.** `ExportPayload` may be `{ files: [{ bytes,
+   filename }] }` — the SVG export writes one page per file and stays the
+   host's (it is engraving, from the render pool, not a converter).
+5. **The App's converters as INTERNAL registrations** — the five imports
+   (MusicXML, `.mxl`, ABC, PAE, Humdrum) and the three Verovio exports
+   (MIDI written score, Humdrum, PAE) through the lazy converter worker,
+   SVG through the render pool — so the menu and the open path run on the
+   registry alone (`EXPORT_FORMATS.map` and `exportAs` leave the menu),
+   `IMPORT_FORMATS` / `EXPORT_FORMATS` stay the pinned table of what the
+   bundled Verovio can do (`convert.test.ts`), and the shell's open dialog
+   takes its filters from the JS side (`open_score` gains `exts` and
+   `binaryExts`; the Rust constant goes).
 
-**Leaves `App.tsx`.** Import detection on open, and the Verovio-backed
-exports as INTERNAL registrations in 7a's export registry (the registry
-and the menu that lists it are the host's since 7a; this slice adds the
-import half to `formats.ts` and moves the table behind `contributes`).
+Before any of it: `spikes/verify-formats.mjs`, written against the App as
+it is — an `.mxl` through the file input opens as a new unsaved tab named
+after the file, an ABC file imports as text, a `.xml` holding MusicXML
+is told apart from MEI by its root, an unknown extension is refused with
+a notice, the accept list covers every format, and the four exports
+download real files (an SMF header, `**kern`, PAE, `<svg`) from menu rows
+in order. Green first, then the extraction keeps it green.
 
-**API may grow.** The import half of `formats` — `contributes.imports`
-and whatever the open path needs to hand a file to a plugin's converter —
-built in-house BEFORE the slice, as 7a built the export half; the
-plugin's own is **None**.
+**Proves.** `formats` whole — import and export on one registry, both
+halves rehearsed by internal registrations — so 8b moves converters and
+touches no host.
 
-**Stop when.** The converter needs a host service beyond the import and
-export registrations and the open path (a worker of its own is the
-plugin's to ship, not the host's to run).
+**Leaves `App.tsx`.** `detectImport` and `OPEN_EXTENSIONS`, the two
+import functions' format knowledge, `exportAs`, the `EXPORT_FORMATS`
+menu rows, the `.mxl` special case (now "whatever declares `binary`").
 
-**Gates.** `apps/editor/test/convert.test.ts` (the pinning test, with
-its `.mxl` fixture); the save and export checks in `verify-phase3.mjs`.
+**API may grow.** `ImportContribution`, `contributes.imports`,
+`ImportFile`, `FormatsService.registerImport`; `ExportPayload` with
+`files`. Nothing else: no converter service (a worker is the plugin's to
+ship), no `onDocument:` firing (nothing consumes it yet). api 0.1.12 →
+0.1.13. Host module: none new — `formats.ts` grows the import half, as
+the brief for 7a said it would.
 
-**Documents.** The plugin's two documents; the guide's files page
-unchanged plus its plugins row; the CHANGELOG bullet with the budget
+**Stop when.** An import needs the host to know its FORMAT — a parser, a
+sniff beyond a root-element list, a zip — that is the converter's. Or the
+open path needs more than name, text-or-bytes and the MEI back.
+
+**Gates.** `verify-formats.mjs` green before and after with its
+assertions unchanged (its hooks: the file input, `[data-export=<id>]`,
+`[data-notice]`, the tabs); `verify-phase3.mjs` save check unchanged;
+`convert.test.ts` minus its detection block (which moves to
+`host.test.ts` as `formats.detect` cases: every extension, the `.xml`
+sniff both ways, no content → MEI, unknown → null); host tests for the
+import registry (declared imports widen the accept list before the
+plugin loads; `importFile` wakes the plugin with `onFormat:` and returns
+its MEI; `registerImport` demands a declaration; two plugins on one id →
+the second fails; `binary` decides text or bytes; a `files` payload
+reaches the save path once per file); the api's import validation; the
+union keymap snapshot and the budget unchanged (the worker moves in 8b);
+every other e2e; the shell smoke (the native dialog with JS-side
+filters).
+
+**Documents.** CHANGELOG bullet with the registry's final shape and the
+detection rule; DESIGN note; the conventions' rows (`contributes.imports`
+/ `registerImport`, `files` payloads, detection); the plan's `formats`
+row.
+
+**Done when.** Open and export run on `host.formats` alone, every
+import and export behaves as in 0.0.3, and `verify-formats.mjs` is green
+unchanged.
+
+**Closed 2026-09-15.** All hold; api 0.1.13; the CHANGELOG bullet has
+the account. *As built, beyond the brief:* the e2e's export-order
+assertion became relative to the four Verovio rows (the registry lists
+the host's own before a plugin's, where 0.0.3 had the playback export
+first — a menu order, not a behaviour); `open_score` in the shell lost
+its extension constant and takes `exts` and `binaryExts` from the
+frontend; the SVG export names its files from `DocumentInfo.name`.
+
+#### Slice 8b — Format converters (plugin; ≈2 days)
+
+**Delivers.** `packages/plugins/formats`: a manifest declaring the five
+imports and the three Verovio exports (MIDI written score, Humdrum,
+PAE — SVG stays the host's), activating on `onFormat:` of each;
+`activate` registers each converter and producer through
+`ctx.formats.registerImport` / `registerExport`; the converter worker and
+the Humdrum-enabled Verovio build move into the plugin (`convertWorker.ts`
+becomes the plugin's worker, spawned lazily on the first conversion, kept
+for the session); `IMPORT_FORMATS` / `EXPORT_FORMATS` and
+`convert.test.ts` (the pinning test, with its `.mxl` fixture) move with
+them — the table stays the single source of truth for what the bundled
+Verovio can do. The App keeps only the open path and the save path.
+
+**Proves.** The second budget drop, in the dist rather than the initial
+chunk: the 13 MB Humdrum-enabled worker leaves the host's assets for the
+plugin's; and that `formats` needs no host change for a plugin with a
+worker of its own.
+
+**Leaves `App.tsx`.** The five internal import registrations and the
+three converter-backed export registrations; `converter.ts` leaves
+`apps/editor/src`.
+
+**API may grow.** **None.** Everything is in 8a. Host edits allowed: the
+worker's chunk naming in `vite.config.ts` if Rollup needs telling (the
+5a / 7b lesson: anything the host and a plugin share must be named),
+`verovio/wasm-hum` moved from the editor's dependencies to the plugin's.
+
+**Stop when.** A converter needs anything beyond `ctx.formats`'
+registrations, the file it is handed and the MEI it returns, or a
+format needs a detection the manifest cannot declare (an extension plus
+root elements). Write the gap; do not resolve it.
+
+**Gates.** `verify-formats.mjs` with only its design-dependent hooks
+changed — the `data-export` ids, if the plugin's ids replace `midi` /
+`humdrum` / `pae` — every assertion identical; `verify-phase3.mjs`
+unchanged; `convert.test.ts` moved into the plugin's suite unchanged in
+its assertions; the boundary tests as relaxed by the user on 2026-09-15
+— `verovio/wasm-hum` and `verovio/esm` may be imported and `verovio`
+depended on, the render build (`verovio/wasm`, or bare `verovio`) may
+not, and no engraving or layout call (`renderToSVG`, `renderToTimemap`,
+…) may appear: the converter build is this plugin's precise purpose,
+rendering stays the host's; the union keymap snapshot byte-identical;
+`npm run budget` unchanged (the worker was never in the initial chunk)
+and the dist without `convertWorker` under the host's assets; the shell
+smoke.
+
+**Documents.** The plugin's two documents (BUILDING.md §7 starts from
+the playback plugin's §7.1 and §7.4); the guide's files page unchanged in
+content plus its plugins-page row; the CHANGELOG bullet with the dist
 figure.
 
-**Done when.** Every import and export format works as in 0.0.3 with
-the plugin on, and with it off the open dialog lists `.mei` only.
+**Done when.** Every import and export format works as in 0.0.3 with the
+plugin on; with it off the open dialog lists `.mei` only and the menu's
+export rows are SVG alone.
 
 #### Slice 9 — Folder view (≈1 week)
 

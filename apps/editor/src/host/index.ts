@@ -26,7 +26,7 @@ import { BUILTIN_PLUGINS } from "./plugins";
 import { HostMidiService, detectMidiBackend } from "./midi";
 import { LaneStore } from "./lanes";
 import { HostAudioService } from "./audio";
-import { ExportStore } from "./formats";
+import { FormatStore } from "./formats";
 
 /** Capabilities this host offers. `midi` since slice 3, `audio` since 7a; `workspace` is still to be lifted. */
 export const OFFERED_CAPABILITIES: readonly HostCapability[] = ["midi", "audio"];
@@ -80,8 +80,8 @@ export interface Host {
   readonly audio: HostAudioService;
   /** The notation on screen, as plugins may touch it (highlight); answered by the bound view adapter. */
   readonly view: ViewService;
-  /** Exports: the App registers its own, plugins declare and register theirs; the menu lists `formats.exports`. */
-  readonly formats: ExportStore;
+  /** Formats, both halves: the App registers its own exports and imports, plugins declare and register theirs; the menu lists `formats.exports`, the open dialog accepts `formats.openExtensions`. */
+  readonly formats: FormatStore;
   /** Mirrors the App keeps current; plugins read them through their context. */
   readonly document: WritableStore<DocumentInfo | null>;
   readonly editor: WritableStore<EditorState>;
@@ -186,7 +186,7 @@ export function createHost(options: HostOptions = {}): Host {
     highlight: (cue) => viewAdapter?.highlight(cue),
     clearHighlight: () => viewAdapter?.clearHighlight(),
   };
-  const formats = new ExportStore({
+  const formats = new FormatStore({
     activate: (exportId, pluginId) => registryRef?.activate(pluginId, `onFormat:${exportId}`) ?? Promise.resolve(false),
   });
   const lanes = new LaneStore({
@@ -228,6 +228,10 @@ export function createHost(options: HostOptions = {}): Host {
         if (!manifest.contributes?.exports?.some((x) => x.id === id)) throw new Error(`plugin ${manifest.id} did not declare export ${id} in its manifest`);
         return subscriptions.add(formats.registerExport(id, produce, manifest.id));
       },
+      registerImport: (id, convert) => {
+        if (!manifest.contributes?.imports?.some((x) => x.id === id)) throw new Error(`plugin ${manifest.id} did not declare import ${id} in its manifest`);
+        return subscriptions.add(formats.provideImport(id, convert, manifest.id));
+      },
     },
     subscriptions,
   });
@@ -251,6 +255,11 @@ export function createHost(options: HostOptions = {}): Host {
     declareExports: (pluginId, contributed) => {
       const store = new DisposableStore();
       for (const entry of contributed) store.add(formats.declare({ ...entry, pluginId }));
+      return store;
+    },
+    declareImports: (pluginId, contributed) => {
+      const store = new DisposableStore();
+      for (const entry of contributed) store.add(formats.declareImport({ ...entry, pluginId }));
       return store;
     },
     commands,
@@ -361,8 +370,8 @@ export { LaneStore, LaneInput, laneFace } from "./lanes";
 export type { LaneAdapter, LaneState, LaneOption, DeclaredLane } from "./lanes";
 export { HostAudioService } from "./audio";
 export type { AudioContextFactory } from "./audio";
-export { ExportStore } from "./formats";
-export type { DeclaredExport, ExportOption, Producer } from "./formats";
+export { FormatStore } from "./formats";
+export type { DeclaredExport, DeclaredImport, ExportOption, ImportOption, Producer, Converter } from "./formats";
 export { blockOfEvents } from "./queries";
 export { toCommand } from "./messages";
 export { HostMidiService, webMidiBackend, shellMidiBackend, noMidiBackend, detectMidiBackend, parseNoteMessage } from "./midi";

@@ -96,6 +96,21 @@ describe("validateManifest", () => {
     ).toEqual(["every export needs an id", "export battuta.x.a needs a label", "export battuta.x.a needs an ext (letters and digits, no dot)", "export battuta.x.a needs a mime type", "duplicate export id battuta.x.a"]);
   });
 
+  it("validates declared imports: id, label, lowercase alnum exts, optional roots, no duplicates", () => {
+    expect(withPatch({ contributes: { imports: [{ id: "battuta.x.musicxml", label: "MusicXML", exts: ["musicxml", "xml"], roots: ["score-partwise", "score-timewise"] }, { id: "battuta.x.mxl", label: "compressed MusicXML", exts: ["mxl"], binary: true }] } })).toEqual([]);
+    expect(
+      withPatch({
+        contributes: {
+          imports: [
+            { id: "", label: "a", exts: ["abc"] },
+            { id: "battuta.x.a", label: "", exts: [] },
+            { id: "battuta.x.a", label: "dup", exts: [".ABC"], roots: [1] },
+          ],
+        },
+      }),
+    ).toEqual(["every import needs an id", "import battuta.x.a needs a label", "import battuta.x.a needs a non-empty exts array", "duplicate import id battuta.x.a", "import battuta.x.a: exts must be lowercase letters and digits, no dot (got \".ABC\")", "import battuta.x.a: roots must be element names"]);
+  });
+
   it("ties keybindings to the plugin's own commands", () => {
     const problems = withPatch({ contributes: { keybindings: [{ command: "core.rest", keys: ["r"], label: "x", group: "entry" }] } });
     expect(problems).toEqual(['keybinding "core.rest" must name one of the plugin\'s own commands']);

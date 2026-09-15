@@ -36,7 +36,6 @@ fn starting_dir(dir: Option<String>) -> Option<std::path::PathBuf> {
 /// Native open dialog: returns (path, contents) or None when cancelled.
 /// Extensions the open dialog offers — MEI plus every Verovio-importable
 /// format (kept in sync with formats.ts by the frontend's import table).
-const OPEN_EXTENSIONS: &[&str] = &["mei", "xml", "musicxml", "mxl", "abc", "pae", "krn", "kern"];
 
 /// Minimal base64 (no external crate): .mxl is a zip, and Tauri's IPC
 /// carries strings — the frontend decodes with atob.
@@ -54,10 +53,15 @@ fn to_base64(bytes: &[u8]) -> String {
     out
 }
 
+/// The open dialog. Its filter and the extensions that must arrive as bytes
+/// come from the frontend's formats registry (a plugin's declared import
+/// widens both before its code loads); MEI alone when nothing is passed.
 #[tauri::command]
-async fn open_score(dir: Option<String>) -> Result<Option<(String, String)>, String> {
+async fn open_score(dir: Option<String>, exts: Option<Vec<String>>, binary_exts: Option<Vec<String>>) -> Result<Option<(String, String)>, String> {
+    let exts = exts.unwrap_or_else(|| vec!["mei".to_owned()]);
+    let ext_refs: Vec<&str> = exts.iter().map(String::as_str).collect();
     let mut dialog = rfd::AsyncFileDialog::new()
-        .add_filter("scores", OPEN_EXTENSIONS)
+        .add_filter("scores", &ext_refs)
         .set_title("Open score");
     if let Some(d) = starting_dir(dir) {
         dialog = dialog.set_directory(d);
@@ -67,8 +71,10 @@ async fn open_score(dir: Option<String>) -> Result<Option<(String, String)>, Str
         return Ok(None);
     };
     let path = file.path().to_path_buf();
-    // .mxl is a zip: base64 it (the frontend detects by extension).
-    let contents = if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("mxl")) {
+    // A `binary` import (a zip such as .mxl) is base64'd: Tauri's IPC carries
+    // strings, and the frontend decodes by the extension it detects.
+    let binary = binary_exts.unwrap_or_default();
+    let contents = if path.extension().is_some_and(|e| binary.iter().any(|b| e.eq_ignore_ascii_case(b))) {
         to_base64(&std::fs::read(&path).map_err(|e| e.to_string())?)
     } else {
         std::fs::read_to_string(&path).map_err(|e| e.to_string())?

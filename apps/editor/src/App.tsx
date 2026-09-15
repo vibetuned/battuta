@@ -11,7 +11,7 @@ import { converter } from "./converter";
 // glyphs rendered as tofu there. Bundled Noto Music (35KB, OFL) fills
 // exactly those blocks via @font-face unicode-range below.
 import notoMusicUrl from "./assets/fonts/NotoMusic-Regular.woff2?url";
-import { detectImport, IMPORT_FORMATS, EXPORT_FORMATS, OPEN_EXTENSIONS, type ExportFormat } from "./formats";
+import { IMPORT_FORMATS, EXPORT_FORMATS } from "./formats";
 import type { LaneSpec } from "@battuta/api";
 import { saveStoredSession, loadStoredSession, clearStoredSession, type StoredSession } from "./sessionStore";
 
@@ -35,8 +35,8 @@ interface OpenDoc {
 
 /** Tauri v2 global invoke (withGlobalTauri), or null in the browser. */
 /** Tab name from a native path: both separators (Windows), any case. */
-const OPEN_EXT_RE = new RegExp(`\\.(${OPEN_EXTENSIONS.join("|")})$`, "i");
-const docNameFromPath = (path: string): string => path.split(/[\\/]/).pop()?.replace(OPEN_EXT_RE, "") || "score";
+/** The tab's name: the file's base name without its extension. */
+const docNameFromPath = (path: string): string => path.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") || "score";
 
 /** Folder of a native path (either separator); remembered for dialogs. */
 const rememberDir = (path: string): void => {
@@ -727,7 +727,7 @@ export default function App() {
         const pair = r as [string, string] | null;
         if (pair) {
           rememberDir(pair[0]);
-          importText(pair[0], pair[1], pair[0]); // alongside restored tabs
+          openFile(pair[0], pair[1], pair[0]); // alongside restored tabs
         } else if (!restored) newDoc();
       })
       .catch(() => {
@@ -1031,44 +1031,31 @@ export default function App() {
   );
 
   /**
-   * Open any supported TEXT format: MEI directly (keeps its path), the
-   * rest converted to MEI through the lazy Verovio worker. Converted
-   * documents carry NO path — a plain ctrl+s must never overwrite the
-   * .musicxml/.abc/.krn source with MEI.
+   * Open any file the registry knows: MEI directly (keeps its path), the
+   * rest converted to MEI by the import that claims its extension
+   * (host/formats.ts — the App's own Verovio converters until slice 8b, a
+   * plugin's after). Converted documents carry NO path — a plain ctrl+s
+   * must never overwrite the .musicxml/.abc/.krn source with MEI.
    */
-  const importText = useCallback(
-    (filename: string, contents: string, path?: string) => {
-      const fmt = detectImport(filename, contents);
+  const openFile = useCallback(
+    (filename: string, data: string | ArrayBuffer, path?: string) => {
+      const text = typeof data === "string" ? data : undefined;
+      const fmt = host.formats.detect(filename, text);
       if (fmt === null) {
         setNotice(`unsupported file type: ${filename}`);
         return;
       }
       if (fmt === "mei") {
-        openXml(docNameFromPath(filename), contents, path);
+        openXml(docNameFromPath(filename), text ?? new TextDecoder().decode(data as ArrayBuffer), path);
         return;
       }
-      const label = IMPORT_FORMATS.find((x) => x.id === fmt)?.label ?? fmt;
+      const label = host.formats.importInfo(fmt)?.label ?? fmt;
       setNotice(`converting ${label}…`);
-      converter
-        .toMEI(fmt, contents)
+      host.formats
+        .importFile(fmt, typeof data === "string" ? { name: filename, text: data } : { name: filename, bytes: data })
         .then((mei) => {
           openXml(docNameFromPath(filename), mei);
           setNotice(`imported ${filename} (${label} → MEI)`);
-        })
-        .catch((e) => setError(`import failed: ${e instanceof Error ? e.message : e}`));
-    },
-    [openXml],
-  );
-
-  /** Compressed MusicXML (.mxl) is a zip — it arrives as bytes. */
-  const importBinary = useCallback(
-    (filename: string, bytes: ArrayBuffer) => {
-      setNotice("converting compressed MusicXML…");
-      converter
-        .toMEI("mxl", bytes)
-        .then((mei) => {
-          openXml(docNameFromPath(filename), mei);
-          setNotice(`imported ${filename} (compressed MusicXML → MEI)`);
         })
         .catch((e) => setError(`import failed: ${e instanceof Error ? e.message : e}`));
     },
@@ -1082,20 +1069,23 @@ export default function App() {
       fileInputRef.current?.click();
       return;
     }
-    invoke("open_score", { dir: loadSettings().lastDir ?? null })
+    // The dialog's filter and which files arrive as bytes come from the
+    // registry — a plugin's declared import widens both before it loads.
+    invoke("open_score", { dir: loadSettings().lastDir ?? null, exts: host.formats.openExtensions.get(), binaryExts: host.formats.binaryExtensions() })
       .then((r) => {
         const pair = r as [string, string] | null;
         if (!pair) return; // cancelled
         const [path, contents] = pair;
         rememberDir(path);
-        // The shell base64-encodes .mxl (zip) contents — see open_score.
-        if (path.toLowerCase().endsWith(".mxl")) {
+        // The shell base64-encodes a `binary` import's contents — see open_score.
+        const fmt = host.formats.detect(path);
+        if (fmt !== null && fmt !== "mei" && host.formats.readAs(fmt) === "bytes") {
           const bin = Uint8Array.from(atob(contents), (c) => c.charCodeAt(0));
-          importBinary(path, bin.buffer);
-        } else importText(path, contents, path);
+          openFile(path, bin.buffer);
+        } else openFile(path, contents, path);
       })
       .catch((e) => setNotice(`open failed: ${e}`));
-  }, [importText, importBinary]);
+  }, [openFile]);
 
   /** ctrl+s / ctrl+shift+s: silent save to the known path, else save-as
    * dialog (shell); browsers keep the download. */
@@ -1182,35 +1172,51 @@ export default function App() {
     });
   }, []);
 
-  /** Export the active score in a Verovio-backed format (battuta menu). */
-  const exportAs = useCallback(
-    (id: ExportFormat["id"]) => {
-      if (!session || !active || !pool) return;
-      const f = EXPORT_FORMATS.find((x) => x.id === id)!;
-      const run = async () => {
-        if (id === "svg") {
-          // The page-view engraving, one file per page (1-based indices).
-          const svgs: string[] = [];
-          const count = await pool.renderDocumentPages(session.serializeForPageView(), (i, svg) => {
-            svgs[i - 1] = svg;
-          });
-          for (let i = 0; i < count; i++) await saveExport(count > 1 ? `${active.name}-p${i + 1}.svg` : `${active.name}.svg`, svgs[i]!, f.mime);
-          setNotice(`exported ${count} SVG page${count > 1 ? "s" : ""}`);
-          return;
-        }
-        const out = await converter.fromMEI(id, session.serializeForPageView());
-        // The worker returns MIDI as base64 (a standard .mid file's bytes).
-        const payload = f.binary ? Uint8Array.from(atob(out), (c) => c.charCodeAt(0)) : out;
-        await saveExport(`${active.name}.${f.ext}`, payload, f.mime);
-        setNotice(`exported ${active.name}.${f.ext}`);
-      };
-      setNotice(`exporting ${f.label}…`);
-      run().catch((e) => setError(`export failed: ${e instanceof Error ? e.message : e}`));
-    },
-    [session, active, pool, saveExport],
-  );
+  /**
+   * The App's own converters, as INTERNAL registrations in the host's
+   * formats registry (slice 8a) — exactly what the formats plugin declares
+   * and registers in 8b: the five Verovio imports and the three Verovio
+   * exports through the lazy converter worker, SVG through the render
+   * pool (engraving: the host's, and it stays). Registered once, reading
+   * the live session and pool through refs, so the menu rows and the
+   * accept list are there with or without a document.
+   */
+  const poolRef = useRef<RenderPool | null>(null);
+  poolRef.current = pool;
+  useEffect(() => {
+    const registrations = [
+      ...IMPORT_FORMATS.map((f) =>
+        host.formats.registerImport({ id: f.id, label: f.label, exts: f.exts, ...(f.binary ? { binary: true } : {}), ...(f.roots ? { roots: f.roots } : {}) }, (file) => converter.toMEI(f.id, file.bytes ?? file.text ?? "")),
+      ),
+      // In the table's order — that is the menu's order.
+      ...EXPORT_FORMATS.map((f) =>
+        host.formats.register({ id: f.id, label: f.label, ext: f.ext, mime: f.mime }, async () => {
+          const s = sessionRef.current;
+          if (!s) throw new Error("no document is open");
+          if (f.id === "svg") {
+            const p = poolRef.current;
+            if (!p) throw new Error("the renderer is not ready");
+            const name = host.document.get()?.name || "score";
+            // The page-view engraving, one file per page (1-based indices).
+            const svgs: string[] = [];
+            const count = await p.renderDocumentPages(s.serializeForPageView(), (i, svg) => {
+              svgs[i - 1] = svg;
+            });
+            return { files: svgs.slice(0, count).map((svg, i) => ({ bytes: svg, filename: count > 1 ? `${name}-p${i + 1}.svg` : `${name}.svg` })) };
+          }
+          const out = await converter.fromMEI(f.id, s.serializeForPageView());
+          // The worker returns MIDI as base64 (a standard .mid file's bytes).
+          return { bytes: f.binary ? Uint8Array.from(atob(out), (c) => c.charCodeAt(0)) : out };
+        }),
+      ),
+    ];
+    return () => {
+      for (const d of registrations) d.dispose();
+    };
+  }, []);
 
   const exportOptions = useStore(host.formats.exports);
+  const openExtensions = useStore(host.formats.openExtensions);
   /** Run one export of the registry — the App owns the SAVE path, the registry who produces. */
   const runExport = useCallback(
     (id: string) => {
@@ -1220,6 +1226,11 @@ export default function App() {
       host.formats
         .produce(id)
         .then(async (payload) => {
+          if ("files" in payload) {
+            for (const f of payload.files) await saveExport(f.filename ?? `${active.name}.${info.ext}`, f.bytes, info.mime);
+            setNotice(`exported ${payload.files.length} ${info.label} file${payload.files.length === 1 ? "" : "s"}`);
+            return;
+          }
           const name = payload.filename ?? `${active.name}.${info.ext}`;
           await saveExport(name, payload.bytes, info.mime);
           setNotice(`exported ${name}`);
@@ -2401,21 +2412,6 @@ export default function App() {
                     export {o.label} (.{o.ext})
                   </button>
                 ))}
-                {/* Verovio-backed exports; imports ride "open file…" (any
-                    supported extension converts on open). */}
-                {EXPORT_FORMATS.map((f) => (
-                  <button
-                    key={f.id}
-                    data-export={f.id}
-                    style={MENU_ITEM}
-                    onClick={() => {
-                      setMenuOpen(false);
-                      exportAs(f.id);
-                    }}
-                  >
-                    export {f.label} (.{f.ext})
-                  </button>
-                ))}
                 <button
                   data-shortcuts-toggle
                   style={MENU_ITEM}
@@ -2485,19 +2481,20 @@ export default function App() {
         <input
           ref={fileInputRef}
           type="file"
-          accept={OPEN_EXTENSIONS.map((e) => `.${e}`).join(",")}
+          accept={openExtensions.map((e) => `.${e}`).join(",")}
           style={{ display: "none" }}
           onChange={(e) => {
             const f = e.target.files?.[0];
             e.target.value = ""; // allow re-opening the same file
             if (!f) return;
-            if (detectImport(f.name) === "mxl") {
+            const fmt = host.formats.detect(f.name);
+            if (fmt !== null && fmt !== "mei" && host.formats.readAs(fmt) === "bytes") {
               f.arrayBuffer()
-                .then((b) => importBinary(f.name, b))
+                .then((b) => openFile(f.name, b))
                 .catch((err) => setError(String(err)));
             } else {
               f.text()
-                .then((text) => importText(f.name, text))
+                .then((text) => openFile(f.name, text))
                 .catch((err) => setError(String(err)));
             }
           }}

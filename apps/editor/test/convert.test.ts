@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 // @ts-ignore — the wasm module ships no types
 import createVerovioModule from "verovio/wasm-hum";
 import { VerovioToolkit } from "verovio/esm";
-import { IMPORT_FORMATS, EXPORT_FORMATS, detectImport, OPEN_EXTENSIONS } from "../src/formats";
+import { IMPORT_FORMATS, EXPORT_FORMATS } from "../src/formats";
 
 /** One four-note C-major sample per text import format. */
 const SAMPLES: Record<string, string> = {
@@ -88,29 +88,5 @@ describe("every export format produces output with the bundled Verovio", () => {
     }
     // MIDI is base64 of a standard MIDI file — "MThd" header
     expect(atob(tk.renderToMIDI()).startsWith("MThd")).toBe(true);
-  });
-});
-
-describe("detection", () => {
-  it("maps extensions to formats", () => {
-    expect(detectImport("song.mei")).toBe("mei");
-    expect(detectImport("song.musicxml")).toBe("musicxml");
-    expect(detectImport("song.mxl")).toBe("mxl");
-    expect(detectImport("song.abc")).toBe("abc");
-    expect(detectImport("song.pae")).toBe("pae");
-    expect(detectImport("song.krn")).toBe("humdrum");
-    expect(detectImport("song.kern")).toBe("humdrum");
-    expect(detectImport("song.pdf")).toBe(null);
-  });
-
-  it("sniffs ambiguous .xml by root element", () => {
-    expect(detectImport("song.xml", SAMPLES["musicxml"])).toBe("musicxml");
-    expect(detectImport("song.xml", `<?xml version="1.0"?><mei xmlns="x"/>`)).toBe("mei");
-    expect(detectImport("song.xml")).toBe("mei"); // no content: historical default
-  });
-
-  it("the open-dialog extension list covers mei and every import format", () => {
-    expect(OPEN_EXTENSIONS).toContain("mei");
-    for (const f of IMPORT_FORMATS) for (const e of f.exts) expect(OPEN_EXTENSIONS).toContain(e);
   });
 });

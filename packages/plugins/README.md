@@ -149,6 +149,8 @@ The api is a data contract. Nothing in it is a live object of the model.
 | light the notation as it sounds (page view) | `ctx.view.highlight({ on, off, measureOn? })` in engraved ids; `ctx.view.clearHighlight()` | the view scrolls to `measureOn` when it leaves the window |
 | an export in the battuta menu, listed BEFORE your code loads | `contributes.exports: [{ id, label, ext, mime, title? }]`; activate on `onFormat:<id>`; in `activate`, `ctx.formats.registerExport(id, async () => ({ bytes, filename? }))` | the host saves it (download or the shell's dialog) as `<document>.<ext>` unless you name it |
 | wake when the view changes | `activationEvents: ["onView:pages"]` (or `tiles`) | fired on every change and once for the first view |
+| an import format, accepted by the open dialog BEFORE your code loads | `contributes.imports: [{ id, label, exts, binary?, roots? }]`; activate on `onFormat:<id>`; in `activate`, `ctx.formats.registerImport(id, async (file) => mei)` | the host hands you `{ name, text }` (or `{ name, bytes }` for a `binary` format), opens the MEI you return as a new unsaved tab, and shows your label in the notice. Detection is the host's: declare `roots` for an extension MEI shares (`.xml`), never sniff yourself |
+| an export of several files (a page per file) | return `{ files: [{ bytes, filename }] }` from `registerExport`'s producer | the host saves each |
 | the union keymap as data (id, label, group, when, keys, mods, locked, plugin) | `ctx.keymap` | `Store<KeymapEntry[]>` |
 | **run** an action by id — a keymap id, a locked one (`undo`, `nav.left`, `duration.4`, `pitch.c`, …; the list is in `packages/api/src/actions.ts`) or an enabled plugin's command id | `ctx.actions.run(id)` | true when it ran; false when the id is unknown or the state forbids it — exactly when the key would have done nothing. A plugin's command goes through the registry after the same gates |
 | every id `run` knows, live | `ctx.actions.ids` | `Store<readonly string[]>`: core rules in dispatch order, then enabled plugins' commands; republished when a document installs its table and when a plugin is turned on or off |
@@ -212,7 +214,7 @@ already written it:
 
 | Rule | Enforced by |
 | --- | --- |
-| Only `@battuta/api`, `react`, `tone` and the package's own files are imported — never `@battuta/core`, `apps/editor`, Verovio; relative imports stay inside the package (Tone allowed since 7a: the host owns the AudioContext, a plugin brings its instrument) | `apps/editor/test/plugin-boundaries.test.ts` (static, type-only, re-export and dynamic imports alike) |
+| Only `@battuta/api`, `react`, `tone`, Verovio's converter build (`verovio/wasm-hum` + `verovio/esm`) and the package's own files are imported — never `@battuta/core`, `apps/editor`, Verovio's render build; and no Verovio engraving or layout call (`renderToSVG`, `renderToTimemap`, …): rendering is a host service, a plugin's Verovio converts formats only; relative imports stay inside the package (Tone allowed since 7a, Verovio's converter build since 8a — each for one plugin's precise purpose, with the intent kept as a rule) | `apps/editor/test/plugin-boundaries.test.ts` (static, type-only, re-export and dynamic imports alike) |
 | `package.json` depends on `@battuta/api` and nothing else of the workspace; the name is `@battuta/plugin-<name>` | same test |
 | `src/manifest.ts` imports nothing but `@battuta/api` | same test |
 | No DOM: `window`, `document`, `navigator`, `localStorage`, `sessionStorage` never appear as globals | same test |

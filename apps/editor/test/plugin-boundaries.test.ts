@@ -4,12 +4,18 @@
  * attempt showed that a rule whose only enforcement is a README sentence
  * gets rewritten to match the code; every rule below has a failing test.
  *
- *   1. A plugin's runtime code imports only @battuta/api, react, tone and
- *      its own files. Never @battuta/core, never apps/editor, never
- *      Verovio. (Commands are messages; reads are the query facade.)
+ *   1. A plugin's runtime code imports only @battuta/api, react, tone,
+ *      Verovio's CONVERTER build (verovio/wasm-hum + verovio/esm) and its
+ *      own files. Never @battuta/core, never apps/editor, never Verovio's
+ *      render build. (Commands are messages; reads are the query facade.)
  *      Tone was forbidden until slice 7a decided the host owns the
- *      AudioContext and a plugin brings its own instrument (2026-09-15);
- *      Verovio stays forbidden because rendering is a host service.
+ *      AudioContext and a plugin brings its own instrument (2026-09-15).
+ *      Verovio was forbidden to keep engraving out of plugins; the user
+ *      relaxed it the same day for the formats plugin, whose target is
+ *      precise — take the Humdrum-enabled build out of the host — and
+ *      the intent moved into rule 1b: no Verovio ENGRAVING or LAYOUT call
+ *      in a plugin (renderToSVG, renderToTimemap, …). Rendering is a host
+ *      service; a plugin's Verovio converts formats and nothing else.
  *   2. A plugin's package.json depends on @battuta/api and nothing else
  *      of the workspace.
  *   3. src/manifest.ts imports nothing but @battuta/api — the host loads
@@ -36,8 +42,10 @@ const REPO = resolve(here, "../../..");
 const PLUGINS = join(REPO, "packages/plugins");
 const HOST_DIR = join(REPO, "apps/editor/src/host");
 
-const ALLOWED_RUNTIME = new Set(["@battuta/api", "react", "react/jsx-runtime", "react/jsx-dev-runtime", "tone"]);
-const FORBIDDEN_DEPS = ["@battuta/core", "@battuta/editor", "verovio", "react-dom"];
+const ALLOWED_RUNTIME = new Set(["@battuta/api", "react", "react/jsx-runtime", "react/jsx-dev-runtime", "tone", "verovio/wasm-hum", "verovio/esm"]);
+const FORBIDDEN_DEPS = ["@battuta/core", "@battuta/editor", "react-dom"];
+/** Rule 1b: Verovio's engraving and layout surface — the host's render service, never a plugin's. */
+const VEROVIO_RENDER = /\.(renderToSVG|renderToTimemap|renderToExpansionMap|renderData|redoLayout|redoPagePitchPosLayout|getPageCount|getPageWithElement|getElementsAtTime|getElementAttr|getTimeForElement|getTimesForElement)\s*\(/g;
 const BUILDING_HEADINGS = ["1. Origin", "2. Manifest", "3. API surface", "4. State", "5. Command messages", "6. Tests", "7. Dead ends", "8. Recipe"];
 
 /** Strip comments and string literals so rules see code, not prose. */
@@ -94,6 +102,7 @@ export function checkSource({ pluginRoot, file, source }: SourceCheck): string[]
     // playback slice noticed a cast slipped past the old `[.[(]` tail.
     const dom = /(^|[^.\w$])(window|document|navigator|localStorage|sessionStorage)\b(?!\s*:)/g;
     for (const m of code.matchAll(dom)) problems.push(`${file}: DOM global "${m[2]}" — plugins never touch the DOM (use ctx.document, ctx.storage, slots and panels)`);
+    for (const m of code.matchAll(VEROVIO_RENDER)) problems.push(`${file}: Verovio engraving/layout call "${m[1]}" — rendering is a host service (ctx.query.timemap, the tiles and pages); a plugin's Verovio converts formats only`);
   }
   return problems;
 }
@@ -152,11 +161,17 @@ describe("the rules, on samples", () => {
     expect(src("src/index.ts", 'import { definePlugin, type PluginContext } from "@battuta/api";\nimport { forms } from "./forms";\nimport type { ReactNode } from "react";\nexport * from "./forms";\n')).toEqual([]);
   });
 
-  it("refuses @battuta/core, the editor, Verovio — static, type-only, re-export or dynamic; Tone is a plugin's instrument since 7a", () => {
+  it("refuses @battuta/core, the editor, Verovio's render build — static, type-only, re-export or dynamic; Tone and Verovio's converter build are a plugin's since slices 7a and 8a", () => {
     expect(src("src/index.ts", 'import { SetPitchesCommand } from "@battuta/core";')).toEqual(['src/index.ts: import "@battuta/core" is not allowed in a plugin (only @battuta/api, react and the package\'s own files)']);
     expect(src("src/index.ts", 'import type { Command } from "@battuta/core";')).toHaveLength(1);
     expect(src("src/index.ts", 'export { x } from "@battuta/core/fuzz";')).toHaveLength(1);
-    expect(src("src/index.ts", 'const m = await import("verovio");')).toHaveLength(1);
+    expect(src("src/index.ts", 'const m = await import("verovio");')).toHaveLength(1); // the bare package resolves to the RENDER build
+    expect(src("src/index.ts", 'import v from "verovio/wasm";')).toHaveLength(1); // the render build by name
+    expect(src("src/convertWorker.ts", 'import createVerovioModule from "verovio/wasm-hum";\nimport { VerovioToolkit } from "verovio/esm";\nconst tk = new VerovioToolkit(await createVerovioModule()); tk.setOptions({ inputFrom: "abc" }); tk.loadData(x); const mei = tk.getMEI({ scoreBased: true }); const k = tk.getHumdrum(); const p = tk.renderToPAE(); const m = tk.renderToMIDI();')).toEqual([]); // conversion: allowed
+    expect(src("src/index.ts", 'const svg = tk.renderToSVG(1); const tm = tk.renderToTimemap({ includeMeasures: true });')).toEqual([
+      'src/index.ts: Verovio engraving/layout call "renderToSVG" — rendering is a host service (ctx.query.timemap, the tiles and pages); a plugin\'s Verovio converts formats only',
+      'src/index.ts: Verovio engraving/layout call "renderToTimemap" — rendering is a host service (ctx.query.timemap, the tiles and pages); a plugin\'s Verovio converts formats only',
+    ]);
     expect(src("src/index.ts", 'import * as Tone from "tone";')).toEqual([]);
     expect(src("src/index.ts", 'const T = await import("tone");')).toEqual([]);
   });
@@ -189,7 +204,8 @@ describe("the rules, on samples", () => {
   it("package.json: @battuta/api only, named @battuta/plugin-<name>", () => {
     expect(checkPackageJson({ name: "@battuta/plugin-reflection", dependencies: { "@battuta/api": "*" } })).toEqual([]);
     expect(checkPackageJson({ name: "@battuta/plugin-reflection", dependencies: { "@battuta/api": "*", "@battuta/core": "*" } })).toEqual(["package.json depends on @battuta/core — a plugin may depend on @battuta/api only"]);
-    expect(checkPackageJson({ name: "reflection", devDependencies: { verovio: "1" } })).toEqual(["package.json depends on verovio — a plugin may depend on @battuta/api only", "package.json must depend on @battuta/api", 'package name "reflection" must be @battuta/plugin-<name>']);
+    expect(checkPackageJson({ name: "reflection", devDependencies: { "react-dom": "1" } })).toEqual(["package.json depends on react-dom — a plugin may depend on @battuta/api only", "package.json must depend on @battuta/api", 'package name "reflection" must be @battuta/plugin-<name>']);
+    expect(checkPackageJson({ name: "@battuta/plugin-formats", dependencies: { "@battuta/api": "*", verovio: "^5" } })).toEqual([]); // the converter build is the plugin's; rule 1b keeps engraving out
     expect(checkPackageJson({ name: "@battuta/plugin-playback", dependencies: { "@battuta/api": "*", tone: "^15" } })).toEqual([]); // the instrument is the plugin's
   });
 

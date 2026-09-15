@@ -7,7 +7,7 @@
  */
 
 import type { LaneContribution } from "./lanes.js";
-import type { ExportContribution } from "./formats.js";
+import type { ExportContribution, ImportContribution } from "./formats.js";
 
 /** Events the host fires; a plugin's code loads on the first one it declares. */
 export type ActivationEvent =
@@ -117,6 +117,8 @@ export interface PluginContributions {
   lanes?: LaneContribution[];
   /** Exports, listed in the battuta menu before the plugin loads; see formats.ts. */
   exports?: ExportContribution[];
+  /** Imports: file extensions the open dialog accepts before the plugin loads; see formats.ts. */
+  imports?: ImportContribution[];
 }
 
 export interface PluginManifest {
@@ -194,6 +196,16 @@ export function validateManifest(input: unknown): string[] {
         if (!x || typeof x.label !== "string" || !x.label.trim()) problems.push(`export ${x?.id ?? "?"} needs a label`);
         if (!x || typeof x.ext !== "string" || !/^[a-z0-9]+$/i.test(x.ext)) problems.push(`export ${x?.id ?? "?"} needs an ext (letters and digits, no dot)`);
         if (!x || typeof x.mime !== "string" || !x.mime.includes("/")) problems.push(`export ${x?.id ?? "?"} needs a mime type`);
+      }
+      const importIds = new Set<string>();
+      for (const x of contributes.imports ?? []) {
+        if (!x || typeof x.id !== "string" || !x.id.trim()) problems.push("every import needs an id");
+        else if (importIds.has(x.id)) problems.push(`duplicate import id ${x.id}`);
+        else importIds.add(x.id);
+        if (!x || typeof x.label !== "string" || !x.label.trim()) problems.push(`import ${x?.id ?? "?"} needs a label`);
+        if (!x || !Array.isArray(x.exts) || x.exts.length === 0) problems.push(`import ${x?.id ?? "?"} needs a non-empty exts array`);
+        else for (const e of x.exts) if (typeof e !== "string" || !/^[a-z0-9]+$/.test(e)) problems.push(`import ${x.id}: exts must be lowercase letters and digits, no dot (got ${JSON.stringify(e)})`);
+        if (x && x.roots !== undefined && (!Array.isArray(x.roots) || x.roots.some((r) => typeof r !== "string" || !/^[A-Za-z][\w.-]*$/.test(r)))) problems.push(`import ${x.id}: roots must be element names`);
       }
       for (const k of contributes.keybindings ?? []) {
         if (!k || typeof k.command !== "string" || !commandIds.has(k.command)) problems.push(`keybinding ${JSON.stringify(k?.command)} must name one of the plugin's own commands`);

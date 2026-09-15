@@ -552,6 +552,65 @@ describe("the render, view and audio services (slice 7a)", () => {
   });
 });
 
+describe("imports on the context (the formats point, import half)", () => {
+  const importEntry = (activate: (ctx: PluginContext) => void): PluginEntry => ({
+    manifest: manifest({
+      id: "test.import",
+      activationEvents: ["onFormat:test.import.abc"],
+      contributes: { imports: [{ id: "test.import.abc", label: "ABC", exts: ["abc"] }, { id: "test.import.mxl", label: "zipped", exts: ["mxl"], binary: true }] },
+    }),
+    load: async () => ({ activate }),
+  });
+
+  it("a declared import widens the accept list before the plugin loads; importFile wakes it with onFormat: and returns its MEI", async () => {
+    const seen: (string | null)[] = [];
+    const host = makeHost([
+      importEntry((ctx) => {
+        seen.push(ctx.activatedBy);
+        expect(() => ctx.formats.registerImport("test.import.other", async () => "")).toThrow(/did not declare import test.import.other/);
+        ctx.formats.registerImport("test.import.abc", async (file) => `<mei from="${file.name}">${file.text}</mei>`);
+      }),
+    ]);
+    expect(host.formats.openExtensions.get()).toEqual(["mei", "abc", "mxl"]);
+    expect(host.formats.imports.get().map((i) => i.id)).toEqual(["test.import.abc", "test.import.mxl"]);
+    expect(host.formats.readAs("test.import.abc")).toBe("text");
+    expect(host.formats.readAs("test.import.mxl")).toBe("bytes");
+    expect(host.registry.info("test.import")?.state).toBe("registered");
+    const mei = await host.formats.importFile("test.import.abc", { name: "tune.abc", text: "X:1" });
+    expect(seen).toEqual(["onFormat:test.import.abc"]);
+    expect(mei).toBe('<mei from="tune.abc">X:1</mei>');
+    await expect(host.formats.importFile("test.import.mxl", { name: "a.mxl", bytes: new ArrayBuffer(0) })).rejects.toThrow(/its plugin registered no converter/);
+    await host.registry.setEnabled("test.import", false);
+    expect(host.formats.openExtensions.get()).toEqual(["mei"]);
+    await expect(host.formats.importFile("test.import.abc", { name: "x.abc", text: "" })).rejects.toThrow(/unknown import/);
+  });
+
+  it("detect: .mei is native, a claimed extension is its import, .xml is MEI unless a root claims it, nothing claiming it is unsupported", () => {
+    const host = makeHost([]);
+    host.formats.registerImport({ id: "musicxml", label: "MusicXML", exts: ["musicxml", "xml"], roots: ["score-partwise", "score-timewise"] }, async () => "");
+    host.formats.registerImport({ id: "humdrum", label: "Humdrum", exts: ["krn", "kern"] }, async () => "");
+    expect(host.formats.detect("song.mei")).toBe("mei");
+    expect(host.formats.detect("SONG.MusicXML")).toBe("musicxml");
+    expect(host.formats.detect("song.krn")).toBe("humdrum");
+    expect(host.formats.detect("song.kern")).toBe("humdrum");
+    expect(host.formats.detect("song.pdf")).toBeNull();
+    expect(host.formats.detect("song.xml", '<?xml version="1.0"?><score-partwise version="4.0"><part/></score-partwise>')).toBe("musicxml");
+    expect(host.formats.detect("song.xml", '<?xml version="1.0"?><mei xmlns="x"/>')).toBe("mei");
+    expect(host.formats.detect("song.xml")).toBe("mei"); // no content: the historical default
+    expect(host.formats.openExtensions.get()).toEqual(["mei", "musicxml", "xml", "krn", "kern"]);
+  });
+
+  it("two plugins declaring one import id: the second fails registration; the host's own id is taken too", () => {
+    const x = { id: "test.shared.abc", label: "x", exts: ["abc"] };
+    const a: PluginEntry = { manifest: manifest({ id: "test.a", activationEvents: [], contributes: { imports: [x] } }), load: async () => ({ activate: () => undefined }) };
+    const b: PluginEntry = { manifest: manifest({ id: "test.b", activationEvents: [], contributes: { imports: [x] } }), load: async () => ({ activate: () => undefined }) };
+    const host = makeHost([a, b]);
+    expect(host.registry.info("test.a")?.state).toBe("registered");
+    expect(host.registry.info("test.b")?.error).toMatch(/already declared by test.a/);
+    expect(() => host.formats.registerImport({ id: "test.shared.abc", label: "mine", exts: ["abc"] }, async () => "")).toThrow(/already declared by test.a/);
+  });
+});
+
 describe("exports on the context (the formats point, export half)", () => {
   const exportEntry = (activate: (ctx: PluginContext) => void): PluginEntry => ({
     manifest: manifest({ id: "test.export", activationEvents: ["onFormat:test.export.midi"], contributes: { exports: [{ id: "test.export.midi", label: "test MIDI", ext: "mid", mime: "audio/midi" }] } }),
@@ -580,8 +639,10 @@ describe("exports on the context (the formats point, export half)", () => {
   it("a plugin that registers nothing on wake-up is reported; the host's own exports list first and produce directly", async () => {
     const host = makeHost([exportEntry(() => undefined)]);
     host.formats.register({ id: "internal", label: "internal thing", ext: "txt", mime: "text/plain" }, async () => ({ bytes: "hi" }));
-    expect(host.formats.exports.get().map((e) => e.id)).toEqual(["internal", "test.export.midi"]);
+    host.formats.register({ id: "pages", label: "pages", ext: "svg", mime: "image/svg+xml" }, async () => ({ files: [{ bytes: "<svg 1/>", filename: "a-p1.svg" }, { bytes: "<svg 2/>", filename: "a-p2.svg" }] }));
+    expect(host.formats.exports.get().map((e) => e.id)).toEqual(["internal", "pages", "test.export.midi"]);
     expect(await host.formats.produce("internal")).toEqual({ bytes: "hi" });
+    expect(await host.formats.produce("pages")).toEqual({ files: [{ bytes: "<svg 1/>", filename: "a-p1.svg" }, { bytes: "<svg 2/>", filename: "a-p2.svg" }] }); // a multi-file export, as SVG pages are
     await expect(host.formats.produce("test.export.midi")).rejects.toThrow(/its plugin registered no export/);
     expect(host.formats.infoOf("internal")?.ext).toBe("txt");
   });

@@ -9,6 +9,10 @@
  *
  * Verovio EXPORTS: MEI (native save), SVG, MIDI, Humdrum, Plaine &
  * Easie. It has no MusicXML export — MusicXML is import-only.
+ *
+ * Detection and the open dialog's extension list are the host's
+ * (host/formats.ts) since slice 8a: the App registers these entries there
+ * as INTERNAL imports and exports, and a plugin declares its own.
  */
 
 export interface ImportFormat {
@@ -19,10 +23,12 @@ export interface ImportFormat {
   exts: string[];
   /** Read the file as bytes, not text (zip container). */
   binary?: boolean;
+  /** Root elements that claim a shared extension (.xml) for this format rather than MEI — the host's detection reads them. */
+  roots?: string[];
 }
 
 export const IMPORT_FORMATS: ImportFormat[] = [
-  { id: "musicxml", label: "MusicXML", exts: ["musicxml", "xml"] },
+  { id: "musicxml", label: "MusicXML", exts: ["musicxml", "xml"], roots: ["score-partwise", "score-timewise"] },
   { id: "mxl", label: "compressed MusicXML", exts: ["mxl"], binary: true },
   { id: "abc", label: "ABC", exts: ["abc"] },
   { id: "pae", label: "Plaine & Easie", exts: ["pae"] },
@@ -45,25 +51,3 @@ export const EXPORT_FORMATS: ExportFormat[] = [
   { id: "humdrum", label: "Humdrum kern", ext: "krn", mime: "text/plain" },
   { id: "pae", label: "Plaine & Easie", ext: "pae", mime: "text/plain" },
 ];
-
-/** Every extension the open dialog / file input should accept. */
-export const OPEN_EXTENSIONS = ["mei", ...IMPORT_FORMATS.flatMap((f) => f.exts)];
-
-const ext = (filename: string): string => filename.toLowerCase().split(".").pop() ?? "";
-
-/**
- * What an opened file is: "mei" (native path), an import format id, or
- * null for an unknown extension. ".xml" is ambiguous — MEI and
- * MusicXML both use it — so it is sniffed by root element; without
- * content it stays MEI (the historical behavior).
- */
-export function detectImport(filename: string, content?: string): "mei" | ImportFormat["id"] | null {
-  const e = ext(filename);
-  if (e === "mei") return "mei";
-  if (e === "xml") {
-    if (content && /<(score-partwise|score-timewise)[\s>]/.test(content)) return "musicxml";
-    return "mei";
-  }
-  for (const f of IMPORT_FORMATS) if (f.exts.includes(e)) return f.id;
-  return null;
-}

@@ -1,4 +1,4 @@
-// @battuta/api 0.1.12 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
+// @battuta/api 0.1.13 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
 
 // ---- ../dist/.tsbuildinfo
 {"version":"5.9.3"}
@@ -362,10 +362,43 @@ export interface ExportContribution {
     /** Tooltip on the menu row. */
     title?: string;
 }
-/** What a producer returns: the file's bytes (or text), and its name when the default `<document>.<ext>` is not right. */
-export interface ExportPayload {
+/** One exported file: its bytes (or text), and its name when the default `<document>.<ext>` is not right. */
+export interface ExportFile {
     bytes: Uint8Array | string;
     filename?: string;
+}
+/** What a producer returns: one file, or several (an SVG export writes a page per file). */
+export type ExportPayload = ExportFile | {
+    files: ExportFile[];
+};
+/**
+ * An import declared in the manifest (`contributes.imports`): the file
+ * extensions this converter claims. The host widens the open dialog's
+ * accept list before the plugin's code loads; opening such a file fires
+ * `onFormat:<id>`, the plugin registers the converter, and the MEI it
+ * returns opens as a NEW unsaved document (a plain save must never
+ * overwrite the source with MEI). Ids are global, like command ids.
+ */
+export interface ImportContribution {
+    id: string;
+    /** Shown in the open notice: "imported x.abc (<label> → MEI)". */
+    label: string;
+    /** Lower-case extensions without the dot. */
+    exts: string[];
+    /** The file is a container (a zip): hand the converter bytes, not text. */
+    binary?: boolean;
+    /**
+     * For an extension MEI shares (`.xml`): the root element names that mark
+     * a file as THIS format rather than MEI. Detection is the host's — a
+     * plugin declares roots, never a sniffer.
+     */
+    roots?: string[];
+}
+/** What the host hands a converter: the file's name, and its text or — for a `binary` import — its bytes. */
+export interface ImportFile {
+    name: string;
+    text?: string;
+    bytes?: ArrayBuffer;
 }
 export interface FormatsService {
     /**
@@ -374,6 +407,13 @@ export interface FormatsService {
      * picking it wakes the plugin again.
      */
     registerExport(id: string, produce: () => Promise<ExportPayload>): Disposable;
+    /**
+     * Provide the converter for an import this plugin DECLARED: the file in,
+     * MEI text out (throw to refuse — the host shows the message). Disposed
+     * with the plugin; the extensions stay accepted (they are declared) and
+     * opening one wakes the plugin again.
+     */
+    registerImport(id: string, convert: (file: ImportFile) => Promise<string>): Disposable;
 }
 
 // ---- index.d.ts
@@ -390,7 +430,7 @@ export interface FormatsService {
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export declare const API_VERSION = "0.1.12";
+export declare const API_VERSION = "0.1.13";
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";
 export type { Disposable } from "./disposable.js";
@@ -401,7 +441,7 @@ export type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKi
 export type { Timemap, TimemapEvent, TimemapNote } from "./render.js";
 export type { AudioService } from "./audio.js";
 export type { HighlightCue, ViewService } from "./view.js";
-export type { ExportContribution, ExportPayload, FormatsService } from "./formats.js";
+export type { ExportContribution, ExportFile, ExportPayload, ImportContribution, ImportFile, FormatsService } from "./formats.js";
 export type { SetPitchesMessage, SetSylMessage, SetHarmMessage, CommandMessage, CommandMessageType } from "./messages.js";
 export { COMMAND_MESSAGE_TYPES } from "./messages.js";
 export type { MidiPort, MidiNoteEvent, MidiVirtualInput, MidiOutputs, MidiService } from "./midi.js";
@@ -526,7 +566,7 @@ export interface LanesService {
  * plugin therefore costs exactly one manifest object.
  */
 import type { LaneContribution } from "./lanes.js";
-import type { ExportContribution } from "./formats.js";
+import type { ExportContribution, ImportContribution } from "./formats.js";
 /** Events the host fires; a plugin's code loads on the first one it declares. */
 export type ActivationEvent = "onStartup" | `onCommand:${string}` | `onLane:${string}` | `onFormat:${string}` | `onDocument:${string}` | `onView:${string}` | "onPlay" | `onPointer:${string}`
 /**
@@ -620,6 +660,8 @@ export interface PluginContributions {
     lanes?: LaneContribution[];
     /** Exports, listed in the battuta menu before the plugin loads; see formats.ts. */
     exports?: ExportContribution[];
+    /** Imports: file extensions the open dialog accepts before the plugin loads; see formats.ts. */
+    imports?: ImportContribution[];
 }
 export interface PluginManifest {
     /** Dotted lowercase id, e.g. `battuta.reflection`. Unique across the registry. */
