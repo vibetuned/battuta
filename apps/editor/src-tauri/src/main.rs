@@ -118,6 +118,147 @@ async fn confirm_dialog(title: String, message: String) -> bool {
         == rfd::MessageDialogResult::Ok
 }
 
+// --- workspace (slice 9a): the folders the user opened, read-only and SCOPED ---
+//
+// The host's `ctx.workspace` facade calls these. Roots are the folders
+// picked through `workspace_pick_folder` (or re-admitted with
+// `workspace_open_folder` from a plugin's persisted setting); every list,
+// read and watch is refused outside them. No fs plugin, no broad
+// permission: the scope is exactly what the user pointed at.
+
+#[derive(Default)]
+struct Workspace {
+    roots: std::sync::Mutex<Vec<std::path::PathBuf>>,
+    watchers: std::sync::Mutex<std::collections::HashMap<u32, notify::RecommendedWatcher>>,
+    next_watch: std::sync::atomic::AtomicU32,
+}
+
+/// The canonical path when it lies under a picked root; an error otherwise.
+fn within_roots(ws: &Workspace, path: &str) -> Result<std::path::PathBuf, String> {
+    let p = std::fs::canonicalize(path).map_err(|e| format!("{path}: {e}"))?;
+    let roots = ws.roots.lock().map_err(|_| "workspace state poisoned".to_string())?;
+    if roots.iter().any(|r| p.starts_with(r)) {
+        Ok(p)
+    } else {
+        Err(format!("{path} is outside the opened folders"))
+    }
+}
+
+fn admit_root(ws: &Workspace, path: &std::path::Path) -> Result<String, String> {
+    let c = std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    if !c.is_dir() {
+        return Err(format!("{} is not a folder", path.display()));
+    }
+    let mut roots = ws.roots.lock().map_err(|_| "workspace state poisoned".to_string())?;
+    if !roots.iter().any(|r| r == &c) {
+        roots.push(c.clone());
+    }
+    Ok(c.to_string_lossy().into_owned())
+}
+
+/// The native folder dialog; the picked folder becomes a root. With
+/// BATTUTA_WORKSPACE_TEST_DIR set (the shell smoke), that folder is picked
+/// without a dialog.
+#[tauri::command]
+async fn workspace_pick_folder(ws: tauri::State<'_, Workspace>, dir: Option<String>) -> Result<Option<String>, String> {
+    if let Ok(t) = std::env::var("BATTUTA_WORKSPACE_TEST_DIR") {
+        return admit_root(&ws, std::path::Path::new(&t)).map(Some);
+    }
+    let mut dialog = rfd::AsyncFileDialog::new().set_title("Open folder");
+    if let Some(d) = starting_dir(dir) {
+        dialog = dialog.set_directory(d);
+    }
+    let Some(folder) = dialog.pick_folder().await
+    else {
+        return Ok(None);
+    };
+    admit_root(&ws, folder.path()).map(Some)
+}
+
+/// Re-admit a folder from an earlier session (a plugin persists the path). False when it is gone.
+#[tauri::command]
+fn workspace_open_folder(ws: tauri::State<'_, Workspace>, path: String) -> bool {
+    admit_root(&ws, std::path::Path::new(&path)).is_ok()
+}
+
+#[derive(serde::Serialize)]
+struct DirEntryOut {
+    name: String,
+    path: String,
+    kind: &'static str,
+}
+
+/// The entries of a folder under a root: folders first, then files, by name; hidden entries skipped.
+#[tauri::command]
+fn workspace_read_dir(ws: tauri::State<'_, Workspace>, path: String) -> Result<Vec<DirEntryOut>, String> {
+    let p = within_roots(&ws, &path)?;
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(&p).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') {
+            continue;
+        }
+        let ft = entry.file_type().map_err(|e| e.to_string())?;
+        let kind = if ft.is_dir() {
+            "dir"
+        } else if ft.is_file() {
+            "file"
+        } else {
+            continue;
+        };
+        out.push(DirEntryOut { name, path: entry.path().to_string_lossy().into_owned(), kind });
+    }
+    out.sort_by(|a, b| (a.kind != "dir").cmp(&(b.kind != "dir")).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+    Ok(out)
+}
+
+/// A file under a root, as text — or base64 when its extension is one the
+/// frontend's formats registry reads as bytes (the open dialog's rule).
+#[tauri::command]
+fn workspace_read_file(ws: tauri::State<'_, Workspace>, path: String, binary_exts: Option<Vec<String>>) -> Result<String, String> {
+    let p = within_roots(&ws, &path)?;
+    let binary = binary_exts.unwrap_or_default();
+    if p.extension().is_some_and(|e| binary.iter().any(|b| e.eq_ignore_ascii_case(b))) {
+        Ok(to_base64(&std::fs::read(&p).map_err(|e| e.to_string())?))
+    } else {
+        std::fs::read_to_string(&p).map_err(|e| e.to_string())
+    }
+}
+
+/// Watch a folder under a root, recursively. Events reach the frontend as
+/// `workspace-change` { id, path, kind }; the facade coalesces them.
+#[tauri::command]
+fn workspace_watch(app: tauri::AppHandle, ws: tauri::State<'_, Workspace>, path: String) -> Result<u32, String> {
+    use notify::Watcher;
+    use tauri::Emitter;
+    let p = within_roots(&ws, &path)?;
+    let id = ws.next_watch.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    let mut watcher = notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
+        let Ok(ev) = res else { return };
+        let kind = match ev.kind {
+            notify::EventKind::Create(_) => "created",
+            notify::EventKind::Remove(_) => "removed",
+            notify::EventKind::Modify(_) => "modified",
+            _ => return,
+        };
+        for path in ev.paths {
+            let _ = app.emit("workspace-change", serde_json::json!({ "id": id, "path": path.to_string_lossy(), "kind": kind }));
+        }
+    })
+    .map_err(|e| e.to_string())?;
+    watcher.watch(&p, notify::RecursiveMode::Recursive).map_err(|e| e.to_string())?;
+    ws.watchers.lock().map_err(|_| "workspace state poisoned".to_string())?.insert(id, watcher);
+    Ok(id)
+}
+
+#[tauri::command]
+fn workspace_unwatch(ws: tauri::State<'_, Workspace>, id: u32) {
+    if let Ok(mut w) = ws.watchers.lock() {
+        w.remove(&id); // dropping the watcher stops it
+    }
+}
+
 /// Modification time (ms since epoch) of a file, for the external-change
 /// guard: save compares this against the value recorded at open/save and
 /// alerts before overwriting edits made by another program.
@@ -355,12 +496,13 @@ fn main() {
     tauri::Builder::default()
         .manage(InitialFile(std::sync::Mutex::new(initial)))
         .manage(MidiOut(std::sync::Mutex::new(Vec::new())))
+        .manage(Workspace::default())
         .setup(|app| {
             use tauri::Manager;
             spawn_midi(app.app_handle().clone());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![bench_echo, bench_report, js_log, open_score, save_score, save_score_as, export_file, file_mtime, confirm_dialog, midi_open_outputs, midi_close_outputs, midi_send, initial_score])
+        .invoke_handler(tauri::generate_handler![bench_echo, bench_report, js_log, open_score, save_score, save_score_as, export_file, file_mtime, confirm_dialog, midi_open_outputs, midi_close_outputs, midi_send, initial_score, workspace_pick_folder, workspace_open_folder, workspace_read_dir, workspace_read_file, workspace_watch, workspace_unwatch])
         .on_page_load(|webview, _| {
             eprintln!("[shell] page loaded: {}", webview.url().map(|u| u.to_string()).unwrap_or_default());
             // Headless shell self-test: exercise the save command end to end.
@@ -409,6 +551,32 @@ fn main() {
                    }; \
                    step(); \
                  }, 4000);",
+            );
+            // probe4: the workspace service end to end — with
+            // BATTUTA_WORKSPACE_TEST_DIR set the pick returns that folder
+            // without a dialog; list it, refuse a read outside the roots,
+            // watch it, and report the first change the smoke script makes.
+            let _ = webview.eval(
+                "setTimeout(() => { \
+                   const inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke; \
+                   const listen = window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.listen; \
+                   if (!inv || !listen) return; \
+                   inv('workspace_pick_folder', {}) \
+                     .then((root) => { if (!root) throw new Error('no folder picked'); return inv('workspace_read_dir', { path: root }).then((entries) => ({ root, entries })); }) \
+                     .then(({ root, entries }) => inv('workspace_read_dir', { path: '/' }).then( \
+                         () => { throw new Error('a read outside the roots was allowed'); }, \
+                         () => ({ root, entries }))) \
+                     .then(({ root, entries }) => { \
+                       let reported = false; \
+                       listen('workspace-change', (e) => { \
+                         if (reported) return; reported = true; \
+                         inv('js_log', { msg: 'probe4: workspace ok (' + entries.length + ' entries, scoped, change ' + e.payload.kind + ' ' + String(e.payload.path).split('/').pop() + ')' }); \
+                       }); \
+                       return inv('workspace_watch', { path: root }); \
+                     }) \
+                     .then((id) => inv('js_log', { msg: 'probe4: watching #' + id })) \
+                     .catch((e) => inv('js_log', { msg: 'probe4: workspace FAILED: ' + e })); \
+                 }, 5000);",
             );
             let _ = webview.eval(
                 "setTimeout(() => { \

@@ -112,11 +112,19 @@ describe("registration", () => {
 
   it("refuses an API range the host does not satisfy, and a capability it lacks", () => {
     const { entry } = echoPlugin();
-    const host = makeHost([
-      { ...entry, manifest: manifest({ id: "test.future", engines: { battuta: "^9.0.0" } }) },
-      { ...entry, manifest: manifest({ id: "test.needy", capabilities: ["workspace"], contributes: {} }) },
-      { ...entry, manifest: manifest({ id: "test.midi", capabilities: ["midi"], contributes: {} }) },
-    ]);
+    // Every real capability is offered since 9a, so the refusal is exercised on a host that offers midi alone.
+    const host = createHost({
+      layout: "qwerty",
+      settings: memorySettings(),
+      storage: memoryStorage(),
+      confirm: async () => true,
+      capabilities: ["midi"],
+      plugins: [
+        { ...entry, manifest: manifest({ id: "test.future", engines: { battuta: "^9.0.0" } }) },
+        { ...entry, manifest: manifest({ id: "test.needy", capabilities: ["workspace"], contributes: {} }) },
+        { ...entry, manifest: manifest({ id: "test.midi", capabilities: ["midi"], contributes: {} }) },
+      ],
+    });
     const [future, needy, midi] = host.registry.get();
     expect(future?.error).toContain(`needs @battuta/api ^9.0.0, this host has ${API_VERSION}`);
     expect(needy?.error).toContain('no "workspace" capability');
@@ -322,7 +330,7 @@ describe("the --no-plugins property", () => {
   });
 
   it("registering, activating and disabling a plugin never touches the document: only execute does", async () => {
-    const doc: DocumentInfo = { id: "doc-1", name: "score", version: 7, measureCount: 10, staffCount: 2, title: "Synthetic", tempo: null };
+    const doc: DocumentInfo = { id: "doc-1", name: "score", dirty: false, version: 7, measureCount: 10, staffCount: 2, title: "Synthetic", tempo: null };
     const before = JSON.stringify(doc);
     const adapter = fakeAdapter();
     const plugin = echoPlugin();
@@ -557,6 +565,41 @@ describe("the render, view and audio services (slice 7a)", () => {
     const host = createHost({ layout: "qwerty", plugins: [entry], settings: memorySettings(), storage: memoryStorage(), confirm: async () => true, audio: new HostAudioService(() => null) });
     await host.fire("onStartup");
     expect(unlocked).toBe(true); // no Web Audio here: unlock resolves, context() is null
+  });
+});
+
+describe("the workspace and the open documents (slice 9a)", () => {
+  it("ctx.documents lists every open tab with path and dirty; ctx.document is the active one; capability workspace is offered", async () => {
+    let seen: { count: number; dirty: boolean[]; paths: (string | undefined)[]; available: boolean } | null = null;
+    const entry: PluginEntry = {
+      manifest: manifest({ id: "test.folder", activationEvents: ["onStartup"], capabilities: ["workspace"], contributes: {} }),
+      load: async () => ({
+        activate: (ctx) => {
+          ctx.documents.subscribe((docs) => {
+            seen = { count: docs.length, dirty: docs.map((d) => d.dirty), paths: docs.map((d) => d.path), available: ctx.workspace.available };
+          });
+        },
+      }),
+    };
+    const host = makeHost([entry]);
+    await host.fire("onStartup");
+    expect(host.registry.info("test.folder")?.state).toBe("active");
+    const a: DocumentInfo = { id: "doc-1", name: "a", path: "/scores/a.mei", dirty: false, version: 1, measureCount: 2, staffCount: 1, title: "", tempo: null };
+    const b: DocumentInfo = { id: "doc-2", name: "b", dirty: true, version: 3, measureCount: 1, staffCount: 1, title: "", tempo: null };
+    host.documents.set([a, b]);
+    host.document.set(b);
+    expect(seen).toEqual({ count: 2, dirty: [false, true], paths: ["/scores/a.mei", undefined], available: false }); // no shell in node
+    expect(host.document.get()?.id).toBe("doc-2");
+  });
+
+  it("ctx.workspace is the host's service: unavailable here, so a plugin is told to stop; openDocument goes through the App's binding", async () => {
+    const host = makeHost([]);
+    expect(host.workspace.available).toBe(false);
+    expect(await host.workspace.pickFolder()).toBeNull();
+    const opened: string[] = [];
+    host.bindWorkspace({ openDocument: async (p) => void opened.push(p) });
+    await host.workspace.openDocument("/scores/a.mei");
+    expect(opened).toEqual(["/scores/a.mei"]);
   });
 });
 

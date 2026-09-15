@@ -111,7 +111,7 @@ function fixture(saved: Record<string, unknown> = {}, opts: { outputs?: string[]
     },
   });
   host.notices.subscribe((n) => n?.text && notices.push(n.text));
-  const publish = () => host.document.set({ id: "doc-1", name: "score", version, measureCount: 2, staffCount: 1, title: "", tempo: null });
+  const publish = () => host.document.set({ id: "doc-1", name: "score", dirty: false, version, measureCount: 2, staffCount: 1, title: "", tempo: null });
   publish();
 
   const items = () => host.slots.items.get().docHeader;

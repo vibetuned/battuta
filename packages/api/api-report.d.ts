@@ -1,4 +1,4 @@
-// @battuta/api 0.1.14 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
+// @battuta/api 0.1.15 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
 
 // ---- ../dist/.tsbuildinfo
 {"version":"5.9.3"}
@@ -114,6 +114,7 @@ import type { ActionsService, KeymapEntry } from "./actions.js";
 import type { AudioService } from "./audio.js";
 import type { ViewService } from "./view.js";
 import type { FormatsService } from "./formats.js";
+import type { WorkspaceService } from "./workspace.js";
 import type { LanesService } from "./lanes.js";
 /** A value with change notification. `subscribe` fires on every change with the new value. */
 export interface Store<T> {
@@ -161,6 +162,8 @@ export interface PluginContext {
     readonly activatedBy: ActivationEvent | null;
     /** The active document as a snapshot, null when none is open. Republished after every edit — see DocumentInfo. */
     readonly document: Store<DocumentInfo | null>;
+    /** Every open document, in tab order (the active one is `document`). For "which files are open, which are unsaved". */
+    readonly documents: Store<readonly DocumentInfo[]>;
     readonly editor: Store<EditorState>;
     /** Questions about the active document, answered as data. */
     readonly query: DocumentQueries;
@@ -199,8 +202,10 @@ export interface PluginContext {
     readonly audio: AudioService;
     /** The notation on screen: light engraved ids in page view as they sound. */
     readonly view: ViewService;
-    /** Exports: provide the producer for an export you declared. */
+    /** Exports and imports: provide the producer or converter for one you declared. */
     readonly formats: FormatsService;
+    /** The folders the user opened, read-only and scoped (capability "workspace"); unavailable in a browser. */
+    readonly workspace: WorkspaceService;
     /** Disposed on deactivate. Add every subscription here; the host disposes what it handed out itself. */
     readonly subscriptions: DisposableStore;
 }
@@ -297,6 +302,10 @@ export interface DocumentInfo {
      * view.
      */
     name: string;
+    /** The disk path when the document came from disk or was saved to it (shell); absent for imported and new scores. */
+    path?: string;
+    /** Unsaved changes — the tab's marker. */
+    dirty: boolean;
     version: number;
     measureCount: number;
     staffCount: number;
@@ -438,7 +447,7 @@ export interface FormatsService {
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export declare const API_VERSION = "0.1.14";
+export declare const API_VERSION = "0.1.15";
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";
 export type { Disposable } from "./disposable.js";
@@ -450,6 +459,7 @@ export type { Timemap, TimemapEvent, TimemapNote } from "./render.js";
 export type { AudioService } from "./audio.js";
 export type { HighlightCue, ViewService } from "./view.js";
 export type { ExportContribution, ExportFile, ExportPayload, ImportContribution, ImportFile, FormatsService } from "./formats.js";
+export type { DirEntry, WatchEvent, WatchEventKind, WorkspaceService } from "./workspace.js";
 export type { SetPitchesMessage, SetSylMessage, SetHarmMessage, CommandMessage, CommandMessageType } from "./messages.js";
 export { COMMAND_MESSAGE_TYPES } from "./messages.js";
 export type { MidiPort, MidiNoteEvent, MidiVirtualInput, MidiOutputs, MidiService } from "./midi.js";
@@ -870,6 +880,45 @@ export interface ViewService {
     highlight(cue: HighlightCue): void;
     /** Unlight everything — stop, seek, an edit. */
     clearHighlight(): void;
+}
+
+// ---- workspace.d.ts
+/**
+ * The workspace host service (capability "workspace"): the folders the
+ * user opened, read-only, and the files in them — a platform capability
+ * with a shell backend (Tauri commands behind this facade) and a browser
+ * backend that reports itself unavailable. Slice 9a, 2026-09-16.
+ *
+ * SCOPED: only folders the user picked (or a plugin re-admitted from an
+ * earlier session with `openFolder`) can be listed, read or watched; the
+ * shell refuses everything outside them. Nothing here writes — the save
+ * path is the host's.
+ */
+import type { Disposable } from "./disposable.js";
+export interface DirEntry {
+    name: string;
+    /** Absolute path, the form every other call here takes. */
+    path: string;
+    kind: "file" | "dir";
+}
+export type WatchEventKind = "created" | "modified" | "removed";
+export interface WatchEvent {
+    path: string;
+    kind: WatchEventKind;
+}
+export interface WorkspaceService {
+    /** False in a browser build: tell the user the shell is required, and do nothing else. */
+    readonly available: boolean;
+    /** The native folder dialog. The picked folder becomes readable; null when cancelled or unavailable. */
+    pickFolder(): Promise<string | null>;
+    /** Re-admit a folder picked in an earlier session (a plugin persists the path). False when it no longer exists or the shell is unavailable. */
+    openFolder(path: string): Promise<boolean>;
+    /** The entries of a folder inside a picked root: folders first, then files, hidden entries skipped. Rejects outside the roots. */
+    readDir(path: string): Promise<DirEntry[]>;
+    /** Open a score through the host's open path: imports convert, the tab is focused if it is already open. Rejects outside the roots. */
+    openDocument(path: string): Promise<void>;
+    /** Watch a folder (recursively) inside a picked root; events are coalesced per path. Dispose to stop. A no-op disposable when unavailable. */
+    watch(path: string, listener: (event: WatchEvent) => void): Disposable;
 }
 
 // ---- re-exported from @battuta/core (declared there; printed here so the pin covers the shape)

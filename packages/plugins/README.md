@@ -134,6 +134,7 @@ The api is a data contract. Nothing in it is a live object of the model.
 
 | Need | Call | Returns |
 | --- | --- | --- |
+| every open document, in tab order — which files are open, which are unsaved | `ctx.documents` | `Store<readonly DocumentInfo[]>`; each has `path?` (disk path when it came from or went to disk) and `dirty` |
 | which document, how many measures, its version | `ctx.document.get()` | `DocumentInfo` (`id`, `name` — the tab's file name, for naming what you derive: an export, a sidecar —, `version`, `measureCount`, `staffCount`, `title`, `tempo`) or null |
 | caret, event selection, block, view, input mode | `ctx.editor.get()` | `EditorState` |
 | the pitched events of a block, per voice | `ctx.query.pitchEventsIn(block)` | `PitchEvent[][]` |
@@ -152,6 +153,7 @@ The api is a data contract. Nothing in it is a live object of the model.
 | wake when the view changes | `activationEvents: ["onView:pages"]` (or `tiles`) | fired on every change and once for the first view |
 | an import format, accepted by the open dialog BEFORE your code loads | `contributes.imports: [{ id, label, exts, binary?, roots? }]`; activate on `onFormat:<id>`; in `activate`, `ctx.formats.registerImport(id, async (file) => mei)` | the host hands you `{ name, text }` (or `{ name, bytes }` for a `binary` format), opens the MEI you return as a new unsaved tab, and shows your label in the notice. Detection is the host's: declare `roots` for an extension MEI shares (`.xml`), never sniff yourself |
 | an export of several files (a page per file) | return `{ files: [{ bytes, filename }] }` from `registerExport`'s producer | the host saves each |
+| the folders the user opened (capability `workspace`) | `ctx.workspace.available`; `pickFolder()`, `openFolder(path)`, `readDir(path)`, `openDocument(path)`, `watch(path, fn)` | read-only, SCOPED to picked folders (the shell refuses the rest); `available` is false in a browser — say the shell is required and stop; persist a picked folder in `ctx.settings` and re-admit it with `openFolder` |
 | the union keymap as data (id, label, group, when, keys, mods, locked, plugin) | `ctx.keymap` | `Store<KeymapEntry[]>` |
 | **run** an action by id — a keymap id, a locked one (`undo`, `nav.left`, `duration.4`, `pitch.c`, …; the list is in `packages/api/src/actions.ts`) or an enabled plugin's command id | `ctx.actions.run(id)` | true when it ran; false when the id is unknown or the state forbids it — exactly when the key would have done nothing. A plugin's command goes through the registry after the same gates |
 | every id `run` knows, live | `ctx.actions.ids` | `Store<readonly string[]>`: core rules in dispatch order, then enabled plugins' commands; republished when a document installs its table and when a plugin is turned on or off |

@@ -159,7 +159,7 @@ describe("opening and closing", () => {
     doc.values.set("e2", "lo");
     store.register(lyricsLike(doc));
     const editor = createStore<EditorState>({ caret: null, selection: [], block: null, view: "tiles", entryMode: false });
-    const document = createStore<{ id: string; name: string; version: number; measureCount: number; staffCount: number; title: string; tempo: number | null } | null>(null);
+    const document = createStore<{ id: string; name: string; dirty: boolean; version: number; measureCount: number; staffCount: number; title: string; tempo: number | null } | null>(null);
     store.watch(editor, document);
     store.open("lyrics");
     expect(store.state.get()?.buffer).toBe("hel");
@@ -167,7 +167,7 @@ describe("opening and closing", () => {
     editor.set({ ...editor.get(), caret: { measureIndex: 0, staffN: 1, layerN: 1, eventIndex: 2 } });
     expect(store.state.get()?.buffer).toBe("lo");
     doc.values.set("e2", "la");
-    document.set({ id: "d", name: "score", version: 2, measureCount: 1, staffCount: 1, title: "", tempo: null });
+    document.set({ id: "d", name: "score", dirty: false, version: 2, measureCount: 1, staffCount: 1, title: "", tempo: null });
     expect(store.state.get()?.buffer).toBe("la");
     doc.setCaret(1); // a rest: nothing to read
     editor.set({ ...editor.get(), caret: { measureIndex: 0, staffN: 1, layerN: 1, eventIndex: 1 } });

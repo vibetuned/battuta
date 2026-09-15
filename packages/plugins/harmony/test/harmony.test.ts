@@ -90,7 +90,7 @@ function fixture(): Fixture {
     leaveEntryMode: () => host.editor.set({ ...host.editor.get(), entryMode: false }),
   };
   host.lanes.bind(adapter);
-  host.document.set({ id: "doc-1", name: "score", version: 1, measureCount: 1, staffCount: 1, title: "", tempo: null });
+  host.document.set({ id: "doc-1", name: "score", dirty: false, version: 1, measureCount: 1, staffCount: 1, title: "", tempo: null });
   host.editor.set({ ...host.editor.get(), caret: caret.pos });
   host.notices.subscribe((n) => n && notices.push(n.text));
 

@@ -10,7 +10,7 @@ import { DocumentSession } from "./session";
 // glyphs rendered as tofu there. Bundled Noto Music (35KB, OFL) fills
 // exactly those blocks via @font-face unicode-range below.
 import notoMusicUrl from "./assets/fonts/NotoMusic-Regular.woff2?url";
-import type { LaneSpec } from "@battuta/api";
+import type { DocumentInfo, LaneSpec } from "@battuta/api";
 import { saveStoredSession, loadStoredSession, clearStoredSession, type StoredSession } from "./sessionStore";
 
 /** savedMarks sentinel for restored-dirty docs: never equals an editMark,
@@ -1252,13 +1252,69 @@ export default function App() {
     return () => d.dispose();
   }, []);
   useEffect(() => {
-    // A snapshot, not the model: plugins get data, never CoreScore.
-    host.document.set(
-      session && activeId !== null
-        ? { id: `doc-${activeId}`, name: active?.name ?? "", version: session.version, measureCount: session.score.measures.length, staffCount: session.staffCount, title: session.title(), tempo: session.tempo() ?? null }
-        : null,
-    );
-  }, [session, version, activeId, active]);
+    // Snapshots, not the model: plugins get data, never CoreScore. Every
+    // open tab in order (path and dirty marker included — a folder view
+    // reads them here, never off the DOM), and the active one.
+    const infoOf = (d: OpenDoc): DocumentInfo => ({
+      id: `doc-${d.id}`,
+      name: d.name,
+      ...(d.path ? { path: d.path } : {}),
+      dirty: d.session.editMark !== (savedMarks.current.get(d.id) ?? null),
+      version: d.session.version,
+      measureCount: d.session.score.measures.length,
+      staffCount: d.session.staffCount,
+      title: d.session.title(),
+      tempo: d.session.tempo() ?? null,
+    });
+    host.documents.set(docs.map(infoOf));
+    host.document.set(active && session ? infoOf(active) : null);
+  }, [docs, session, version, activeId, active]);
+
+  // The workspace's opener and the LIVE external-change guard. A path a
+  // plugin opens goes through the one open path (an already-open tab is
+  // focused, an import converts, the mtime is recorded); a file open here
+  // that changes on disk under any watched folder is noticed at once — the
+  // save-time guard stays as the last line.
+  const docsRef = useRef(docs);
+  docsRef.current = docs;
+  const switchDocRef = useRef(switchDoc);
+  switchDocRef.current = switchDoc;
+  const openFileRef = useRef(openFile);
+  openFileRef.current = openFile;
+  useEffect(() => {
+    host.bindWorkspace({
+      openDocument: async (path) => {
+        const already = docsRef.current.find((d) => d.path === path);
+        if (already) {
+          switchDocRef.current(already.id);
+          return;
+        }
+        const invoke = tauriInvoke();
+        if (!invoke) throw new Error("the shell is required to open a path");
+        const contents = (await invoke("workspace_read_file", { path, binaryExts: host.formats.binaryExtensions() })) as string;
+        rememberDir(path);
+        const fmt = host.formats.detect(path);
+        if (fmt !== null && fmt !== "mei" && host.formats.readAs(fmt) === "bytes") openFileRef.current(path, Uint8Array.from(atob(contents), (c) => c.charCodeAt(0)).buffer);
+        else openFileRef.current(path, contents, path);
+      },
+    });
+    const changes = host.workspace.onChange((e) => {
+      if (e.kind !== "modified") return;
+      const doc = docsRef.current.find((d) => d.path === e.path);
+      const invoke = tauriInvoke();
+      if (!doc || !invoke) return;
+      void invoke("file_mtime", { path: e.path })
+        .then((m) => {
+          const known = diskMtimes.current.get(e.path);
+          if (typeof m === "number" && known !== undefined && m !== known) setNotice(`"${doc.name}" changed on disk — saving will ask before overwriting`);
+        })
+        .catch(() => undefined);
+    });
+    return () => {
+      changes.dispose();
+      host.bindWorkspace(null);
+    };
+  }, []);
   useEffect(() => {
     host.editor.set({ caret, selection, block, view, entryMode });
   }, [caret, selection, block, view, entryMode]);

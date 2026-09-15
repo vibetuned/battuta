@@ -326,8 +326,15 @@ own registrations rewritten to read through it. **8b closed on its second
 attempt, 2026-09-16**: `packages/plugins/formats` holds the five imports,
 the three Verovio exports, the table and the worker; the api did not grow
 (0.1.14 unchanged), the 13.45 MB `convertWorker` asset is reached only
-from the plugin's chunk, and `App.tsx` is 2,946 → 2,935. **Slice 9 is
-next.**
+from the plugin's chunk, and `App.tsx` is 2,946 → 2,935. **Slice 9 was
+split into 9a and 9b on 2026-09-16, and 9a closed** (in-house, api
+0.1.15): checked before the handoff, the `panels` side area existed and
+nothing else did — so `ctx.workspace` (pick, re-admit, list, open, watch;
+scoped to the folders the user picked, a `notify` watcher in the shell,
+unavailable in a browser), `ctx.documents` with `path` and `dirty` on
+every snapshot, and the external-change guard gone live; the shell
+smoke's eighth check picks a folder without a dialog, lists it, refuses
+an outside read and sees a change. **9b is next.**
 
 From here on slices are
 handed to sessions without the surrounding context, on purpose, to test
@@ -1264,36 +1271,139 @@ stand in the GLOBAL rather than open a seam in its own code (a
 `FakeWorker` on `globalThis`, which also became the only check anywhere
 of the id → Verovio mapping).
 
-#### Slice 9 — Folder view (≈1 week)
+#### Slice 9a — The workspace service and the open documents (host, in-house; ≈3 days)
 
-**Delivers.** `packages/plugins/folder-view` — a NEW feature rather
-than an extraction, chosen to prove the `workspace` point and the
-`shell` pattern: a side panel listing the opened folder's scores (every
-importable extension from the format table, dirty markers from the
-tabs), click opens through the shared open path, live `watch` refreshes
-the tree and feeds the external-change guard. Second `panels` consumer.
-Browser build: the panel is present but reports the shell is required.
-Persists the opened folder in the session.
+**Delivers.** What a folder view needs from the host and cannot make
+itself — checked before the handoff on 2026-09-16: the `panels` side
+area exists (`ctx.panels.open({ side: "side" })`, mounted since slice 1,
+no consumer yet); everything else below did not.
 
-**Proves.** `workspace` (`openFolder`, `readDir`, `openDocument`,
-`watch`, scoped to the folder the user picked), the `shell` pattern
-(a Tauri 2 plugin behind a JS facade that degrades gracefully in the
-browser), and `documentHooks` for the watcher. Closes live file
-watching, open since 0.0.2.
+1. **The `workspace` host service** — the platform capability the plan
+   named in slice 1 and never lifted, now `ctx.workspace` (capability
+   `workspace`, offered by every build): `available` (false in a browser:
+   the panel says the shell is required), `pickFolder()` (the native
+   folder dialog; the picked folder becomes readable), `openFolder(path)`
+   (re-admit a folder a plugin persisted from an earlier session, if it
+   still exists), `readDir(path)` (entries with name, path, kind; hidden
+   entries skipped; folders first), `openDocument(path)` (through the
+   host's one open path — imports convert, the mtime is recorded, an
+   already-open tab is focused instead of opened twice), and `watch(path,
+   listener)` (a recursive watcher, events coalesced per path). **Scoped
+   to the folders the user picked**: the shell keeps the roots, and every
+   read, list and watch outside them is refused — no fs plugin, no broad
+   permission; the JS facade is the contract. Host module `workspace.ts`
+   with a shell backend (Tauri commands `workspace_pick_folder`,
+   `workspace_open_folder`, `workspace_read_dir`, `workspace_read_file`,
+   `workspace_watch` / `workspace_unwatch`, a `notify` watcher emitting
+   `workspace-change`) and a browser backend that reports unavailable.
+2. **The open documents as data.** `DocumentInfo` gains `path?` (the disk
+   path when the document came from or went to disk; absent for imported
+   and new scores) and `dirty` (the tab's marker); `ctx.documents:
+   Store<readonly DocumentInfo[]>` lists every open tab in order, while
+   `ctx.document` stays the active one. A folder view marks which files
+   are open and which are unsaved from this, never from the DOM.
+3. **The external-change guard goes live.** Today the guard compares the
+   disk mtime at SAVE time. With the watcher, an open document whose file
+   changes on disk is noticed the moment it happens: the App subscribes
+   to the service's change stream and shows the notice at once; the save
+   guard stays as the last line. Closes live file watching, open since
+   0.0.2.
+
+**Proves.** `workspace` as a host service with the shell pattern — a
+Rust capability behind a JS facade that degrades in the browser — and
+that a panel plugin can be told what is open without touching the tabs.
+
+**Leaves `App.tsx`.** Nothing of size: this slice adds. The mtime guard's
+notice moves from save time to change time.
+
+**API may grow.** `WorkspaceService`, `DirEntry`, `WatchEvent`,
+`ctx.workspace`; `DocumentInfo.path` and `.dirty`; `ctx.documents`;
+capability `workspace` offered. Host module `workspace.ts`; the shell
+commands above; the `notify` crate. Not added, for want of a consumer:
+`onDocument:` firing (the folder view activates from its slot item and
+its own setting, like the keyboard), write access of any kind (the save
+path is the App's), a browser backend over the File System Access API.
+
+**Stop when.** A read or watch would have to reach outside a picked
+folder, or the guard would need the plugin's watcher to exist (it must
+work for any open file under a picked root, plugin or not).
+
+**Gates.** `workspace.test.ts` over a fake bridge (unavailable in a
+browser: pick → null, read → refused, watch → a no-op disposable; in the
+shell: the commands called with the right arguments, events routed by
+path and coalesced, dispose unwatches, openDocument through the bound
+adapter and refused without one); host tests (`ctx.documents` follows
+tabs, dirty and paths; the capability offered); the shell smoke gains a
+probe: with `BATTUTA_WORKSPACE_TEST_DIR` set, the pick returns that
+folder without a dialog, `read_dir` lists it, a watch is placed, the
+script appends to a file in it and the change event arrives —
+`verify-tauri.sh`'s eighth check; a read outside the roots is refused
+(`cargo test` or the probe); every e2e unchanged; the union keymap
+snapshot and the budget unchanged.
+
+**Documents.** CHANGELOG bullet with the service's shape and the scoping
+rule; DESIGN note; the conventions' rows (`ctx.workspace`,
+`ctx.documents`, `path` / `dirty`); the api docs.
+
+**Done when.** A plugin can pick a folder, list it, open a score from it
+and see it change, all through `ctx`, in the shell — and learns in a
+browser that it cannot; an external edit to an open score under a picked
+folder is noticed the moment it happens.
+
+**Closed 2026-09-16.** All hold; api 0.1.15; the CHANGELOG bullet has
+the account. *As built, beyond the brief:* `openDocument` focuses an
+already-open tab rather than opening it twice; the watcher coalesces per
+path with a 150 ms window and reports the last kind seen; the scope is
+enforced on canonical paths, so a symlinked folder is judged by where it
+points.
+
+#### Slice 9b — Folder view (plugin; ≈4 days)
+
+**Delivers.** `packages/plugins/folder-view` — a NEW feature rather than
+an extraction: a side panel listing the opened folder's scores (`.mei`
+and every extension the open dialog accepts — `ctx.workspace` cannot
+tell you those: use the list `ctx.formats` cannot give either… **stop:**
+the accept list is the host's `openExtensions`, not on the api; see
+*Stop when*), open documents marked from `ctx.documents` (a dot for
+open, the tab's marker for dirty), click → `ctx.workspace.openDocument`,
+live `watch` refreshing the tree. Entry point: a declared `header` slot
+item (📁, `dimUntilActive`) on `battuta.folder-view.toggle`, activation on
+that command and on `onSettings:folder` (the persisted folder reopens at
+startup through `ctx.workspace.openFolder`), `capabilities:
+["workspace"]`. In a browser the panel opens and says the shell is
+required — `ctx.workspace.available`.
+
+**Proves.** `panels` on the side, `workspace` from outside, and that a
+new feature costs the host nothing.
 
 **Leaves `App.tsx`.** Nothing — this slice adds, and measures that the
 host did not grow.
 
-**Gates.** A new e2e path (open folder → click → edit → external change
-→ guard); `verify-tauri.sh` gains the watcher.
+**API may grow.** **None**, with one question 9a leaves open on purpose:
+the folder view must know which extensions are scores. The host's
+`openExtensions` store is not on the api; if the plugin needs it,
+`ctx.formats.extensions: Store<readonly string[]>` is the shape to
+propose (consumer: this list; a second: a drag-and-drop target). Write
+the gap; do not resolve it — or list `.mei` only and say so.
 
-**Documents.** The plugin's two documents; a NEW guide page (folder
-view, live watching) and the limits page's rows retired; the CHANGELOG
-bullet.
+**Stop when.** The panel needs anything beyond `ctx.workspace`,
+`ctx.documents`, `ctx.panels`, the declared slot item, `ctx.settings`,
+`ctx.notice`, and the extension question above.
 
-**Done when.** The panel works end to end in the shell; the browser
-build shows its "shell required" notice; an external edit to an open
-score is noticed the moment it happens.
+**Gates.** A new e2e path in the shell smoke (open folder → click a score
+→ edit → external change → the guard's notice) — the browser e2e can
+only assert the "shell required" state; `verify-tauri.sh` grows the
+folder-view check; the boundary tests; the union keymap snapshot
+unchanged (📁 is a slot item, not a key); the budget.
+
+**Documents.** The plugin's two documents (BUILDING.md §7 starts from
+the keyboard plugin's, the only other panel); a NEW guide page (folder
+view, live watching) and the limits page's rows retired; the plugins-page
+row; the CHANGELOG bullet.
+
+**Done when.** The panel works end to end in the shell; the browser build
+shows its notice; turning the plugin off removes the panel and the 📁
+together.
 
 #### Slice 10 — Reference layers on the overlay point (≈2 weeks)
 

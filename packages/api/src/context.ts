@@ -20,6 +20,7 @@ import type { ActionsService, KeymapEntry } from "./actions.js";
 import type { AudioService } from "./audio.js";
 import type { ViewService } from "./view.js";
 import type { FormatsService } from "./formats.js";
+import type { WorkspaceService } from "./workspace.js";
 import type { LanesService } from "./lanes.js";
 
 /** A value with change notification. `subscribe` fires on every change with the new value. */
@@ -75,6 +76,8 @@ export interface PluginContext {
   readonly activatedBy: ActivationEvent | null;
   /** The active document as a snapshot, null when none is open. Republished after every edit — see DocumentInfo. */
   readonly document: Store<DocumentInfo | null>;
+  /** Every open document, in tab order (the active one is `document`). For "which files are open, which are unsaved". */
+  readonly documents: Store<readonly DocumentInfo[]>;
   readonly editor: Store<EditorState>;
   /** Questions about the active document, answered as data. */
   readonly query: DocumentQueries;
@@ -109,8 +112,10 @@ export interface PluginContext {
   readonly audio: AudioService;
   /** The notation on screen: light engraved ids in page view as they sound. */
   readonly view: ViewService;
-  /** Exports: provide the producer for an export you declared. */
+  /** Exports and imports: provide the producer or converter for one you declared. */
   readonly formats: FormatsService;
+  /** The folders the user opened, read-only and scoped (capability "workspace"); unavailable in a browser. */
+  readonly workspace: WorkspaceService;
   /** Disposed on deactivate. Add every subscription here; the host disposes what it handed out itself. */
   readonly subscriptions: DisposableStore;
 }

@@ -27,9 +27,10 @@ import { HostMidiService, detectMidiBackend } from "./midi";
 import { LaneStore } from "./lanes";
 import { HostAudioService } from "./audio";
 import { FormatStore } from "./formats";
+import { HostWorkspaceService, detectWorkspaceBridge, type WorkspaceAdapter } from "./workspace";
 
-/** Capabilities this host offers. `midi` since slice 3, `audio` since 7a; `workspace` is still to be lifted. */
-export const OFFERED_CAPABILITIES: readonly HostCapability[] = ["midi", "audio"];
+/** Capabilities this host offers: `midi` since slice 3, `audio` since 7a, `workspace` since 9a (every build offers it; `ctx.workspace.available` says whether the shell is there). */
+export const OFFERED_CAPABILITIES: readonly HostCapability[] = ["midi", "audio", "workspace"];
 
 const IDLE_EDITOR: EditorState = { caret: null, selection: [], block: null, view: "tiles", entryMode: false };
 
@@ -84,8 +85,12 @@ export interface Host {
   readonly view: ViewService;
   /** Formats, both halves: the App registers its own exports and imports, plugins declare and register theirs; the menu lists `formats.exports`, the open dialog accepts `formats.openExtensions`. */
   readonly formats: FormatStore;
+  /** The workspace host service: the folders the user opened, scoped; unavailable in a browser. The App binds the opener. */
+  readonly workspace: HostWorkspaceService;
   /** Mirrors the App keeps current; plugins read them through their context. */
   readonly document: WritableStore<DocumentInfo | null>;
+  /** Every open document in tab order (the active one is `document`). */
+  readonly documents: WritableStore<readonly DocumentInfo[]>;
   readonly editor: WritableStore<EditorState>;
   /** The query facade plugins see; answered by the bound session adapter. */
   readonly query: DocumentQueries;
@@ -95,6 +100,8 @@ export interface Host {
   bindSession(adapter: SessionAdapter | null): void;
   /** The App installs what lights the page view; null while it has no notation on screen. */
   bindView(adapter: ViewAdapter | null): void;
+  /** The App installs how a path opens (through its one open path); null while it cannot. */
+  bindWorkspace(adapter: WorkspaceAdapter | null): void;
   /** Commands as data: the message becomes a core command here, never in a plugin. */
   execute(message: CommandMessage): void;
   /** Plugin keybindings: called by the App's key handler AFTER the core dispatcher falls through. */
@@ -117,6 +124,10 @@ export interface HostOptions {
   midi?: HostMidiService;
   /** Tests inject a service over a fake AudioContext; the app creates the real one on first unlock. */
   audio?: HostAudioService;
+  /** Tests inject a service over a fake shell bridge; the app detects the shell or reports unavailable. */
+  workspace?: HostWorkspaceService;
+  /** Tests narrow what the host offers, to exercise the refusal; the app offers OFFERED_CAPABILITIES. */
+  capabilities?: readonly HostCapability[];
 }
 
 export function createHost(options: HostOptions = {}): Host {
@@ -163,11 +174,13 @@ export function createHost(options: HostOptions = {}): Host {
   const notices = createStore<Notice | null>(null);
   const midi = options.midi ?? new HostMidiService(detectMidiBackend());
   const audio = options.audio ?? new HostAudioService();
+  const workspace = options.workspace ?? new HostWorkspaceService(detectWorkspaceBridge());
   let seq = 0;
   const notice = (text: string) => notices.set({ text, seq: ++seq });
   /** An empty text clears the notice (the App maps "" to none). */
   const noticeOrClear = (text: string | null) => notices.set({ text: text ?? "", seq: ++seq });
   const document = createStore<DocumentInfo | null>(null);
+  const documents = createStore<readonly DocumentInfo[]>([]);
   const editor = createStore<EditorState>(IDLE_EDITOR);
   let adapter: SessionAdapter | null = null;
   const execute = (message: CommandMessage) => {
@@ -204,6 +217,7 @@ export function createHost(options: HostOptions = {}): Host {
     apiVersion: options.apiVersion ?? API_VERSION,
     activatedBy,
     document,
+    documents,
     editor,
     query,
     execute,
@@ -226,6 +240,7 @@ export function createHost(options: HostOptions = {}): Host {
     },
     audio,
     view,
+    workspace,
     formats: {
       registerExport: (id, produce) => {
         if (!manifest.contributes?.exports?.some((x) => x.id === id)) throw new Error(`plugin ${manifest.id} did not declare export ${id} in its manifest`);
@@ -241,7 +256,7 @@ export function createHost(options: HostOptions = {}): Host {
 
   const registry = new PluginRegistry({
     ...(options.apiVersion !== undefined ? { apiVersion: options.apiVersion } : {}),
-    capabilities: OFFERED_CAPABILITIES,
+    capabilities: options.capabilities ?? OFFERED_CAPABILITIES,
     isEnabled: (id) => isPluginEnabled(settings, id),
     persistEnabled: (id, on) => setPluginEnabled(settings, id, on),
     contributeKeybindings: (pluginId, bindings) => keymap.contribute(pluginId, bindings),
@@ -324,7 +339,9 @@ export function createHost(options: HostOptions = {}): Host {
     audio,
     view,
     formats,
+    workspace,
     document,
+    documents,
     editor,
     query,
     notice,
@@ -335,6 +352,7 @@ export function createHost(options: HostOptions = {}): Host {
     bindView: (next) => {
       viewAdapter = next;
     },
+    bindWorkspace: (next) => workspace.bind(next),
     execute,
     dispatchKey,
     fire: (event) => registry.fire(event),
@@ -374,6 +392,8 @@ export type { LaneAdapter, LaneState, LaneOption, DeclaredLane } from "./lanes";
 export { HostAudioService } from "./audio";
 export type { AudioContextFactory } from "./audio";
 export { FormatStore } from "./formats";
+export { HostWorkspaceService, detectWorkspaceBridge } from "./workspace";
+export type { WorkspaceBridge, WorkspaceAdapter } from "./workspace";
 export type { DeclaredExport, DeclaredImport, ExportOption, ImportOption, Producer, Converter } from "./formats";
 export { blockOfEvents } from "./queries";
 export { toCommand } from "./messages";

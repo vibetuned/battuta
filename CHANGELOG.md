@@ -99,6 +99,51 @@ is taken, and each slice as it closes, with the `App.tsx` line count
   20, phase 3 21, phase 4 67, phase 5 221, lyrics 25, keyboard 24, the
   shell smoke 7 of 7. Union keymap snapshot byte-identical.
   `App.tsx` **2,946 → 2,935**.
+- **Slice 9a — the workspace service and the open documents
+  (2026-09-16, in-house). CLOSED; slice 9 split into 9a and 9b.** Checked
+  before the handoff: the `panels` side area existed and nothing else the
+  folder view needs did. **`ctx.workspace`** (capability `workspace`,
+  offered by every build; host module `workspace.ts`): `available` (false
+  in a browser — the panel says the shell is required and stops),
+  `pickFolder()` (the native folder dialog), `openFolder(path)` (re-admit
+  a folder a plugin persisted), `readDir(path)` (folders first, hidden
+  entries skipped), `openDocument(path)` (through the App's one open path:
+  an already-open tab is focused, an import converts, the mtime is
+  recorded) and `watch(path, listener)` (recursive, the bursts a save
+  produces coalesced into one event per path). **Scoped to the folders
+  the user picked**: the shell keeps the roots and refuses every list,
+  read and watch outside them — no fs plugin, no broad permission; six
+  Tauri commands (`workspace_pick_folder`, `_open_folder`, `_read_dir`,
+  `_read_file`, `_watch`, `_unwatch`) and a `notify` watcher emitting
+  `workspace-change`, behind the JS facade that is the contract. **The
+  open documents as data**: `DocumentInfo` gained `path?` and `dirty`, and
+  `ctx.documents` lists every open tab in order while `ctx.document` stays
+  the active one — a folder view marks what is open and unsaved from
+  this, never from the DOM. **The external-change guard is live**: the
+  App subscribes to the service's change stream, and a file open in a tab
+  that changes on disk under any watched folder is announced the moment
+  it happens (the save-time mtime check stays as the last line) — live
+  file watching, open since 0.0.2, closes with a folder picked. Tests:
+  `workspace.test.ts` (6: the browser backend refuses politely; in the
+  shell the commands and their arguments, routing by watch id, coalescing,
+  dispose unwatching even before the shell answered, the bound opener),
+  `host.test.ts` +2 (`ctx.documents` with dirty and paths, the capability,
+  the opener), the shell smoke's eighth check (the pick without a dialog
+  through `BATTUTA_WORKSPACE_TEST_DIR`, two entries listed, a read outside
+  the roots refused, a watch placed and the script's append to a file
+  observed as `modified`). `@battuta/api` 0.1.14 → **0.1.15**. **The budget, raised on purpose:**
+  the workspace facade is host code by design — a platform capability
+  with a shell backend and a browser fallback lives in the host, the way
+  the MIDI service does — and it put the initial chunk at 367.9 kB
+  against 7b's 368.2 kB ceiling, 0.3 kB from red with 9b's manifest still
+  to join the shared chunk; `budget.json` goes to 384,000 bytes (measured
+  376,730 + 2%), the first raise since the ceiling was set and the reason
+  is this sentence. Not added,
+  for want of a consumer: `onDocument:` firing, any write access, a
+  browser backend over the File System Access API. One question left open
+  for 9b on purpose: a folder view must know which extensions are scores,
+  and the host's accept list is not on the api — the brief names the shape
+  to propose.
 - **Slice 8b stopped, and its one gap closed (2026-09-16, in-house; api
   0.1.13 → 0.1.14).** The formats plugin's first attempt delivered
   nothing and left `packages/plugins/formats/POSTMORTEM-2026-09-16.md`

@@ -51,6 +51,10 @@ export interface DocumentInfo {
    * view.
    */
   name: string;
+  /** The disk path when the document came from disk or was saved to it (shell); absent for imported and new scores. */
+  path?: string;
+  /** Unsaved changes — the tab's marker. */
+  dirty: boolean;
   version: number;
   measureCount: number;
   staffCount: number;
