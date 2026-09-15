@@ -18,7 +18,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { API_VERSION, definePlugin, type PluginContext, type PluginEntry, type PluginManifest, type DocumentInfo } from "@battuta/api";
 import { SetHarmCommand, SetPitchesCommand, SetSylCommand } from "@battuta/core";
-import { createHost, memorySettings, toCommand, type SessionAdapter } from "../src/host";
+import { createHost, memorySettings, toCommand, HostAudioService, type SessionAdapter } from "../src/host";
 import { memoryStorage } from "../src/host/services";
 import { dimsDeclared } from "../src/host/slots";
 
@@ -75,6 +75,8 @@ function echoPlugin(): { entry: PluginEntry; state: { log: string[]; loads: numb
 const fakeAdapter = (execute = vi.fn()): SessionAdapter & { execute: ReturnType<typeof vi.fn> } => ({
   lyricAt: (id) => (id === "n1" ? { text: "hel", wordpos: "i", con: "d" } : null),
   harmAt: (id, kind) => (id === "n1" && kind === "chord" ? "Cmaj7" : ""),
+  timemap: async () => ({ events: [{ tstamp: 0, on: ["n1"] }, { tstamp: 500, off: ["n1"] }], notes: { n1: { pitch: 60, duration: 500 } }, idMap: {} }),
+  notation: () => ({ ties: { n1: "n2" }, marks: { n1: ["slur"] } }),
   execute,
   pitchEventsIn: (block) => [[{ eventId: `e-${block.measureFrom}`, pitches: [{ pname: "c", oct: 4 }] }]],
   blockOf: (ids) => (ids.length ? { measureFrom: 0, measureTo: ids.length - 1, staffFrom: 1, staffTo: 1 } : null),
@@ -493,6 +495,104 @@ describe("a runtime slot item replaces the plugin's declared face while it lives
     // another plugin's "toggle" is a different item
     host.slots.add("header", { id: "toggle", render: () => null }, "test.other");
     expect(face()).toEqual(["declared:test.echo:toggle", "live:test.other:toggle"]);
+  });
+});
+
+describe("the render, view and audio services (slice 7a)", () => {
+  it("query.timemap() and query.notation() come from the bound adapter; null and empty without a document", async () => {
+    const host = makeHost([]);
+    expect(await host.query.timemap()).toBeNull();
+    expect(host.query.notation()).toEqual({ ties: {}, marks: {} });
+    host.bindSession(fakeAdapter());
+    expect((await host.query.timemap())?.events).toHaveLength(2);
+    expect(host.query.notation().ties).toEqual({ n1: "n2" });
+    host.bindSession({ ...fakeAdapter(), timemap: async () => { throw new Error("render failed"); } });
+    await expect(host.query.timemap()).rejects.toThrow("render failed");
+  });
+
+  it("view.highlight and clearHighlight reach the bound view adapter, and are no-ops without one", () => {
+    const host = makeHost([]);
+    host.view.highlight({ on: ["n1"], off: [] }); // nothing bound: nothing thrown
+    const seen: string[] = [];
+    host.bindView({ highlight: (cue) => seen.push(`on:${cue.on.join(",")} off:${cue.off.join(",")}${cue.measureOn ? ` m:${cue.measureOn}` : ""}`), clearHighlight: () => seen.push("clear") });
+    host.view.highlight({ on: ["n1"], off: ["n0"], measureOn: "m2" });
+    host.view.clearHighlight();
+    host.bindView(null);
+    host.view.highlight({ on: ["n9"], off: [] });
+    expect(seen).toEqual(["on:n1 off:n0 m:m2", "clear"]);
+  });
+
+  it("onView:<mode> fires on every change of the editor mirror's view, and once for the first view published", async () => {
+    const seen: (string | null)[] = [];
+    const entry: PluginEntry = {
+      manifest: manifest({ id: "test.viewer", activationEvents: ["onView:pages"], contributes: {} }),
+      load: async () => ({ activate: (ctx) => { seen.push(ctx.activatedBy); } }),
+    };
+    const host = makeHost([entry]);
+    host.editor.set({ ...host.editor.get(), view: "tiles" });
+    await flush();
+    expect(seen).toEqual([]); // tiles: not this plugin's event
+    host.editor.set({ ...host.editor.get(), view: "pages" });
+    await flush();
+    expect(seen).toEqual(["onView:pages"]);
+    host.editor.set({ ...host.editor.get(), caret: { measureIndex: 1, staffN: 1, layerN: 1, eventIndex: 0 } }); // same view: no second firing
+    await flush();
+    expect(host.registry.info("test.viewer")?.state).toBe("active");
+  });
+
+  it("ctx.audio is the host's audio service, offered as the capability \"audio\"", async () => {
+    let unlocked = false;
+    const entry: PluginEntry = {
+      manifest: manifest({ id: "test.sound", activationEvents: ["onStartup"], capabilities: ["audio"], contributes: {} }),
+      load: async () => ({ activate: async (ctx) => { await ctx.audio.unlock(); unlocked = ctx.audio.context() === null; } }),
+    };
+    const host = createHost({ layout: "qwerty", plugins: [entry], settings: memorySettings(), storage: memoryStorage(), confirm: async () => true, audio: new HostAudioService(() => null) });
+    await host.fire("onStartup");
+    expect(unlocked).toBe(true); // no Web Audio here: unlock resolves, context() is null
+  });
+});
+
+describe("exports on the context (the formats point, export half)", () => {
+  const exportEntry = (activate: (ctx: PluginContext) => void): PluginEntry => ({
+    manifest: manifest({ id: "test.export", activationEvents: ["onFormat:test.export.midi"], contributes: { exports: [{ id: "test.export.midi", label: "test MIDI", ext: "mid", mime: "audio/midi" }] } }),
+    load: async () => ({ activate }),
+  });
+
+  it("a declared export is listed before the plugin loads; producing it fires onFormat:<id>, the plugin registers, the payload comes back", async () => {
+    const seen: (string | null)[] = [];
+    const host = makeHost([
+      exportEntry((ctx) => {
+        seen.push(ctx.activatedBy);
+        expect(() => ctx.formats.registerExport("test.export.other", async () => ({ bytes: "" }))).toThrow(/did not declare export test.export.other/);
+        ctx.formats.registerExport("test.export.midi", async () => ({ bytes: new Uint8Array([1, 2, 3]), filename: "x.mid" }));
+      }),
+    ]);
+    expect(host.formats.exports.get()).toEqual([{ id: "test.export.midi", label: "test MIDI", ext: "mid", mime: "audio/midi" }]);
+    expect(host.registry.info("test.export")?.state).toBe("registered");
+    const payload = await host.formats.produce("test.export.midi");
+    expect(seen).toEqual(["onFormat:test.export.midi"]);
+    expect(payload).toEqual({ bytes: new Uint8Array([1, 2, 3]), filename: "x.mid" });
+    await host.registry.setEnabled("test.export", false);
+    expect(host.formats.exports.get()).toEqual([]);
+    await expect(host.formats.produce("test.export.midi")).rejects.toThrow(/unknown export/);
+  });
+
+  it("a plugin that registers nothing on wake-up is reported; the host's own exports list first and produce directly", async () => {
+    const host = makeHost([exportEntry(() => undefined)]);
+    host.formats.register({ id: "internal", label: "internal thing", ext: "txt", mime: "text/plain" }, async () => ({ bytes: "hi" }));
+    expect(host.formats.exports.get().map((e) => e.id)).toEqual(["internal", "test.export.midi"]);
+    expect(await host.formats.produce("internal")).toEqual({ bytes: "hi" });
+    await expect(host.formats.produce("test.export.midi")).rejects.toThrow(/its plugin registered no export/);
+    expect(host.formats.infoOf("internal")?.ext).toBe("txt");
+  });
+
+  it("two plugins declaring one export id: the second fails registration", () => {
+    const x = { id: "test.shared.x", label: "x", ext: "x", mime: "text/plain" };
+    const a: PluginEntry = { manifest: manifest({ id: "test.a", activationEvents: [], contributes: { exports: [x] } }), load: async () => ({ activate: () => undefined }) };
+    const b: PluginEntry = { manifest: manifest({ id: "test.b", activationEvents: [], contributes: { exports: [x] } }), load: async () => ({ activate: () => undefined }) };
+    const host = makeHost([a, b]);
+    expect(host.registry.info("test.a")?.state).toBe("registered");
+    expect(host.registry.info("test.b")?.error).toMatch(/already declared by test.a/);
   });
 });
 

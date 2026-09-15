@@ -17,6 +17,9 @@ import type { ActivationEvent, PluginManifest, SlotName } from "./manifest.js";
 import type { CommandMessage } from "./messages.js";
 import type { MidiService } from "./midi.js";
 import type { ActionsService, KeymapEntry } from "./actions.js";
+import type { AudioService } from "./audio.js";
+import type { ViewService } from "./view.js";
+import type { FormatsService } from "./formats.js";
 import type { LanesService } from "./lanes.js";
 
 /** A value with change notification. `subscribe` fires on every change with the new value. */
@@ -102,6 +105,12 @@ export interface PluginContext {
   readonly panels: { open(panel: PanelSpec): Disposable };
   /** Text lanes at the caret: register the spec of a lane you declared; open it from your own key. */
   readonly lanes: LanesService;
+  /** The app's one AudioContext (capability "audio"): unlock it in your click, connect your own instrument, convert clocks with timeAt. */
+  readonly audio: AudioService;
+  /** The notation on screen: light engraved ids in page view as they sound. */
+  readonly view: ViewService;
+  /** Exports: provide the producer for an export you declared. */
+  readonly formats: FormatsService;
   /** Disposed on deactivate. Add every subscription here; the host disposes what it handed out itself. */
   readonly subscriptions: DisposableStore;
 }

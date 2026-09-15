@@ -25,6 +25,8 @@ export type { BlockSelection, ClipboardFragment, ClipboardStaff } from "./clipbo
 
 export { SetHarmCommand, harmTextAt, isChordSymbol, isRomanNumeral, isHarmText } from "./harm.js";
 export { SetSylCommand, sylAt } from "./lyrics.js";
+export { notationFacts } from "./playback.js";
+export type { NotationFacts, NoteMark } from "./playback.js";
 export type { SylValue } from "./lyrics.js";
 export { CycleStaffGroupCommand } from "./staffgroup.js";
 export type { StaffGroupState } from "./staffgroup.js";
@@ -49,8 +51,6 @@ export { newId, ensureIds } from "./ids.js";
 export { EVENT_TAGS, EventIndex, buildEventIndex, caretLeft, caretRight, caretVertical, eventRange } from "./events.js";
 export type { CaretPosition, EventRef } from "./events.js";
 
-export { playbackShaping, mergeTiedSpans, GATE_DEFAULT } from "./playback.js";
-export type { PlaybackShaping } from "./playback.js";
 // The serial forms that used to sit beside these left for
 // @battuta/plugin-reflection (slice 2): no MEI knowledge, so not core's.
 export { SetPitchesCommand, collectPitchEvents } from "./pitches.js";

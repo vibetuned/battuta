@@ -14,6 +14,7 @@ import { converter } from "./converter";
 import notoMusicUrl from "./assets/fonts/NotoMusic-Regular.woff2?url";
 import { detectImport, IMPORT_FORMATS, EXPORT_FORMATS, OPEN_EXTENSIONS, type ExportFormat } from "./formats";
 import { playbackToMidi } from "./midiExport";
+import { buildPerformance } from "./performance";
 import type { LaneSpec, MidiOutputs } from "@battuta/api";
 import { saveStoredSession, loadStoredSession, clearStoredSession, type StoredSession } from "./sessionStore";
 
@@ -908,26 +909,32 @@ export default function App() {
   // --- page-view player: audio + highlight ride the same timemap ---
   useEffect(() => {
     scorePlayer.onStateChange = setPlayerState;
-    scorePlayer.onHighlight = (on, off, measureOn) => {
-      const root = document.querySelector(".pages");
-      if (!root) return;
-      if (on.length === 0 && off.length === 0 && !measureOn) {
-        for (const el of root.querySelectorAll("g.playing")) el.classList.remove("playing");
-        return;
-      }
-      for (const id of off) root.querySelector(`g[id="${CSS.escape(id)}"]`)?.classList.remove("playing");
-      for (const id of on) root.querySelector(`g[id="${CSS.escape(id)}"]`)?.classList.add("playing");
-      if (measureOn) {
-        const m = root.querySelector(`g[id="${CSS.escape(measureOn)}"]`);
-        if (m) {
-          const r = m.getBoundingClientRect();
-          // Follow the music, but only when it actually leaves the viewport.
-          if (r.top < 60 || r.bottom > window.innerHeight - 60) m.scrollIntoView({ block: "center", behavior: "smooth" });
+    // The notation on screen is the host's: the player (and, from 7b, a
+    // plugin) lights it through host.view; this is the App's adapter.
+    host.bindView({
+      highlight: ({ on, off, measureOn }) => {
+        const root = document.querySelector(".pages");
+        if (!root) return;
+        for (const id of off) root.querySelector(`g[id="${CSS.escape(id)}"]`)?.classList.remove("playing");
+        for (const id of on) root.querySelector(`g[id="${CSS.escape(id)}"]`)?.classList.add("playing");
+        if (measureOn) {
+          const m = root.querySelector(`g[id="${CSS.escape(measureOn)}"]`);
+          if (m) {
+            const r = m.getBoundingClientRect();
+            // Follow the music, but only when it actually leaves the viewport.
+            if (r.top < 60 || r.bottom > window.innerHeight - 60) m.scrollIntoView({ block: "center", behavior: "smooth" });
+          }
         }
-      }
-    };
+      },
+      clearHighlight: () => {
+        for (const el of document.querySelectorAll(".pages g.playing")) el.classList.remove("playing");
+      },
+    });
     scorePlayer.setTempo(playerTempo); // restore the persisted tempo
-    return () => scorePlayer.stop();
+    return () => {
+      scorePlayer.stop();
+      host.bindView(null);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
@@ -959,27 +966,24 @@ export default function App() {
     }
     if (playerState === "loading" || !session || !pool) return;
     void scorePlayer.unlock(); // inside the gesture, before any await
-    const { xml, expand } = session.serializeForPlayback();
     // MIDI mode: open the outputs once (kept for the session); if none
     // exist, say so and fall back to the piano rather than playing silence.
     const sink = midiOutOn
       ? (midiSinkRef.current ? Promise.resolve(midiSinkRef.current) : host.midi.openOutputs())
       : Promise.resolve(null);
-    Promise.all([sink, pool.documentTimemap(xml, expand)])
-      .then(([s, data]) => {
+    // The host renders the timemap and reports the notation facts; the
+    // PERFORMANCE — ties merged, gates applied, clones mapped — is the
+    // player's own reading of them (performance.ts).
+    Promise.all([sink, host.query.timemap()])
+      .then(([s, timemap]) => {
         if (midiOutOn && !s) setNotice("no MIDI outputs found — playing through the built-in piano");
         if (midiOutOn && s && !midiSinkRef.current) {
           midiSinkRef.current = s;
           setNotice(`MIDI playback → ${s.names.join(", ")}`);
         }
         scorePlayer.setMidiSink(midiOutOn ? s : null);
-        if (data.error) {
-          setNotice(`playback failed: ${data.error}`);
-          return;
-        }
-        data.shaping = session.playbackShaping(); // ties + slur/artic gates
-        if (import.meta.env.DEV || "__TAURI__" in window) (window as unknown as Record<string, unknown>).__PLAYBACK__ = data;
-        return scorePlayer.play(data);
+        if (!timemap) return;
+        return scorePlayer.play(buildPerformance(timemap, host.query.notation()));
       })
       .catch((e) => setNotice(`playback failed: ${e instanceof Error ? e.message : e}`));
   }, [playerState, session, pool, midiOutOn]);
@@ -1292,24 +1296,46 @@ export default function App() {
 
   /**
    * battuta's playback as MIDI — the SOLVED form the player performs
-   * (repeats/voltas/jump expanded, ties merged, articulation gates),
-   * not Verovio's written-score MIDI.
+   * (repeats/voltas/jump expanded, ties merged, articulation gates), not
+   * Verovio's written-score MIDI — registered as an INTERNAL export in
+   * the host's registry (slice 7a), the way a plugin's export is declared
+   * and produced; it moves into the playback plugin in 7b. Registered
+   * once, reading the live values through refs, so the menu row is there
+   * with or without a document.
    */
-  const exportPlaybackMidi = useCallback(() => {
-    if (!session || !active || !pool) return;
-    setNotice("exporting playback MIDI…");
-    const { xml, expand } = session.serializeForPlayback();
-    pool
-      .documentTimemap(xml, expand)
-      .then((data) => {
-        if (data.error) throw new Error(data.error);
-        if (data.events.length === 0) throw new Error("nothing to play");
-        data.shaping = session.playbackShaping();
-        return saveExport(`${active.name}-playback.mid`, playbackToMidi(data, { transpose: midiTranspose }), "audio/midi");
-      })
-      .then(() => setNotice(`exported ${active.name}-playback.mid${midiTranspose !== 0 ? ` (transposed ${midiTranspose > 0 ? "+" : ""}${midiTranspose} st)` : ""}`))
-      .catch((e) => setError(`export failed: ${e instanceof Error ? e.message : e}`));
-  }, [session, active, pool, saveExport, midiTranspose]);
+  const exportRefs = useRef({ name: null as string | null, transpose: 0 });
+  exportRefs.current = { name: active?.name ?? null, transpose: midiTranspose };
+  useEffect(() => {
+    const d = host.formats.register(
+      { id: "playback-midi", label: "playback MIDI", ext: "mid", mime: "audio/midi", title: "the player's interpretation: repeats, voltas and D.S./D.C. expanded, ties merged, staccato/legato gates applied" },
+      async () => {
+        const timemap = await host.query.timemap();
+        if (!timemap) throw new Error("no document is open");
+        if (timemap.events.length === 0) throw new Error("nothing to play");
+        const { name, transpose } = exportRefs.current;
+        return { bytes: playbackToMidi(buildPerformance(timemap, host.query.notation()), { transpose }), filename: `${name ?? "score"}-playback.mid` };
+      },
+    );
+    return () => d.dispose();
+  }, []);
+  const exportOptions = useStore(host.formats.exports);
+  /** Run one export of the registry — the App owns the SAVE path, the registry who produces. */
+  const runExport = useCallback(
+    (id: string) => {
+      const info = host.formats.infoOf(id);
+      if (!info || !active) return;
+      setNotice(`exporting ${info.label}…`);
+      host.formats
+        .produce(id)
+        .then(async (payload) => {
+          const name = payload.filename ?? `${active.name}.${info.ext}`;
+          await saveExport(name, payload.bytes, info.mime);
+          setNotice(`exported ${name}`);
+        })
+        .catch((e) => setError(`export failed: ${e instanceof Error ? e.message : e}`));
+    },
+    [active, saveExport],
+  );
 
   /** ctrl+± and the loupe buttons step through the fixed zoom levels. */
   const zoomStep = useCallback(
@@ -1355,6 +1381,17 @@ export default function App() {
       blockOf: (ids) => blockOfEvents(session.index, ids),
       lyricAt: (id) => session.sylAt(id),
       harmAt: (id, kind) => session.harmAt(id, kind),
+      timemap: async () => {
+        if (!pool) throw new Error("the renderer is not ready");
+        const { xml, expand } = session.serializeForPlayback();
+        const data = await pool.documentTimemap(xml, expand);
+        if (data.error) throw new Error(data.error);
+        const { error: _error, ...timemap } = data;
+        // The e2e scripts read the timemap and the tie graph off this hook.
+        if (import.meta.env.DEV || "__TAURI__" in window) (window as unknown as Record<string, unknown>).__PLAYBACK__ = { ...timemap, shaping: session.notationFacts() };
+        return timemap;
+      },
+      notation: () => session.notationFacts(),
     });
     // The lanes' view of this document: the caret path and what sits on it.
     host.lanes.bind({
@@ -1381,7 +1418,7 @@ export default function App() {
       host.lanes.bind(null);
       host.bindSession(null);
     };
-  }, [session, afterCommand]);
+  }, [session, afterCommand, pool]);
 
   // Keyboard: navigation, selection, edits, undo/redo — as an ACTION TABLE.
   // Every branch of the old if-chain is a rule with an id (host/actions.ts),
@@ -2455,17 +2492,23 @@ export default function App() {
                 >
                   save
                 </button>
-                <button
-                  data-export="playback-midi"
-                  title="the player's interpretation: repeats, voltas and D.S./D.C. expanded, ties merged, staccato/legato gates applied"
-                  style={MENU_ITEM}
-                  onClick={() => {
-                    setMenuOpen(false);
-                    exportPlaybackMidi();
-                  }}
-                >
-                  export playback MIDI (.mid)
-                </button>
+                {/* The export registry (host/formats.ts): the App's own
+                    exports and every export a plugin declares, listed
+                    before the plugin's code loads. */}
+                {exportOptions.map((o) => (
+                  <button
+                    key={o.id}
+                    data-export={o.id}
+                    {...(o.title ? { title: o.title } : {})}
+                    style={MENU_ITEM}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      runExport(o.id);
+                    }}
+                  >
+                    export {o.label} (.{o.ext})
+                  </button>
+                ))}
                 {/* Verovio-backed exports; imports ride "open file…" (any
                     supported extension converts on open). */}
                 {EXPORT_FORMATS.map((f) => (

@@ -7,6 +7,7 @@
  */
 
 import type { LaneContribution } from "./lanes.js";
+import type { ExportContribution } from "./formats.js";
 
 /** Events the host fires; a plugin's code loads on the first one it declares. */
 export type ActivationEvent =
@@ -34,9 +35,9 @@ export const ACTIVATION_EVENT_PREFIXES = ["onStartup", "onCommand:", "onLane:", 
  * the host refuses to register a plugin needing one it does not offer.
  * Grows as host services are lifted (`midi` lands in slice 3).
  */
-export type HostCapability = "midi" | "workspace" | "playback";
+export type HostCapability = "midi" | "workspace" | "audio";
 
-export const HOST_CAPABILITIES: readonly HostCapability[] = ["midi", "workspace", "playback"];
+export const HOST_CAPABILITIES: readonly HostCapability[] = ["midi", "workspace", "audio"];
 
 /**
  * UI slots a plugin may place an item in. `header` is the first header row
@@ -114,6 +115,8 @@ export interface PluginContributions {
   slotItems?: SlotItemContribution[];
   /** Text lanes at the caret, listed in the status bar before the plugin loads; see lanes.ts. */
   lanes?: LaneContribution[];
+  /** Exports, listed in the battuta menu before the plugin loads; see formats.ts. */
+  exports?: ExportContribution[];
 }
 
 export interface PluginManifest {
@@ -182,6 +185,15 @@ export function validateManifest(input: unknown): string[] {
         if (!l || typeof l.label !== "string" || !l.label.trim()) problems.push(`lane ${l?.id ?? "?"} needs a label`);
         if (!l || typeof l.name !== "string" || !l.name.trim()) problems.push(`lane ${l?.id ?? "?"} needs a name`);
         if (!l || (l.place !== "above" && l.place !== "below")) problems.push(`lane ${l?.id ?? "?"} needs a place of above or below (got ${JSON.stringify(l?.place)})`);
+      }
+      const exportIds = new Set<string>();
+      for (const x of contributes.exports ?? []) {
+        if (!x || typeof x.id !== "string" || !x.id.trim()) problems.push("every export needs an id");
+        else if (exportIds.has(x.id)) problems.push(`duplicate export id ${x.id}`);
+        else exportIds.add(x.id);
+        if (!x || typeof x.label !== "string" || !x.label.trim()) problems.push(`export ${x?.id ?? "?"} needs a label`);
+        if (!x || typeof x.ext !== "string" || !/^[a-z0-9]+$/i.test(x.ext)) problems.push(`export ${x?.id ?? "?"} needs an ext (letters and digits, no dot)`);
+        if (!x || typeof x.mime !== "string" || !x.mime.includes("/")) problems.push(`export ${x?.id ?? "?"} needs a mime type`);
       }
       for (const k of contributes.keybindings ?? []) {
         if (!k || typeof k.command !== "string" || !commandIds.has(k.command)) problems.push(`keybinding ${JSON.stringify(k?.command)} must name one of the plugin's own commands`);

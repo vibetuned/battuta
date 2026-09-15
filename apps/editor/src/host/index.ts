@@ -9,7 +9,7 @@
  * built-in plugins unless the URL says ?plugins=off); `createHost` is
  * exported for tests, which pass memory-backed settings and storage.
  */
-import { API_VERSION, DisposableStore, type ActionsService, type ActivationEvent, type BlockSelection, type CommandMessage, type DocumentInfo, type DocumentQueries, type EditorState, type HostCapability, type KeymapEntry, type PitchEvent, type PluginContext, type PluginEntry, type PluginManifest, type Store, type SylValue, type HarmKind } from "@battuta/api";
+import { API_VERSION, DisposableStore, type ActionsService, type ActivationEvent, type BlockSelection, type CommandMessage, type DocumentInfo, type DocumentQueries, type EditorState, type HostCapability, type KeymapEntry, type PitchEvent, type PluginContext, type PluginEntry, type PluginManifest, type Store, type SylValue, type HarmKind, type NotationFacts, type Timemap, type ViewMode, type ViewService } from "@battuta/api";
 import { isHarmText, type Command } from "@battuta/core";
 import { toCommand } from "./messages";
 import { keyMatches, type Layout } from "../keymap";
@@ -25,9 +25,11 @@ import { isPluginEnabled, memorySettings, pluginSettings, pluginStorage, setPlug
 import { BUILTIN_PLUGINS } from "./plugins";
 import { HostMidiService, detectMidiBackend } from "./midi";
 import { LaneStore } from "./lanes";
+import { HostAudioService } from "./audio";
+import { ExportStore } from "./formats";
 
-/** Capabilities this host offers. `midi` since slice 3; `workspace` and `playback` are still to be lifted. */
-export const OFFERED_CAPABILITIES: readonly HostCapability[] = ["midi"];
+/** Capabilities this host offers. `midi` since slice 3, `audio` since 7a; `workspace` is still to be lifted. */
+export const OFFERED_CAPABILITIES: readonly HostCapability[] = ["midi", "audio"];
 
 const IDLE_EDITOR: EditorState = { caret: null, selection: [], block: null, view: "tiles", entryMode: false };
 
@@ -43,7 +45,18 @@ export interface SessionAdapter {
   blockOf(eventIds: readonly string[]): BlockSelection | null;
   lyricAt(eventId: string): SylValue | null;
   harmAt(eventId: string, kind: HarmKind): string;
+  /** Verovio's timemap of the expanded form — a render service; rejects with the render error. */
+  timemap(): Promise<Timemap>;
+  /** The notation facts a performance interprets. */
+  notation(): NotationFacts;
 }
+
+/**
+ * What the App binds for the notation on screen: lighting engraved ids in
+ * page view as they sound. Null while nothing is mounted (or in tests):
+ * the view service is then a no-op.
+ */
+export type ViewAdapter = ViewService;
 
 export interface Host {
   readonly apiVersion: string;
@@ -63,6 +76,12 @@ export interface Host {
   readonly notices: Store<Notice | null>;
   /** The MIDI host service: devices, the note stream, virtual inputs, outputs. The App starts it. */
   readonly midi: HostMidiService;
+  /** The audio host service: the app's one AudioContext. */
+  readonly audio: HostAudioService;
+  /** The notation on screen, as plugins may touch it (highlight); answered by the bound view adapter. */
+  readonly view: ViewService;
+  /** Exports: the App registers its own, plugins declare and register theirs; the menu lists `formats.exports`. */
+  readonly formats: ExportStore;
   /** Mirrors the App keeps current; plugins read them through their context. */
   readonly document: WritableStore<DocumentInfo | null>;
   readonly editor: WritableStore<EditorState>;
@@ -72,6 +91,8 @@ export interface Host {
   confirm(message: string, title?: string): Promise<boolean>;
   /** The App installs the active session's adapter; null while no document is open. */
   bindSession(adapter: SessionAdapter | null): void;
+  /** The App installs what lights the page view; null while it has no notation on screen. */
+  bindView(adapter: ViewAdapter | null): void;
   /** Commands as data: the message becomes a core command here, never in a plugin. */
   execute(message: CommandMessage): void;
   /** Plugin keybindings: called by the App's key handler AFTER the core dispatcher falls through. */
@@ -92,6 +113,8 @@ export interface HostOptions {
   apiVersion?: string;
   /** Tests inject a service over a fake backend; the app detects Web MIDI or the shell. */
   midi?: HostMidiService;
+  /** Tests inject a service over a fake AudioContext; the app creates the real one on first unlock. */
+  audio?: HostAudioService;
 }
 
 export function createHost(options: HostOptions = {}): Host {
@@ -137,6 +160,7 @@ export function createHost(options: HostOptions = {}): Host {
   const commands = new CommandTable();
   const notices = createStore<Notice | null>(null);
   const midi = options.midi ?? new HostMidiService(detectMidiBackend());
+  const audio = options.audio ?? new HostAudioService();
   let seq = 0;
   const notice = (text: string) => notices.set({ text, seq: ++seq });
   /** An empty text clears the notice (the App maps "" to none). */
@@ -154,7 +178,17 @@ export function createHost(options: HostOptions = {}): Host {
     lyricAt: (id) => adapter?.lyricAt(id) ?? null,
     harmAt: (id, kind) => adapter?.harmAt(id, kind) ?? "",
     harmValid: (kind, text) => isHarmText(kind, text), // core's grammar; a question about text, not about a document
+    timemap: () => (adapter ? adapter.timemap() : Promise.resolve(null)),
+    notation: () => adapter?.notation() ?? { ties: {}, marks: {} },
   };
+  let viewAdapter: ViewAdapter | null = null;
+  const view: ViewService = {
+    highlight: (cue) => viewAdapter?.highlight(cue),
+    clearHighlight: () => viewAdapter?.clearHighlight(),
+  };
+  const formats = new ExportStore({
+    activate: (exportId, pluginId) => registryRef?.activate(pluginId, `onFormat:${exportId}`) ?? Promise.resolve(false),
+  });
   const lanes = new LaneStore({
     execute,
     notice: noticeOrClear,
@@ -187,6 +221,14 @@ export function createHost(options: HostOptions = {}): Host {
       },
       open: (id) => lanes.open(id),
     },
+    audio,
+    view,
+    formats: {
+      registerExport: (id, produce) => {
+        if (!manifest.contributes?.exports?.some((x) => x.id === id)) throw new Error(`plugin ${manifest.id} did not declare export ${id} in its manifest`);
+        return subscriptions.add(formats.registerExport(id, produce, manifest.id));
+      },
+    },
     subscriptions,
   });
 
@@ -206,6 +248,11 @@ export function createHost(options: HostOptions = {}): Host {
       for (const lane of contributed) store.add(lanes.declare({ ...lane, pluginId }));
       return store;
     },
+    declareExports: (pluginId, contributed) => {
+      const store = new DisposableStore();
+      for (const entry of contributed) store.add(formats.declare({ ...entry, pluginId }));
+      return store;
+    },
     commands,
     createContext,
     report: notice,
@@ -218,6 +265,17 @@ export function createHost(options: HostOptions = {}): Host {
   publishIds();
 
   const dispatchKey = (e: KeyLike): boolean => registry.dispatchKeyFor(keymap, e);
+
+  // `onView:<mode>` fires on every change of the editor mirror's view —
+  // and for the first view published, so a plugin that declares
+  // `onView:tiles` wakes at startup too. Reserved since slice 1; fired
+  // since 7a for the player row (`onView:pages`).
+  let firedView: ViewMode | null = null;
+  editor.subscribe((state) => {
+    if (state.view === firedView) return;
+    firedView = state.view;
+    void registry.fire(`onView:${state.view}`);
+  });
 
   /**
    * The startup activation events, in order: onStartup for everyone who
@@ -251,6 +309,9 @@ export function createHost(options: HostOptions = {}): Host {
     commands,
     notices,
     midi,
+    audio,
+    view,
+    formats,
     document,
     editor,
     query,
@@ -258,6 +319,9 @@ export function createHost(options: HostOptions = {}): Host {
     confirm,
     bindSession: (next) => {
       adapter = next;
+    },
+    bindView: (next) => {
+      viewAdapter = next;
     },
     execute,
     dispatchKey,
@@ -295,6 +359,10 @@ export { useStore } from "./store";
 export { Slot, Panels } from "./slots";
 export { LaneStore, LaneInput, laneFace } from "./lanes";
 export type { LaneAdapter, LaneState, LaneOption, DeclaredLane } from "./lanes";
+export { HostAudioService } from "./audio";
+export type { AudioContextFactory } from "./audio";
+export { ExportStore } from "./formats";
+export type { DeclaredExport, ExportOption, Producer } from "./formats";
 export { blockOfEvents } from "./queries";
 export { toCommand } from "./messages";
 export { HostMidiService, webMidiBackend, shellMidiBackend, noMidiBackend, detectMidiBackend, parseNoteMessage } from "./midi";

@@ -1325,7 +1325,7 @@ check("harmony round unwinds cleanly", await page.evaluate(() =>
   }, chain, { timeout: 5000 });
   check("tie after tie builds i / m / t — the first tie stays connected", true);
   check("the sound merges the whole chain", await page.evaluate((ids) => {
-    const ties = window.__SESSION__.playbackShaping().ties;
+    const ties = window.__SESSION__.notationFacts().ties; // DESIGN HOOK: the session's dev method (shaping → facts in slice 7a; the tie graph is unchanged)
     return ties[ids[0]] === ids[1] && ties[ids[1]] === ids[2];
   }, chain));
 

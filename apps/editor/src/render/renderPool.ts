@@ -6,6 +6,7 @@
  * downstream tiles after a clef/key/meter change, whose context hash changes
  * with no special-case logic (DESIGN.md).
  */
+import type { Timemap } from "@battuta/api";
 
 export interface TileResult {
   svg: string;
@@ -14,25 +15,9 @@ export interface TileResult {
   error?: string;
 }
 
-/** One timemap entry: what turns on/off at a real-time millisecond stamp. */
-export interface TimemapEvent {
-  tstamp: number;
-  on?: string[];
-  off?: string[];
-  measureOn?: string;
-}
-
-/** Playback data for a document: timeline + sounding pitch per note id.
- * With repeats expanded, `idMap` sends each cloned pass id (`<id>-rendN`)
- * back to the notated id the SVG actually contains. */
-export interface PlaybackData {
-  events: TimemapEvent[];
-  notes: Record<string, { pitch: number; duration: number }>;
-  idMap: Record<string, string>;
-  /** Ties + gates from the document (attached by the app, not the worker). */
-  shaping?: { ties: Record<string, string>; gates: Record<string, number> };
-  error?: string;
-}
+/** The timemap as the worker returns it: the api's `Timemap` (a render service hands it to plugins as data), plus the worker's error. */
+export type PlaybackData = Timemap & { error?: string };
+export type { TimemapEvent } from "@battuta/api";
 
 interface Job {
   xml: string;

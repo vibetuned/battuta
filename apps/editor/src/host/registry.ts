@@ -20,7 +20,7 @@
  * document change, no reload. The user's keymap overrides for its
  * bindings are untouched, so turning it back on restores them.
  */
-import { API_VERSION, DisposableStore, resolvePluginModule, satisfiesEngine, toDisposable, validateManifest, type ActivationEvent, type CommandHandler, type Disposable, type HostCapability, type KeybindingContribution, type LaneContribution, type PluginContext, type PluginEntry, type PluginManifest, type PluginModule, type SlotItemContribution, type Store } from "@battuta/api";
+import { API_VERSION, DisposableStore, resolvePluginModule, satisfiesEngine, toDisposable, validateManifest, type ActivationEvent, type CommandHandler, type Disposable, type HostCapability, type ExportContribution, type KeybindingContribution, type LaneContribution, type PluginContext, type PluginEntry, type PluginManifest, type PluginModule, type SlotItemContribution, type Store } from "@battuta/api";
 import type { KeyBinding } from "../keymap";
 
 /** The shape of a key event the host needs: what the App's handler and a test both provide. */
@@ -92,6 +92,8 @@ export interface RegistryDeps {
   declareSlotItems(pluginId: string, items: SlotItemContribution[]): Disposable;
   /** Manifest-declared lanes: listed in the status bar before the plugin's code loads. */
   declareLanes(pluginId: string, lanes: LaneContribution[]): Disposable;
+  /** Manifest-declared exports: listed in the battuta menu before the plugin's code loads. */
+  declareExports(pluginId: string, exports: ExportContribution[]): Disposable;
   commands: CommandTable;
   createContext(manifest: PluginManifest, subscriptions: DisposableStore, activatedBy: ActivationEvent | null): PluginContext;
   /** Where activation and command failures are reported (a notice in the app). */
@@ -284,6 +286,8 @@ export class PluginRegistry implements Store<readonly PluginInfo[]> {
       if (slotItems.length) rec.contributions.add(this.deps.declareSlotItems(m.id, slotItems));
       const lanes = m.contributes?.lanes ?? [];
       if (lanes.length) rec.contributions.add(this.deps.declareLanes(m.id, lanes));
+      const exports = m.contributes?.exports ?? [];
+      if (exports.length) rec.contributions.add(this.deps.declareExports(m.id, exports));
     } catch (e) {
       rec.contributions.dispose();
       rec.contributions = new DisposableStore();

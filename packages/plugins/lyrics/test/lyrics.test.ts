@@ -78,7 +78,8 @@ function fixture(opts: { entryMode?: boolean } = {}): Fixture {
     blockOf: () => null,
     lyricAt: (id) => syllables.get(id) ?? null,
     harmAt: () => "",
-    harmValid: () => false,
+    timemap: async () => ({ events: [], notes: {}, idMap: {} }),
+    notation: () => ({ ties: {}, marks: {} }),
   };
   host.bindSession(session);
 

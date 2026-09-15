@@ -55,7 +55,8 @@ describe("validateManifest", () => {
   });
 
   it("only accepts capabilities the host can offer", () => {
-    expect(withPatch({ capabilities: ["midi", "workspace", "playback"] })).toEqual([]);
+    expect(withPatch({ capabilities: ["midi", "workspace", "audio"] })).toEqual([]);
+    expect(withPatch({ capabilities: ["playback"] })).toEqual(['unknown capability "playback"']); // reserved once, replaced by "audio" in slice 7a
     expect(withPatch({ capabilities: ["network"] })).toEqual(['unknown capability "network"']);
   });
 
@@ -78,6 +79,21 @@ describe("validateManifest", () => {
       "lane battuta.lyrics.verse1 needs a name",
       "every lane needs an id",
     ]);
+  });
+
+  it("validates declared exports: id, label, a dotless ext, a mime type, no duplicates", () => {
+    expect(withPatch({ contributes: { exports: [{ id: "battuta.x.midi", label: "playback MIDI", ext: "mid", mime: "audio/midi" }] } })).toEqual([]);
+    expect(
+      withPatch({
+        contributes: {
+          exports: [
+            { id: "", label: "a", ext: "mid", mime: "audio/midi" },
+            { id: "battuta.x.a", label: "", ext: ".mid", mime: "midi" },
+            { id: "battuta.x.a", label: "dup", ext: "mid", mime: "audio/midi" },
+          ],
+        },
+      }),
+    ).toEqual(["every export needs an id", "export battuta.x.a needs a label", "export battuta.x.a needs an ext (letters and digits, no dot)", "export battuta.x.a needs a mime type", "duplicate export id battuta.x.a"]);
   });
 
   it("ties keybindings to the plugin's own commands", () => {

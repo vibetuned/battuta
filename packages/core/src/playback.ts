@@ -1,36 +1,36 @@
 /**
- * Playback shaping — what the timemap alone cannot say (probed: Verovio
- * neither merges ties nor shortens articulations in timemap/MIDI values):
- *  - TIES: tied notes are ONE sound. The document knows every tie
- *    (@tie i/m/t chains and <tie startid/endid> elements); the pair graph
- *    lets the player merge played spans into a single attack.
- *  - SLURS + ARTICULATIONS: gate factors per note — under a slur (or
- *    tenuto) a note holds its full value, staccato halves it,
- *    staccatissimo shorter still; everything else gets the standard
- *    slight detach so legato is audible by contrast.
+ * Notation facts a performance interprets — what the timemap alone cannot
+ * say (probed: Verovio neither merges ties nor shortens articulations in
+ * timemap/MIDI values), read from MEI and reported as FACTS:
+ *  - TIES: which note ties INTO which (`@tie` i/m/t chains and
+ *    `<tie startid endid>` elements), chain by chain.
+ *  - MARKS: which notes carry a staccato, staccatissimo or tenuto, and
+ *    which lie under a slur (or phrase).
+ *
+ * What those facts MEAN in sound — one attack for a tie chain, a shorter
+ * release for a staccato, legato under a slur — is a performance
+ * decision, and there can be several performers; it left core for the
+ * player on 2026-09-15 (slice 7a). Core reads the document; it does not
+ * interpret it.
  */
 import { childElements } from "./xml.js";
 import { CoreScore } from "./score.js";
 import { EventIndex } from "./events.js";
 import { targetNotes } from "./commands.js";
 
-export interface PlaybackShaping {
+/** A mark on a note that a performance may interpret. `slur` covers `<phrase>` too. */
+export type NoteMark = "slur" | "tenuto" | "staccato" | "staccatissimo";
+
+export interface NotationFacts {
   /** noteId -> the note it ties INTO (chains resolve link by link). */
   ties: Record<string, string>;
-  /** noteId -> duration gate; absent = the player's default detach. */
-  gates: Record<string, number>;
+  /** noteId -> its marks, in this order: the note's own (or its chord's) articulations, then `slur` when a slur or phrase spans it. */
+  marks: Record<string, NoteMark[]>;
 }
-
-export const GATE_SLUR = 1.0;
-export const GATE_TENUTO = 1.0;
-export const GATE_STACCATO = 0.5;
-export const GATE_STACCATISSIMO = 0.3;
-/** Default for unshaped notes (the player applies it): slight detach. */
-export const GATE_DEFAULT = 0.9;
 
 const pitchKey = (attrs: Record<string, string>): string => `${attrs["pname"]}/${attrs["oct"]}`;
 
-/** Ordered (eventId, noteEls) of one voice across the whole score. */
+/** Ordered (eventId, measure) of one voice across the whole score. */
 const voiceEvents = (score: CoreScore, index: EventIndex, s: number, l: number): { id: string; measure: number }[] => {
   const out: { id: string; measure: number }[] = [];
   for (let m = 0; m < score.measures.length; m++) {
@@ -39,9 +39,20 @@ const voiceEvents = (score: CoreScore, index: EventIndex, s: number, l: number):
   return out;
 };
 
-export function playbackShaping(score: CoreScore, index: EventIndex): PlaybackShaping {
+/** The marks an `@artic` value carries, in MEI's own vocabulary. */
+const marksOf = (artic: string | undefined): NoteMark[] => {
+  if (!artic) return [];
+  const parts = artic.split(/\s+/);
+  const out: NoteMark[] = [];
+  if (parts.includes("stacciss")) out.push("staccatissimo");
+  if (parts.includes("stacc")) out.push("staccato");
+  if (parts.includes("ten")) out.push("tenuto");
+  return out;
+};
+
+export function notationFacts(score: CoreScore, index: EventIndex): NotationFacts {
   const ties: Record<string, string> = {};
-  const gates: Record<string, number> = {};
+  const marks: Record<string, NoteMark[]> = {};
   const ctx = { score, index };
 
   // Voice inventory: every (staff, layer) that appears anywhere.
@@ -83,16 +94,8 @@ export function playbackShaping(score: CoreScore, index: EventIndex): PlaybackSh
     }
   }
 
-  // --- articulation gates: a note's own artic wins; a chord-level artic
-  // covers members without one ---
-  const gateFor = (artic: string | undefined): number | undefined => {
-    if (!artic) return undefined;
-    const parts = artic.split(/\s+/);
-    if (parts.includes("stacciss")) return GATE_STACCATISSIMO;
-    if (parts.includes("stacc")) return GATE_STACCATO;
-    if (parts.includes("ten")) return GATE_TENUTO;
-    return undefined;
-  };
+  // --- articulations: a note's own @artic wins; a chord-level @artic
+  // covers the members that have none ---
   const findEl = (measureIndex: number, id: string) => {
     const measure = score.measures[measureIndex];
     if (!measure) return null;
@@ -108,15 +111,17 @@ export function playbackShaping(score: CoreScore, index: EventIndex): PlaybackSh
   };
   for (const [id, ref] of index.byId) {
     if (ref.tag !== "note" && ref.tag !== "chord") continue;
-    const eventGate = ref.tag === "chord" ? gateFor(findEl(ref.measureIndex, id)?.attrs["artic"]) : undefined;
+    const chordMarks = ref.tag === "chord" ? marksOf(findEl(ref.measureIndex, id)?.attrs["artic"]) : [];
     for (const n of targetNotes(ctx, id)) {
       const nid = n.attrs["xml:id"];
-      const g = gateFor(n.attrs["artic"]) ?? eventGate;
-      if (nid && g !== undefined) gates[nid] = g;
+      if (!nid) continue;
+      const own = marksOf(n.attrs["artic"]);
+      const m = own.length ? own : chordMarks;
+      if (m.length) marks[nid] = [...m];
     }
   }
 
-  // --- slur (and phrase) spans: every event from start to end, legato ---
+  // --- slur (and phrase) spans: every note from start to end ---
   for (const measure of score.measures) {
     for (const c of childElements(measure)) {
       if (c.tag !== "slur" && c.tag !== "phrase") continue;
@@ -132,50 +137,13 @@ export function playbackShaping(score: CoreScore, index: EventIndex): PlaybackSh
       for (let k = Math.min(i, j); k <= Math.max(i, j); k++) {
         for (const n of targetNotes(ctx, events[k]!.id)) {
           const nid = n.attrs["xml:id"];
-          // explicit articulation wins over the slur's legato
-          if (nid && gates[nid] === undefined) gates[nid] = GATE_SLUR;
+          if (!nid) continue;
+          const list = marks[nid] ?? (marks[nid] = []);
+          if (!list.includes("slur")) list.push("slur");
         }
       }
     }
   }
 
-  return { ties, gates };
-}
-
-/**
- * Merge tied spans over the PLAYED timemap (repeat passes play clone ids;
- * `vis` maps them back to notated ids for the tie lookup). Returns which
- * played id carries the attack for each note, and the merged duration per
- * attack root. Pure — unit-testable without audio.
- */
-export function mergeTiedSpans(
-  events: { tstamp: number; on?: string[]; off?: string[] }[],
-  ties: Record<string, string>,
-  idMap: Record<string, string>,
-): { roots: Record<string, string>; durations: Record<string, number> } {
-  const vis = (id: string): string => idMap[id] ?? id;
-  const onAt = new Map<string, number>();
-  const roots: Record<string, string> = {};
-  const ends: Record<string, number> = {};
-  for (const ev of events) {
-    for (const id of ev.off ?? []) {
-      const root = roots[id];
-      if (root !== undefined) ends[root] = ev.tstamp;
-    }
-    for (const id of ev.on ?? []) {
-      if (onAt.has(id)) continue;
-      onAt.set(id, ev.tstamp);
-      // a tie continuation starts exactly where its predecessor ends
-      const pred = (ev.off ?? []).find((offId) => ties[vis(offId)] === vis(id));
-      roots[id] = pred !== undefined ? roots[pred]! : id;
-    }
-  }
-  const durations: Record<string, number> = {};
-  for (const [id, root] of Object.entries(roots)) {
-    if (id !== root) continue;
-    const start = onAt.get(id);
-    const end = ends[id];
-    if (start !== undefined && end !== undefined) durations[id] = Math.max(60, end - start);
-  }
-  return { roots, durations };
+  return { ties, marks };
 }

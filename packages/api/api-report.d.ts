@@ -1,4 +1,4 @@
-// @battuta/api 0.1.10 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
+// @battuta/api 0.1.11 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
 
 // ---- ../dist/.tsbuildinfo
 {"version":"5.9.3"}
@@ -66,6 +66,31 @@ export interface ActionsService {
     readonly ids: Store<readonly string[]>;
 }
 
+// ---- audio.d.ts
+/**
+ * The audio host service (capability "audio"): the app's ONE Web Audio
+ * context. The host owns the context, not an instrument — a plugin brings
+ * its own synth or sampler and connects it here, so a player, a
+ * metronome and a note preview share one context and never fight over
+ * the autoplay unlock.
+ *
+ * `unlock()` must be called inside a user gesture, before any `await` —
+ * browsers bind the AudioContext unlock to the click that caused it. The
+ * host creates the context on the first call and resumes it on every one.
+ */
+export interface AudioService {
+    /** Create (once) and resume the shared context. Call it in the click handler, first thing. Resolves once running; resolves too where the platform has no Web Audio. */
+    unlock(): Promise<void>;
+    /** The shared context — null before the first unlock, and where the platform has none (tests, a headless shell). */
+    context(): AudioContext | null;
+    /**
+     * The `performance.now()` clock in the context's seconds: schedule an
+     * attack for a wall-clock instant sample-accurately, the way a MIDI sink
+     * schedules a send (`MidiOutputs.schedule` takes the same `atMs`).
+     */
+    timeAt(atMs: number): number;
+}
+
 // ---- context.d.ts
 /**
  * What a plugin sees at runtime. Read side: stores (get + subscribe) over
@@ -86,6 +111,9 @@ import type { ActivationEvent, PluginManifest, SlotName } from "./manifest.js";
 import type { CommandMessage } from "./messages.js";
 import type { MidiService } from "./midi.js";
 import type { ActionsService, KeymapEntry } from "./actions.js";
+import type { AudioService } from "./audio.js";
+import type { ViewService } from "./view.js";
+import type { FormatsService } from "./formats.js";
 import type { LanesService } from "./lanes.js";
 /** A value with change notification. `subscribe` fires on every change with the new value. */
 export interface Store<T> {
@@ -167,6 +195,12 @@ export interface PluginContext {
     };
     /** Text lanes at the caret: register the spec of a lane you declared; open it from your own key. */
     readonly lanes: LanesService;
+    /** The app's one AudioContext (capability "audio"): unlock it in your click, connect your own instrument, convert clocks with timeAt. */
+    readonly audio: AudioService;
+    /** The notation on screen: light engraved ids in page view as they sound. */
+    readonly view: ViewService;
+    /** Exports: provide the producer for an export you declared. */
+    readonly formats: FormatsService;
     /** Disposed on deactivate. Add every subscription here; the host disposes what it handed out itself. */
     readonly subscriptions: DisposableStore;
 }
@@ -231,8 +265,9 @@ export declare class DisposableStore implements Disposable {
  * a surface change and needs a version bump); a plugin still imports only
  * `@battuta/api`, and the boundary test keeps it that way.
  */
-import type { CaretPosition, BlockSelection, PitchEvent, SylValue, HarmKind } from "@battuta/core";
-export type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKind } from "@battuta/core";
+import type { CaretPosition, BlockSelection, PitchEvent, SylValue, HarmKind, NotationFacts } from "@battuta/core";
+export type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKind, NotationFacts, NoteMark } from "@battuta/core";
+import type { Timemap } from "./render.js";
 export type ViewMode = "tiles" | "pages";
 /** Caret and selections, in model coordinates. */
 export interface EditorState {
@@ -284,6 +319,52 @@ export interface DocumentQueries {
      * Needs no document: a grammar question.
      */
     harmValid(kind: HarmKind, text: string): boolean;
+    /**
+     * Verovio's timemap for the document, of the expanded form — a render
+     * service, read-only (see render.ts). Null with no document open;
+     * rejects with the render error. A player builds its own performance
+     * from this and `notation()`.
+     */
+    timemap(): Promise<Timemap | null>;
+    /** The notation facts a performance interprets: which note ties into which, which marks a note carries. Empty without a document. */
+    notation(): NotationFacts;
+}
+
+// ---- formats.d.ts
+/**
+ * The `formats` point — the EXPORT half (slice 7a; imports come with
+ * slice 8). A plugin DECLARES an export in its manifest and the host lists
+ * it in the battuta menu before the plugin's code has loaded; picking it
+ * fires `onFormat:<id>`, the plugin registers the producer, and the host
+ * saves what it produces through its one export path (a browser
+ * download, or the shell's save dialog). The same lesson as slot items
+ * and lanes: an entry point cannot come from the code it loads.
+ */
+import type { Disposable } from "./disposable.js";
+/** An export declared in the manifest (`contributes.exports`). Ids are global, like command ids: `<pluginId>.<name>`. */
+export interface ExportContribution {
+    id: string;
+    /** The menu row reads "export <label> (.<ext>)". */
+    label: string;
+    /** File extension without the dot; the default file name is `<document>.<ext>`. */
+    ext: string;
+    /** MIME type of the saved file. */
+    mime: string;
+    /** Tooltip on the menu row. */
+    title?: string;
+}
+/** What a producer returns: the file's bytes (or text), and its name when the default `<document>.<ext>` is not right. */
+export interface ExportPayload {
+    bytes: Uint8Array | string;
+    filename?: string;
+}
+export interface FormatsService {
+    /**
+     * Provide the producer for an export this plugin DECLARED. Disposed with
+     * the plugin (or by hand): the menu row stays (it is declared), and
+     * picking it wakes the plugin again.
+     */
+    registerExport(id: string, produce: () => Promise<ExportPayload>): Disposable;
 }
 
 // ---- index.d.ts
@@ -300,14 +381,18 @@ export interface DocumentQueries {
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export declare const API_VERSION = "0.1.10";
+export declare const API_VERSION = "0.1.11";
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";
 export type { Disposable } from "./disposable.js";
 export { toDisposable, DisposableStore } from "./disposable.js";
 export type { Version } from "./semver.js";
 export { parseVersion, satisfiesEngine } from "./semver.js";
-export type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKind, ViewMode, EditorState, DocumentInfo, DocumentQueries } from "./document.js";
+export type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKind, NotationFacts, NoteMark, ViewMode, EditorState, DocumentInfo, DocumentQueries } from "./document.js";
+export type { Timemap, TimemapEvent, TimemapNote } from "./render.js";
+export type { AudioService } from "./audio.js";
+export type { HighlightCue, ViewService } from "./view.js";
+export type { ExportContribution, ExportPayload, FormatsService } from "./formats.js";
 export type { SetPitchesMessage, SetSylMessage, SetHarmMessage, CommandMessage, CommandMessageType } from "./messages.js";
 export { COMMAND_MESSAGE_TYPES } from "./messages.js";
 export type { MidiPort, MidiNoteEvent, MidiVirtualInput, MidiOutputs, MidiService } from "./midi.js";
@@ -432,6 +517,7 @@ export interface LanesService {
  * plugin therefore costs exactly one manifest object.
  */
 import type { LaneContribution } from "./lanes.js";
+import type { ExportContribution } from "./formats.js";
 /** Events the host fires; a plugin's code loads on the first one it declares. */
 export type ActivationEvent = "onStartup" | `onCommand:${string}` | `onLane:${string}` | `onFormat:${string}` | `onDocument:${string}` | `onView:${string}` | "onPlay" | `onPointer:${string}`
 /**
@@ -448,7 +534,7 @@ export declare const ACTIVATION_EVENT_PREFIXES: readonly ["onStartup", "onComman
  * the host refuses to register a plugin needing one it does not offer.
  * Grows as host services are lifted (`midi` lands in slice 3).
  */
-export type HostCapability = "midi" | "workspace" | "playback";
+export type HostCapability = "midi" | "workspace" | "audio";
 export declare const HOST_CAPABILITIES: readonly HostCapability[];
 /**
  * UI slots a plugin may place an item in. `header` is the first header row
@@ -523,6 +609,8 @@ export interface PluginContributions {
     slotItems?: SlotItemContribution[];
     /** Text lanes at the caret, listed in the status bar before the plugin loads; see lanes.ts. */
     lanes?: LaneContribution[];
+    /** Exports, listed in the battuta menu before the plugin loads; see formats.ts. */
+    exports?: ExportContribution[];
 }
 export interface PluginManifest {
     /** Dotted lowercase id, e.g. `battuta.reflection`. Unique across the registry. */
@@ -653,6 +741,40 @@ export interface MidiService {
     openOutputs(): Promise<MidiOutputs | null>;
 }
 
+// ---- render.d.ts
+/**
+ * What the host's RENDER service hands out about the document, as data:
+ * Verovio's timemap. Rendering is a host service (tiles, pages, the
+ * timemap), read-only to plugins — a player reads this and decides for
+ * itself what to make of it; the host never says how a score is
+ * performed.
+ *
+ * The timemap is of the EXPANDED form: repeats, voltas and one D.S./D.C.
+ * jump are unrolled by core before Verovio sees the score, so a repeated
+ * pass appears as CLONED ids (`<id>-rendN`) and `idMap` sends each clone
+ * back to the engraved id the page SVG actually contains. Millisecond
+ * stamps carry the score's own tempo already.
+ */
+/** One timemap entry: what turns on and off at a real-time millisecond stamp. */
+export interface TimemapEvent {
+    tstamp: number;
+    on?: string[];
+    off?: string[];
+    /** The measure that starts here (engraved or cloned id), when one does. */
+    measureOn?: string;
+}
+/** The sounding pitch (MIDI number, key signature and accidentals resolved) and written duration in ms of one id. */
+export interface TimemapNote {
+    pitch: number;
+    duration: number;
+}
+export interface Timemap {
+    events: TimemapEvent[];
+    notes: Record<string, TimemapNote>;
+    /** Cloned repeat-pass id → the engraved id. Absent for ids that are not clones. */
+    idMap: Record<string, string>;
+}
+
 // ---- semver.d.ts
 /**
  * The engine check: does the host's API version satisfy a plugin's
@@ -668,6 +790,28 @@ export interface Version {
 export declare function parseVersion(v: string): Version | null;
 /** True when `version` lies inside `range` (all space-separated comparators must hold). */
 export declare function satisfiesEngine(range: string, version: string): boolean;
+
+// ---- view.d.ts
+/**
+ * The view host service: what a plugin may do to the NOTATION on screen.
+ * Today, one thing — light events in page view as they sound, following
+ * the music when the playing measure leaves the window. The host owns the
+ * SVG; a plugin names ids (engraved ones — the page contains no clones).
+ */
+export interface HighlightCue {
+    /** Engraved ids to light now. */
+    on: readonly string[];
+    /** Engraved ids to unlight now. */
+    off: readonly string[];
+    /** The measure starting now: the view scrolls to it when it is off screen. */
+    measureOn?: string;
+}
+export interface ViewService {
+    /** Apply one cue. A no-op in tile view and with no document open. */
+    highlight(cue: HighlightCue): void;
+    /** Unlight everything — stop, seek, an edit. */
+    clearHighlight(): void;
+}
 
 // ---- re-exported from @battuta/core (declared there; printed here so the pin covers the shape)
 // BlockSelection — from packages/core/dist/clipboard.d.ts
@@ -687,6 +831,15 @@ export interface CaretPosition {
 }
 // HarmKind — from packages/core/dist/harm.d.ts
 export type HarmKind = "chord" | "rna";
+// NotationFacts — from packages/core/dist/playback.d.ts
+export interface NotationFacts {
+    /** noteId -> the note it ties INTO (chains resolve link by link). */
+    ties: Record<string, string>;
+    /** noteId -> its marks, in this order: the note's own (or its chord's) articulations, then `slur` when a slur or phrase spans it. */
+    marks: Record<string, NoteMark[]>;
+}
+// NoteMark — from packages/core/dist/playback.d.ts
+export type NoteMark = "slur" | "tenuto" | "staccato" | "staccatissimo";
 // Pitch — from packages/core/dist/pitches.d.ts
 export interface Pitch {
     pname: string;

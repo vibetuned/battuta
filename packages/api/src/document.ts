@@ -16,8 +16,9 @@
  * a surface change and needs a version bump); a plugin still imports only
  * `@battuta/api`, and the boundary test keeps it that way.
  */
-import type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKind } from "@battuta/core";
-export type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKind } from "@battuta/core";
+import type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKind, NotationFacts } from "@battuta/core";
+export type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKind, NotationFacts, NoteMark } from "@battuta/core";
+import type { Timemap } from "./render.js";
 
 export type ViewMode = "tiles" | "pages";
 
@@ -73,4 +74,13 @@ export interface DocumentQueries {
    * Needs no document: a grammar question.
    */
   harmValid(kind: HarmKind, text: string): boolean;
+  /**
+   * Verovio's timemap for the document, of the expanded form — a render
+   * service, read-only (see render.ts). Null with no document open;
+   * rejects with the render error. A player builds its own performance
+   * from this and `notation()`.
+   */
+  timemap(): Promise<Timemap | null>;
+  /** The notation facts a performance interprets: which note ties into which, which marks a note carries. Empty without a document. */
+  notation(): NotationFacts;
 }

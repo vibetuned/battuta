@@ -1,92 +1,72 @@
 import { describe, it, expect } from "vitest";
-import { buildEventIndex, playbackShaping, mergeTiedSpans, GATE_DEFAULT } from "../src/index.js";
+import { buildEventIndex, notationFacts } from "../src/index.js";
 import { scoreFrom, mei } from "./helpers.js";
 
+// What core REPORTS about ties and marks. What a performance does with
+// them (one attack per tie chain, a shorter release for a staccato) is the
+// player's — apps/editor/src/performance.ts, and its tests — since slice 7a.
 const setup = (body: string) => {
   const { score } = scoreFrom(mei(body));
   const index = buildEventIndex(score);
-  return playbackShaping(score, index);
+  return notationFacts(score, index);
 };
 
-describe("playbackShaping", () => {
+describe("notationFacts: ties", () => {
   it("chains @tie attributes across the barline (same pitch only)", () => {
-    const s = setup(`
+    const f = setup(`
       <measure n="1" xml:id="m1"><staff n="1"><layer n="1">
         <note xml:id="a" pname="c" oct="4" dur="2" tie="i"/><note xml:id="b" pname="c" oct="4" dur="2" tie="m"/>
       </layer></staff></measure>
       <measure n="2" xml:id="m2"><staff n="1"><layer n="1">
-        <note xml:id="c" pname="c" oct="4" dur="2" tie="t"/><note xml:id="d" pname="c" oct="4" dur="2"/>
+        <note xml:id="c" pname="c" oct="4" dur="2" tie="t"/><note xml:id="d" pname="e" oct="4" dur="2" tie="i"/>
+      </layer></staff></measure>
+      <measure n="3" xml:id="m3"><staff n="1"><layer n="1">
+        <note xml:id="e" pname="g" oct="4" dur="1" tie="t"/>
       </layer></staff></measure>`);
-    expect(s.ties["a"]).toBe("b");
-    expect(s.ties["b"]).toBe("c");
-    expect(s.ties["c"]).toBeUndefined(); // t ends the chain
-    expect(s.ties["d"]).toBeUndefined();
+    expect(f.ties["a"]).toBe("b");
+    expect(f.ties["b"]).toBe("c");
+    expect(f.ties["d"]).toBeUndefined(); // e is another pitch: not a continuation
   });
 
   it("reads <tie> control events too", () => {
-    const s = setup(`
+    const f = setup(`
       <measure n="1" xml:id="m1"><staff n="1"><layer n="1">
-        <note xml:id="a" pname="g" oct="4" dur="2"/><note xml:id="b" pname="g" oct="4" dur="2"/>
+        <note xml:id="a" pname="c" oct="4" dur="2"/><note xml:id="b" pname="c" oct="4" dur="2"/>
       </layer></staff><tie xml:id="t1" startid="#a" endid="#b"/></measure>`);
-    expect(s.ties["a"]).toBe("b");
+    expect(f.ties["a"]).toBe("b");
   });
+});
 
-  it("gates: staccato/staccatissimo/tenuto and slur legato (artic wins)", () => {
-    const s = setup(`
+describe("notationFacts: marks", () => {
+  it("reports staccato / staccatissimo / tenuto from @artic and slur from a span — both when both apply", () => {
+    const f = setup(`
       <measure n="1" xml:id="m1"><staff n="1"><layer n="1">
         <note xml:id="a" pname="c" oct="4" dur="4"/><note xml:id="b" pname="d" oct="4" dur="4" artic="stacc"/>
         <note xml:id="c" pname="e" oct="4" dur="4" artic="stacciss"/><note xml:id="d" pname="f" oct="4" dur="4" artic="ten"/>
       </layer></staff><slur xml:id="sl" startid="#a" endid="#b"/></measure>`);
-    expect(s.gates["a"]).toBe(1.0); // slurred
-    expect(s.gates["b"]).toBe(0.5); // stacc beats the slur (portato-ish)
-    expect(s.gates["c"]).toBe(0.3);
-    expect(s.gates["d"]).toBe(1.0);
-    expect(GATE_DEFAULT).toBeLessThan(1.0); // unshaped notes detach slightly
+    expect(f.marks["a"]).toEqual(["slur"]);
+    expect(f.marks["b"]).toEqual(["staccato", "slur"]); // a fact, not a verdict: the performer decides which wins
+    expect(f.marks["c"]).toEqual(["staccatissimo"]);
+    expect(f.marks["d"]).toEqual(["tenuto"]);
   });
 
-  it("chord-level artic covers members; a member's own artic wins", () => {
-    const s = setup(`
+  it("a chord-level @artic covers members without one; a member's own wins outright", () => {
+    const f = setup(`
       <measure n="1" xml:id="m1"><staff n="1"><layer n="1">
         <chord xml:id="ch" dur="4" artic="stacc">
           <note xml:id="x" pname="c" oct="4"/><note xml:id="y" pname="e" oct="4" artic="ten"/>
         </chord><rest dur="4"/><rest dur="2"/>
       </layer></staff></measure>`);
-    expect(s.gates["x"]).toBe(0.5);
-    expect(s.gates["y"]).toBe(1.0);
-  });
-});
-
-describe("mergeTiedSpans", () => {
-  const events = [
-    { tstamp: 0, on: ["a"] },
-    { tstamp: 1000, off: ["a"], on: ["b"] },
-    { tstamp: 2000, off: ["b"], on: ["x"] },
-    { tstamp: 2500, off: ["x"] },
-  ];
-
-  it("merges a tie chain into one attack with the summed duration", () => {
-    const { roots, durations } = mergeTiedSpans(events, { a: "b" }, {});
-    expect(roots["a"]).toBe("a");
-    expect(roots["b"]).toBe("a"); // continuation: no attack
-    expect(durations["a"]).toBe(2000);
-    expect(durations["x"]).toBe(500);
+    expect(f.marks["x"]).toEqual(["staccato"]);
+    expect(f.marks["y"]).toEqual(["tenuto"]);
   });
 
-  it("same-pitch repeats WITHOUT a tie re-attack normally", () => {
-    const { roots, durations } = mergeTiedSpans(events, {}, {});
-    expect(roots["b"]).toBe("b");
-    expect(durations["a"]).toBe(1000);
-    expect(durations["b"]).toBe(1000);
-  });
-
-  it("clone ids resolve through idMap (repeat passes stay tied)", () => {
-    const cloned = [
-      { tstamp: 0, on: ["a-rend2"] },
-      { tstamp: 1000, off: ["a-rend2"], on: ["b-rend2"] },
-      { tstamp: 2000, off: ["b-rend2"] },
-    ];
-    const { roots, durations } = mergeTiedSpans(cloned, { a: "b" }, { "a-rend2": "a", "b-rend2": "b" });
-    expect(roots["b-rend2"]).toBe("a-rend2");
-    expect(durations["a-rend2"]).toBe(2000);
+  it("an unmarked note has no entry at all", () => {
+    const f = setup(`
+      <measure n="1" xml:id="m1"><staff n="1"><layer n="1">
+        <note xml:id="a" pname="c" oct="4" dur="1"/>
+      </layer></staff></measure>`);
+    expect(f.marks).toEqual({});
+    expect(f.ties).toEqual({});
   });
 });

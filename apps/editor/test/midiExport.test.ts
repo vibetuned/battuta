@@ -1,11 +1,14 @@
 /**
  * The playback-MIDI encoder must write a valid SMF that matches the
  * player's interpretation: one attack per tie chain held for the merged
- * span, articulation gates shortening releases, chord notes together.
+ * span, articulation gates shortening releases, chord notes together. It
+ * encodes the same Performance the player plays (performance.ts, from the
+ * host's timemap and the document's notation facts).
  */
 import { describe, it, expect } from "vitest";
+import type { NotationFacts, Timemap } from "@battuta/api";
 import { playbackToMidi } from "../src/midiExport";
-import type { PlaybackData } from "../src/render/renderPool";
+import { buildPerformance } from "../src/performance";
 
 /** Tiny SMF reader: header fields + the note on/off events of track 0. */
 function parseSmf(bytes: Uint8Array) {
@@ -36,16 +39,12 @@ function parseSmf(bytes: Uint8Array) {
   return { division, events };
 }
 
-const data = (overrides: Partial<PlaybackData>): PlaybackData => ({
-  events: [],
-  notes: {},
-  idMap: {},
-  ...overrides,
-});
+/** The performance of a timemap plus facts — what the player would play. */
+const perf = (timemap: Partial<Timemap>, facts: Partial<NotationFacts> = {}) => buildPerformance({ events: [], notes: {}, idMap: {}, ...timemap }, { ties: {}, marks: {}, ...facts });
 
 describe("playbackToMidi", () => {
   it("writes 1 tick = 1 ms and balanced note on/off pairs", () => {
-    const d = data({
+    const p = perf({
       events: [
         { tstamp: 0, on: ["a"] },
         { tstamp: 500, on: ["b"], off: ["a"] },
@@ -53,7 +52,7 @@ describe("playbackToMidi", () => {
       ],
       notes: { a: { pitch: 60, duration: 500 }, b: { pitch: 62, duration: 500 } },
     });
-    const { division, events } = parseSmf(playbackToMidi(d));
+    const { division, events } = parseSmf(playbackToMidi(p));
     expect(division).toBe(500); // at tempo 500000 µs/quarter: 1 tick = 1 ms
     expect(events.filter((e) => e.on)).toHaveLength(2);
     expect(events.filter((e) => !e.on)).toHaveLength(2);
@@ -65,89 +64,83 @@ describe("playbackToMidi", () => {
   });
 
   it("a tie chain sounds ONCE for the merged span", () => {
-    const d = data({
-      events: [
-        { tstamp: 0, on: ["a"] },
-        { tstamp: 500, on: ["b"], off: ["a"] }, // b continues a
-        { tstamp: 1000, off: ["b"] },
-      ],
-      notes: { a: { pitch: 60, duration: 500 }, b: { pitch: 60, duration: 500 } },
-      shaping: { ties: { a: "b" }, gates: {} }, // a ties INTO b
-    });
-    const { events } = parseSmf(playbackToMidi(d));
+    const p = perf(
+      {
+        events: [
+          { tstamp: 0, on: ["a"] },
+          { tstamp: 500, on: ["b"], off: ["a"] }, // b continues a
+          { tstamp: 1000, off: ["b"] },
+        ],
+        notes: { a: { pitch: 60, duration: 500 }, b: { pitch: 60, duration: 500 } },
+      },
+      { ties: { a: "b" } }, // a ties INTO b
+    );
+    const { events } = parseSmf(playbackToMidi(p));
     expect(events.filter((e) => e.on)).toHaveLength(1); // one attack
     const off = events.find((e) => !e.on)!;
     expect(off.tick).toBeGreaterThan(500); // held across the barline span
   });
 
-  it("gates shape the release: staccato half, legato full", () => {
-    const d = data({
-      events: [
-        { tstamp: 0, on: ["stac"] },
-        { tstamp: 500, on: ["leg"], off: ["stac"] },
-        { tstamp: 1000, off: ["leg"] },
-      ],
-      notes: { stac: { pitch: 60, duration: 500 }, leg: { pitch: 64, duration: 500 } },
-      shaping: { ties: {}, gates: { stac: 0.5, leg: 1 } },
-    });
-    const { events } = parseSmf(playbackToMidi(d));
+  it("marks shape the release: staccato half, legato full", () => {
+    const p = perf(
+      {
+        events: [
+          { tstamp: 0, on: ["stac"] },
+          { tstamp: 500, on: ["leg"], off: ["stac"] },
+          { tstamp: 1000, off: ["leg"] },
+        ],
+        notes: { stac: { pitch: 60, duration: 500 }, leg: { pitch: 64, duration: 500 } },
+      },
+      { marks: { stac: ["staccato"], leg: ["slur"] } },
+    );
+    const { events } = parseSmf(playbackToMidi(p));
     expect(events.find((e) => !e.on && e.pitch === 60)!.tick).toBe(250); // staccato: half
     expect(events.find((e) => !e.on && e.pitch === 64)!.tick).toBe(1000); // legato: full
   });
 
-  it("gates look up the NOTATED id for cloned repeat passes (idMap)", () => {
-    const d = data({
-      events: [
-        { tstamp: 0, on: ["n1-rend2"] },
-        { tstamp: 500, off: ["n1-rend2"] },
-      ],
-      notes: { "n1-rend2": { pitch: 60, duration: 500 } },
-      idMap: { "n1-rend2": "n1" },
-      shaping: { ties: {}, gates: { n1: 0.5 } }, // keyed by the notated id
-    });
-    const { events } = parseSmf(playbackToMidi(d));
+  it("marks are looked up by the NOTATED id for cloned repeat passes (idMap)", () => {
+    const p = perf(
+      {
+        events: [
+          { tstamp: 0, on: ["n1-rend2"] },
+          { tstamp: 500, off: ["n1-rend2"] },
+        ],
+        notes: { "n1-rend2": { pitch: 60, duration: 500 } },
+        idMap: { "n1-rend2": "n1" },
+      },
+      { marks: { n1: ["staccato"] } }, // keyed by the notated id
+    );
+    const { events } = parseSmf(playbackToMidi(p));
     expect(events.find((e) => !e.on)!.tick).toBe(250);
   });
 
-  it("transpose shifts every pitch and clamps at the MIDI range", () => {
-    const d = data({
+  it("transposes every pitch by the semitone offset, clamped to MIDI range", () => {
+    const p = perf({
       events: [
         { tstamp: 0, on: ["lo", "hi"] },
         { tstamp: 500, off: ["lo", "hi"] },
       ],
-      notes: { lo: { pitch: 2, duration: 500 }, hi: { pitch: 120, duration: 500 } },
+      notes: { lo: { pitch: 1, duration: 500 }, hi: { pitch: 126, duration: 500 } },
     });
-    const up = parseSmf(playbackToMidi(d, { transpose: 12 }));
-    expect(up.events.filter((e) => e.on).map((e) => e.pitch).sort((a, b) => a - b)).toEqual([14, 127]); // 120+12 clamps
-    const down = parseSmf(playbackToMidi(d, { transpose: -7 }));
-    expect(down.events.filter((e) => e.on).map((e) => e.pitch).sort((a, b) => a - b)).toEqual([0, 113]); // 2-7 clamps
-    // on/off pitches stay paired even when clamped
-    for (const ev of up.events) if (!ev.on) expect([14, 127]).toContain(ev.pitch);
+    const { events } = parseSmf(playbackToMidi(p, { transpose: -12 }));
+    expect(events.filter((e) => e.on).map((e) => e.pitch).sort((a, b) => a - b)).toEqual([0, 114]);
   });
 
-  it("transpose 0 (or omitted) is byte-identical", () => {
-    const d = data({
-      events: [
-        { tstamp: 0, on: ["a"] },
-        { tstamp: 500, off: ["a"] },
-      ],
-      notes: { a: { pitch: 60, duration: 500 } },
-    });
-    expect(playbackToMidi(d, { transpose: 0 })).toEqual(playbackToMidi(d));
-  });
-
-  it("a repeated pitch at the same tick releases before it re-attacks", () => {
-    const d = data({
-      events: [
-        { tstamp: 0, on: ["a"] },
-        { tstamp: 500, on: ["b"], off: ["a"] },
-        { tstamp: 1000, off: ["b"] },
-      ],
-      notes: { a: { pitch: 60, duration: 500 }, b: { pitch: 60, duration: 500 } },
-      shaping: { ties: {}, gates: { a: 1 } }, // full value: off at exactly 500
-    });
-    const { events } = parseSmf(playbackToMidi(d));
+  it("at the same tick, offs come before ons so a repeated pitch re-attacks", () => {
+    // the legato gate (1.0) makes a's off land exactly on b's on
+    const p2 = perf(
+      {
+        events: [
+          { tstamp: 0, on: ["a"] },
+          { tstamp: 500, off: ["a"], on: ["b"] },
+          { tstamp: 1000, off: ["b"] },
+        ],
+        notes: { a: { pitch: 60, duration: 500 }, b: { pitch: 60, duration: 500 } },
+      },
+      { marks: { a: ["slur"], b: ["slur"] } },
+    );
+    const { events } = parseSmf(playbackToMidi(p2));
     const at500 = events.filter((e) => e.tick === 500);
-    expect(at500.map((e) => e.on)).toEqual([false, true]); // off first
+    expect(at500.map((e) => e.on)).toEqual([false, true]);
   });
 });

@@ -143,6 +143,12 @@ The api is a data contract. Nothing in it is a live object of the model.
 | every note on/off from any input | `ctx.midi.onNote(fn)` | `Disposable` |
 | add an input surface (a piano, a chord pad) | `ctx.midi.registerInput(name)` | `MidiVirtualInput` — dispose to unregister |
 | send to every MIDI output | `ctx.midi.openOutputs()` | `MidiOutputs` (`schedule`, `send`, `panic`, `close`) or null |
+| make a sound (capability `audio`) | `ctx.audio.unlock()` FIRST in your click handler, before any await; then connect your own instrument to `ctx.audio.context()`; schedule attacks at `ctx.audio.timeAt(atMs)` for the same `atMs` you would hand a MIDI sink | the host owns the app's one AudioContext, never an instrument: bring your own (Tone.js is allowed) |
+| Verovio's timemap of the document (expanded form) | `ctx.query.timemap()` | `Promise<Timemap \| null>` — `events`, `notes` (sounding pitch per id), `idMap` (clone → engraved id); rejects with the render error |
+| the notation facts a performance interprets | `ctx.query.notation()` | `NotationFacts` — `ties` (note → the note it ties into), `marks` (note → `slur` / `tenuto` / `staccato` / `staccatissimo`). What they MEAN in sound is yours to decide |
+| light the notation as it sounds (page view) | `ctx.view.highlight({ on, off, measureOn? })` in engraved ids; `ctx.view.clearHighlight()` | the view scrolls to `measureOn` when it leaves the window |
+| an export in the battuta menu, listed BEFORE your code loads | `contributes.exports: [{ id, label, ext, mime, title? }]`; activate on `onFormat:<id>`; in `activate`, `ctx.formats.registerExport(id, async () => ({ bytes, filename? }))` | the host saves it (download or the shell's dialog) as `<document>.<ext>` unless you name it |
+| wake when the view changes | `activationEvents: ["onView:pages"]` (or `tiles`) | fired on every change and once for the first view |
 | the union keymap as data (id, label, group, when, keys, mods, locked, plugin) | `ctx.keymap` | `Store<KeymapEntry[]>` |
 | **run** an action by id — a keymap id, a locked one (`undo`, `nav.left`, `duration.4`, `pitch.c`, …; the list is in `packages/api/src/actions.ts`) or an enabled plugin's command id | `ctx.actions.run(id)` | true when it ran; false when the id is unknown or the state forbids it — exactly when the key would have done nothing. A plugin's command goes through the registry after the same gates |
 | every id `run` knows, live | `ctx.actions.ids` | `Store<readonly string[]>`: core rules in dispatch order, then enabled plugins' commands; republished when a document installs its table and when a plugin is turned on or off |
@@ -206,7 +212,7 @@ already written it:
 
 | Rule | Enforced by |
 | --- | --- |
-| Only `@battuta/api`, `react` and the package's own files are imported — never `@battuta/core`, `apps/editor`, Verovio, Tone; relative imports stay inside the package | `apps/editor/test/plugin-boundaries.test.ts` (static, type-only, re-export and dynamic imports alike) |
+| Only `@battuta/api`, `react`, `tone` and the package's own files are imported — never `@battuta/core`, `apps/editor`, Verovio; relative imports stay inside the package (Tone allowed since 7a: the host owns the AudioContext, a plugin brings its instrument) | `apps/editor/test/plugin-boundaries.test.ts` (static, type-only, re-export and dynamic imports alike) |
 | `package.json` depends on `@battuta/api` and nothing else of the workspace; the name is `@battuta/plugin-<name>` | same test |
 | `src/manifest.ts` imports nothing but `@battuta/api` | same test |
 | No DOM: `window`, `document`, `navigator`, `localStorage`, `sessionStorage` never appear as globals | same test |

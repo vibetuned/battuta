@@ -1,16 +1,25 @@
 /**
- * Page-view score player: Verovio's timemap drives BOTH the audio and the
- * notation highlight from one timeline, so they cannot drift. Sound is a
- * Tone.Sampler over a self-hosted Salamander piano subset (~2MB, every
- * third semitone — the sampler pitch-shifts between); sounding pitch per
- * note id comes from Verovio (key signature, accidentals, ties resolved),
- * note lengths from the timemap's own on→off spans.
+ * Page-view score player — a SCHEDULER over a performance. It plays what
+ * `performance.ts` built from the host's timemap and notation facts, on
+ * one of two sinks: its own Tone.Sampler (a self-hosted Salamander piano
+ * subset, ~2MB, every third semitone — the sampler pitch-shifts between)
+ * connected to the host's AudioContext, or the host's MIDI outputs. Audio
+ * and the notation highlight ride the same wall clock, so they cannot
+ * drift.
+ *
+ * Since slice 7a the host owns only the AudioContext (`host.audio`) and
+ * the highlight (`host.view`); everything about HOW the score sounds —
+ * the performance, the instrument, the transport — is here, and moves
+ * into the playback plugin in 7b. No Tone transport: notes and cues are
+ * scheduled a lookahead ahead from `performance.now()`, attacks converted
+ * to the audio clock with `host.audio.timeAt`, MIDI sends handed to the
+ * sink with the same wall-clock instant.
  */
 import * as Tone from "tone";
-import { mergeTiedSpans, GATE_DEFAULT } from "@battuta/core";
-import type { PlaybackData } from "./render/renderPool";
 import type { MidiOutputs } from "@battuta/api";
+import { host } from "./host";
 import { NOTE_ON, NOTE_OFF } from "./host/midiSink";
+import type { Performance } from "./performance";
 
 // Vite inlines these as hashed asset URLs — embedded in the app bundle,
 // never a CDN (local-first, and the Tauri custom protocol serves them).
@@ -34,12 +43,36 @@ if (typeof window !== "undefined") {
 
 export type PlayerState = "idle" | "loading" | "playing" | "paused";
 
+/** How far ahead of the wall clock notes and cues are handed to the sinks. */
+const LOOKAHEAD_MS = 250;
+/** How often the scheduler looks. */
+const TICK_MS = 50;
+/** Silence after the last stamp before the player stops itself. */
+const TAIL_MS = 600;
+const VELOCITY = 0.8;
+const MIDI_VELOCITY = 102; // the sampler's 0.8
+
+/** One playing stretch: its wall-clock anchor and how far into the performance it has scheduled. */
+interface Run {
+  /** performance.now() when this stretch started. */
+  startWall: number;
+  /** Listening position (ms, at the current speed) when it started. */
+  startPos: number;
+  nextNote: number;
+  nextCue: number;
+  timers: Set<ReturnType<typeof setTimeout>>;
+  ticker: ReturnType<typeof setInterval> | null;
+}
+
 export class ScorePlayer {
   private sampler: Tone.Sampler | null = null;
-  private part: Tone.Part<{ time: number; on: string[]; off: string[]; measureOn?: string }> | null = null;
   private state: PlayerState = "idle";
+  private perf: Performance | null = null;
+  private run: Run | null = null;
+  /** Listening position (ms) while not running: paused, or 0. */
+  private pausedPos = 0;
+  private factor = 1; // tempo multiplier: 2 = double speed
 
-  onHighlight: (on: string[], off: string[], measureOn?: string) => void = () => undefined;
   onStateChange: (s: PlayerState) => void = () => undefined;
 
   private setState(s: PlayerState) {
@@ -47,8 +80,19 @@ export class ScorePlayer {
     this.onStateChange(s);
   }
 
+  /** Unlock the host's AudioContext. Call this FIRST inside the click
+   * handler, before any await — autoplay policies tie the unlock to the
+   * gesture, and a slow timemap render could outlive the activation window. */
+  unlock(): Promise<void> {
+    return host.audio.unlock();
+  }
+
   private ensureSampler(): Promise<Tone.Sampler> {
     if (this.sampler) return Promise.resolve(this.sampler);
+    // The host's context, not one of Tone's own: every sound in the app
+    // shares the one unlock.
+    const ctx = host.audio.context();
+    if (ctx && Tone.getContext().rawContext !== ctx) Tone.setContext(ctx);
     return new Promise((resolve, reject) => {
       const sampler = new Tone.Sampler({
         urls: sampleUrls(),
@@ -61,18 +105,8 @@ export class ScorePlayer {
     });
   }
 
-  /** Resume the AudioContext. Call this FIRST inside the click handler,
-   * before any await — autoplay policies tie the unlock to the gesture,
-   * and a slow timemap render could outlive the activation window. */
-  unlock(): Promise<void> {
-    return Tone.start();
-  }
-
-  private data: PlaybackData | null = null;
-  private durMs = new Map<string, number>();
-  private factor = 1; // tempo multiplier: 2 = double speed
   /** When set, playback SENDS MIDI here instead of sounding the sampler
-   * (the timemap, ties and gates drive both identically). */
+   * (the performance drives both identically). */
   private midiSink: MidiOutputs | null = null;
 
   setMidiSink(sink: MidiOutputs | null): void {
@@ -81,7 +115,7 @@ export class ScorePlayer {
   }
 
   /** Semitone offset on the MIDI SENDS only (the sampler is untouched);
-   * applies live — the schedule reads it per attack, and each attack's
+   * applies live — the scheduler reads it per attack, and each attack's
    * note-off is scheduled with the same pitch, so a mid-playback change
    * can never strand a note. */
   private midiTranspose = 0;
@@ -91,8 +125,7 @@ export class ScorePlayer {
 
   /** Musical length of the loaded score in seconds (tempo-independent). */
   musicalTotal(): number {
-    const last = this.data?.events[this.data.events.length - 1];
-    return last ? last.tstamp / 1000 : 0;
+    return (this.perf?.totalMs ?? 0) / 1000;
   }
 
   /** Listening length at the current tempo. */
@@ -103,87 +136,118 @@ export class ScorePlayer {
   /** Current position in LISTENING seconds at the current tempo. */
   position(): number {
     if (this.state === "idle" || this.state === "loading") return 0;
-    return Math.min(this.total(), Math.max(0, Tone.getTransport().seconds));
+    return Math.min(this.total(), Math.max(0, this.positionMs() / 1000));
+  }
+
+  private positionMs(): number {
+    return this.run ? this.run.startPos + (performance.now() - this.run.startWall) : this.pausedPos;
   }
 
   get tempo(): number {
     return this.factor;
   }
 
-  /** Build + start the Part with event times scaled by the tempo factor.
-   * The transport is assumed stopped/cancelled. */
-  private schedulePart(sampler: Tone.Sampler | null): void {
-    const data = this.data!;
+  /** Start a stretch from a listening position: schedule from there, on the wall clock. */
+  private startRun(fromListeningMs: number): void {
+    const perf = this.perf!;
+    const musicalFrom = fromListeningMs * this.factor;
+    const run: Run = {
+      startWall: performance.now(),
+      startPos: fromListeningMs,
+      nextNote: perf.notes.findIndex((n) => n.onMs >= musicalFrom),
+      nextCue: perf.cues.findIndex((c) => c.atMs >= musicalFrom),
+      timers: new Set(),
+      ticker: null,
+    };
+    if (run.nextNote < 0) run.nextNote = perf.notes.length;
+    if (run.nextCue < 0) run.nextCue = perf.cues.length;
+    this.run = run;
+    run.ticker = setInterval(() => this.tick(), TICK_MS);
+    this.tick();
+  }
+
+  /** Hand everything due within the lookahead to the sinks and the highlight. */
+  private tick(): void {
+    const run = this.run;
+    const perf = this.perf;
+    if (!run || !perf) return;
+    const now = performance.now();
     const f = this.factor;
-    const events = data.events
-      .filter((ev) => (ev.on?.length ?? 0) + (ev.off?.length ?? 0) > 0 || ev.measureOn)
-      .map((ev) => ({ time: ev.tstamp / 1000 / f, on: ev.on ?? [], off: ev.off ?? [], ...(ev.measureOn ? { measureOn: ev.measureOn } : {}) }));
-    // Audio plays the raw (possibly cloned) ids; the HIGHLIGHT maps every
-    // id back to the notated one — the SVG only contains those, so
-    // repeated passes light the same engraved notes.
-    const vis = (id: string): string => data.idMap[id] ?? id;
-    // Ties: one attack per chain, held for the merged span. Slurs and
-    // articulations gate the release: legato/tenuto full value, staccato
-    // half, everything else slightly detached.
-    const ties = data.shaping?.ties ?? {};
-    const gates = data.shaping?.gates ?? {};
-    const { roots, durations } = mergeTiedSpans(data.events, ties, data.idMap);
-    this.part = new Tone.Part((time, ev) => {
-      for (const id of ev.on) {
-        if (roots[id] !== id) continue; // tie continuation: already sounding
-        const note = data.notes[id];
-        if (!note) continue;
-        const gate = gates[vis(id)] ?? GATE_DEFAULT;
-        const ms = durations[id] ?? this.durMs.get(id) ?? 300;
-        if (this.midiSink) {
-          // Transport time -> wall clock: the callback runs a lookahead
-          // early, so the sink schedules the actual sends itself.
-          const atMs = performance.now() + (time - Tone.now()) * 1000;
-          const pitch = Math.min(127, Math.max(0, note.pitch + this.midiTranspose));
-          this.midiSink.schedule([NOTE_ON, pitch, 102], atMs);
-          this.midiSink.schedule([NOTE_OFF, pitch, 0], atMs + (ms * gate) / f);
-        } else if (sampler) {
-          sampler.triggerAttackRelease(Tone.Frequency(note.pitch, "midi").toFrequency(), (ms * gate) / 1000 / f, time, 0.8);
-        }
+    const horizonMusical = (run.startPos + (now - run.startWall) + LOOKAHEAD_MS) * f;
+    /** The wall-clock instant a musical stamp lands at, in this stretch. */
+    const wallFor = (musicalMs: number): number => run.startWall + (musicalMs / f - run.startPos);
+    while (run.nextNote < perf.notes.length && perf.notes[run.nextNote]!.onMs <= horizonMusical) {
+      const n = perf.notes[run.nextNote++]!;
+      const at = wallFor(n.onMs);
+      const durMs = n.durMs / f;
+      if (this.midiSink) {
+        const pitch = Math.min(127, Math.max(0, n.pitch + this.midiTranspose));
+        this.midiSink.schedule([NOTE_ON, pitch, MIDI_VELOCITY], at);
+        this.midiSink.schedule([NOTE_OFF, pitch, 0], at + durMs);
+      } else if (this.sampler) {
+        this.sampler.triggerAttackRelease(Tone.Frequency(n.pitch, "midi").toFrequency(), durMs / 1000, host.audio.timeAt(at), VELOCITY);
       }
-      Tone.getDraw().schedule(() => {
-        if (this.state === "playing") this.onHighlight(ev.on.map(vis), ev.off.map(vis), ev.measureOn ? vis(ev.measureOn) : undefined);
-      }, time);
-    }, events);
-    this.part.start(0);
-    Tone.getTransport().scheduleOnce(() => this.stop(), (this.musicalTotal() + 0.6) / f);
+    }
+    while (run.nextCue < perf.cues.length && perf.cues[run.nextCue]!.atMs <= horizonMusical) {
+      const cue = perf.cues[run.nextCue++]!;
+      const t = setTimeout(
+        () => {
+          run.timers.delete(t);
+          if (this.state === "playing" && this.run === run) host.view.highlight(cue);
+        },
+        Math.max(0, wallFor(cue.atMs) - now),
+      );
+      run.timers.add(t);
+    }
+    if (run.nextNote >= perf.notes.length && run.nextCue >= perf.cues.length) {
+      // Everything is handed out: stop after the last stamp plus a tail.
+      if (run.ticker) clearInterval(run.ticker);
+      run.ticker = null;
+      const t = setTimeout(() => {
+        run.timers.delete(t);
+        if (this.run === run) this.stop();
+      }, Math.max(0, wallFor(perf.totalMs) + TAIL_MS - now));
+      run.timers.add(t);
+    }
+  }
+
+  /** End the current stretch: cancel what is not yet delivered; remember where we were. */
+  private endRun(): void {
+    const run = this.run;
+    if (!run) return;
+    this.pausedPos = this.positionMs();
+    for (const t of run.timers) clearTimeout(t);
+    run.timers.clear();
+    if (run.ticker) clearInterval(run.ticker);
+    this.run = null;
+  }
+
+  /** Release everything sounding on either sink. Never throws onto the editing path. */
+  private silence(): void {
+    this.midiSink?.panic();
+    try {
+      this.sampler?.releaseAll();
+    } catch {
+      /* an audio-stack failure must not poison the caller */
+    }
   }
 
   /** Start playback from the top. Must be called from a user gesture (the
    * play button) — the AudioContext unlock depends on it. */
-  async play(data: PlaybackData): Promise<void> {
+  async play(perf: Performance): Promise<void> {
     this.stop();
     this.setState("loading");
     try {
-      await Tone.start(); // resume the AudioContext inside the gesture
-      // MIDI destination: the transport still needs the AudioContext for
-      // timing, but the 2 MB piano never has to load.
-      const sampler = this.midiSink ? null : await this.ensureSampler();
-
-      // Note lengths from the timemap itself: an id's off minus its on.
-      // (Tied continuations never re-appear in "on", so a held note sounds
-      // exactly once for its full written span.)
-      const onAt = new Map<string, number>();
-      this.durMs = new Map<string, number>();
-      for (const ev of data.events) {
-        for (const id of ev.on ?? []) if (!onAt.has(id)) onAt.set(id, ev.tstamp);
-        for (const id of ev.off ?? []) {
-          const t0 = onAt.get(id);
-          if (t0 !== undefined && !this.durMs.has(id)) this.durMs.set(id, Math.max(60, ev.tstamp - t0));
-        }
-      }
-      this.data = data;
-      if (data.events.length === 0) {
+      await host.audio.unlock(); // resume the context inside the gesture
+      // MIDI destination: the 2 MB piano never has to load.
+      if (!this.midiSink) await this.ensureSampler();
+      this.perf = perf;
+      if (perf.notes.length === 0 && perf.cues.length === 0) {
         this.setState("idle");
         return;
       }
-      this.schedulePart(sampler);
-      Tone.getTransport().start();
+      this.pausedPos = 0;
+      this.startRun(0);
       this.setState("playing");
     } catch (e) {
       this.setState("idle");
@@ -193,11 +257,14 @@ export class ScorePlayer {
 
   /** Jump to a fraction [0..1] of the piece; keeps playing/paused state. */
   seek(fraction: number): void {
-    if (this.state === "idle" || this.state === "loading" || !this.data) return;
-    const target = Math.min(0.999, Math.max(0, fraction)) * this.total();
-    this.midiSink?.panic(); // pending sends belong to the old position
-    Tone.getTransport().seconds = target;
-    this.onHighlight([], [], undefined); // stale lit notes: clear, next events relight
+    if (this.state === "idle" || this.state === "loading" || !this.perf) return;
+    const target = Math.min(0.999, Math.max(0, fraction)) * this.total() * 1000;
+    const wasPlaying = this.run !== null;
+    this.endRun();
+    this.silence(); // pending sends and sounding notes belong to the old position
+    host.view.clearHighlight(); // stale lit notes: clear, the next cues relight
+    this.pausedPos = target;
+    if (wasPlaying) this.startRun(target);
   }
 
   /** Change the tempo multiplier; live — the schedule is rebuilt at the
@@ -205,56 +272,43 @@ export class ScorePlayer {
    * the price of exact timing). */
   setTempo(f: number): void {
     if (f === this.factor) return;
-    if (this.state === "idle" || this.state === "loading" || !this.data || (!this.sampler && !this.midiSink)) {
+    if (this.state === "idle" || this.state === "loading" || !this.perf) {
       this.factor = f;
       return;
     }
-    const wasPlaying = this.state === "playing";
-    const musicalPos = this.position() * this.factor;
-    const transport = Tone.getTransport();
-    transport.pause();
-    transport.cancel(0);
-    this.part?.dispose();
-    this.midiSink?.panic(); // pending sends belong to the OLD schedule
+    const wasPlaying = this.run !== null;
+    const musicalPos = this.positionMs() * this.factor;
+    this.endRun();
+    this.silence(); // pending sends belong to the OLD schedule
     this.factor = f;
-    this.schedulePart(this.midiSink ? null : this.sampler);
-    transport.seconds = musicalPos / f;
-    this.onHighlight([], [], undefined);
-    if (wasPlaying) transport.start();
+    this.pausedPos = musicalPos / f;
+    host.view.clearHighlight();
+    if (wasPlaying) this.startRun(this.pausedPos);
   }
 
   pause(): void {
     if (this.state !== "playing") return;
-    Tone.getTransport().pause();
-    this.midiSink?.panic(); // never leave a note hanging on a synth
+    this.endRun();
+    this.silence(); // never leave a note hanging on a synth
     this.setState("paused");
   }
 
   resume(): void {
     if (this.state !== "paused") return;
-    Tone.getTransport().start();
+    this.startRun(this.pausedPos);
     this.setState("playing");
   }
 
   stop(): void {
     // afterCommand calls this on EVERY edit. When nothing is scheduled
-    // (never played, or already stopped) it must be a PURE no-op — even
-    // touching Tone.getTransport() lazily builds the audio stack, and that
-    // work has no business on the editing path.
-    if (this.state === "idle" && !this.part) return;
-    this.midiSink?.panic(); // release external synths before teardown
-    // An audio-stack failure below must never poison the editing path.
-    try {
-      const transport = Tone.getTransport();
-      transport.stop();
-      transport.cancel(0);
-      this.part?.dispose();
-      this.part = null;
-    } catch {
-      this.part = null;
-    }
+    // (never played, or already stopped) it must be a PURE no-op — no
+    // audio stack is touched on the editing path.
+    if (this.state === "idle" && !this.run) return;
+    this.endRun();
+    this.silence();
+    this.pausedPos = 0;
     if (this.state !== "idle") this.setState("idle");
-    this.onHighlight([], [], undefined); // signal: clear everything
+    host.view.clearHighlight();
   }
 }
 

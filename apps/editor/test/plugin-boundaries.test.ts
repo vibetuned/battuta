@@ -4,9 +4,12 @@
  * attempt showed that a rule whose only enforcement is a README sentence
  * gets rewritten to match the code; every rule below has a failing test.
  *
- *   1. A plugin's runtime code imports only @battuta/api, react, and its
- *      own files. Never @battuta/core, never apps/editor, never Verovio
- *      or Tone. (Commands are messages; reads are the query facade.)
+ *   1. A plugin's runtime code imports only @battuta/api, react, tone and
+ *      its own files. Never @battuta/core, never apps/editor, never
+ *      Verovio. (Commands are messages; reads are the query facade.)
+ *      Tone was forbidden until slice 7a decided the host owns the
+ *      AudioContext and a plugin brings its own instrument (2026-09-15);
+ *      Verovio stays forbidden because rendering is a host service.
  *   2. A plugin's package.json depends on @battuta/api and nothing else
  *      of the workspace.
  *   3. src/manifest.ts imports nothing but @battuta/api — the host loads
@@ -33,8 +36,8 @@ const REPO = resolve(here, "../../..");
 const PLUGINS = join(REPO, "packages/plugins");
 const HOST_DIR = join(REPO, "apps/editor/src/host");
 
-const ALLOWED_RUNTIME = new Set(["@battuta/api", "react", "react/jsx-runtime", "react/jsx-dev-runtime"]);
-const FORBIDDEN_DEPS = ["@battuta/core", "@battuta/editor", "verovio", "tone", "react-dom"];
+const ALLOWED_RUNTIME = new Set(["@battuta/api", "react", "react/jsx-runtime", "react/jsx-dev-runtime", "tone"]);
+const FORBIDDEN_DEPS = ["@battuta/core", "@battuta/editor", "verovio", "react-dom"];
 const BUILDING_HEADINGS = ["1. Origin", "2. Manifest", "3. API surface", "4. State", "5. Command messages", "6. Tests", "7. Dead ends", "8. Recipe"];
 
 /** Strip comments and string literals so rules see code, not prose. */
@@ -145,12 +148,13 @@ describe("the rules, on samples", () => {
     expect(src("src/index.ts", 'import { definePlugin, type PluginContext } from "@battuta/api";\nimport { forms } from "./forms";\nimport type { ReactNode } from "react";\nexport * from "./forms";\n')).toEqual([]);
   });
 
-  it("refuses @battuta/core, the editor, Verovio, Tone — static, type-only, re-export or dynamic", () => {
+  it("refuses @battuta/core, the editor, Verovio — static, type-only, re-export or dynamic; Tone is a plugin's instrument since 7a", () => {
     expect(src("src/index.ts", 'import { SetPitchesCommand } from "@battuta/core";')).toEqual(['src/index.ts: import "@battuta/core" is not allowed in a plugin (only @battuta/api, react and the package\'s own files)']);
     expect(src("src/index.ts", 'import type { Command } from "@battuta/core";')).toHaveLength(1);
     expect(src("src/index.ts", 'export { x } from "@battuta/core/fuzz";')).toHaveLength(1);
     expect(src("src/index.ts", 'const m = await import("verovio");')).toHaveLength(1);
-    expect(src("src/index.ts", 'import * as Tone from "tone";')).toHaveLength(1);
+    expect(src("src/index.ts", 'import * as Tone from "tone";')).toEqual([]);
+    expect(src("src/index.ts", 'const T = await import("tone");')).toEqual([]);
   });
 
   it("refuses relative imports that leave the package (the editor, core sources)", () => {
@@ -178,7 +182,8 @@ describe("the rules, on samples", () => {
   it("package.json: @battuta/api only, named @battuta/plugin-<name>", () => {
     expect(checkPackageJson({ name: "@battuta/plugin-reflection", dependencies: { "@battuta/api": "*" } })).toEqual([]);
     expect(checkPackageJson({ name: "@battuta/plugin-reflection", dependencies: { "@battuta/api": "*", "@battuta/core": "*" } })).toEqual(["package.json depends on @battuta/core — a plugin may depend on @battuta/api only"]);
-    expect(checkPackageJson({ name: "reflection", devDependencies: { tone: "1" } })).toEqual(["package.json depends on tone — a plugin may depend on @battuta/api only", "package.json must depend on @battuta/api", 'package name "reflection" must be @battuta/plugin-<name>']);
+    expect(checkPackageJson({ name: "reflection", devDependencies: { verovio: "1" } })).toEqual(["package.json depends on verovio — a plugin may depend on @battuta/api only", "package.json must depend on @battuta/api", 'package name "reflection" must be @battuta/plugin-<name>']);
+    expect(checkPackageJson({ name: "@battuta/plugin-playback", dependencies: { "@battuta/api": "*", tone: "^15" } })).toEqual([]); // the instrument is the plugin's
   });
 
   it("both documents, BUILDING.md with the eight headings", () => {

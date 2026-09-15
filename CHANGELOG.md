@@ -55,6 +55,102 @@ is taken, and each slice as it closes, with the `App.tsx` line count
   refusals) and the query test extended; editor 122, api 18, plugins 105;
   `verify-phase5` 222 (its two harmony hooks now read `select[data-lanes]`; one flaky voice-navigation check in a back-to-back run passed on its own), `verify-lyrics` 26, `verify-app` 18, the keyboard 25, all green.
   `App.tsx` **3,117 → 3,109**; initial chunk **599.0 kB** (ceiling 605.5).
+- **Slice 7a — the audio context, the timemap and the facts (2026-09-15,
+  in-house). CLOSED.** What a player needs from the host and cannot make
+  itself, built and consumed by the in-App player first, so 7b finds
+  every door open. **`ctx.audio`** (host module `audio.ts`): the app's one
+  `AudioContext` — `unlock()` creates it synchronously on the first call
+  and resumes it on every one (call it in the click, before any await;
+  the autoplay policy binds the unlock to the gesture), `context()` hands
+  it out for a plugin to connect its own instrument, `timeAt(ms)` converts
+  the `performance.now()` clock to the context's seconds so a scheduler
+  working from timers, as the MIDI sink does, still lands its attacks
+  sample-accurately. Capability `audio` replaces the reserved, never-used
+  `playback`; the api's tsconfig gained the DOM lib for the type. **The
+  timemap, read-only**: `ctx.query.timemap()` — Verovio's timemap of the
+  expanded form as data (`events`, `notes`, `idMap`), a render service;
+  types on the api (`render.ts`), since the render pool produces them,
+  not core; null without a document, rejecting with the render error; the
+  adapter sets the `__PLAYBACK__` dev hook so phase 5's form and tie
+  checks read what they read. **The facts**: `ctx.query.notation()` —
+  core's `playbackShaping` became `notationFacts`, reporting which note
+  ties INTO which and which MARKS a note carries (`slur`, `tenuto`,
+  `staccato`, `staccatissimo`; a note under a slur with a staccato has
+  both — a fact, not a verdict); the `GATE_*` constants and
+  `mergeTiedSpans` left core for the editor's new `performance.ts`, with
+  their tests, because what a tie or a staccato MEANS in sound is a
+  performance decision and there can be several performers. **The
+  highlight** as `ctx.view.highlight(cue)` / `clearHighlight()`, bound by
+  the App as a view adapter (host module none: it is a binding, like the
+  session's). **`onView:<mode>` fired** from the host's editor mirror on
+  every change and once for the first view published — reserved since
+  slice 1, fired now. **The export half of `formats`** (host module
+  `formats.ts`): `contributes.exports: [{ id, label, ext, mime, title? }]`
+  listed in the battuta menu before the plugin loads (`data-export=<id>`
+  kept), `onFormat:<id>` fired when a declared export is produced with no
+  producer yet, `ctx.formats.registerExport(id, produce)` demanding a
+  declaration (two locks: the context reads the manifest, the store the
+  ownership; two plugins on one id → the second fails), the App owning
+  the one SAVE path and the registry who produces; the hard-coded "export
+  playback MIDI" is the first INTERNAL registration. **The in-App player
+  rewritten onto all of it**: `player.ts` is now a lookahead scheduler on
+  the wall clock — it builds its performance from `timemap()` and
+  `notation()` (`performance.ts`: tie chains merged, gates applied,
+  clones mapped to the engraved ids they light), hands attacks to its
+  Tone.Sampler on the host's context (`Tone.setContext`) or MIDI sends to
+  the sink at the same `atMs`, fires cues to `host.view.highlight`, and
+  keeps pause / seek / speed by releasing and rescheduling from a
+  position; Tone's transport, `Part` and `Draw` are gone, and so is the
+  second copy of the duration loop `midiExport.ts` carried — it encodes
+  the same performance. Behaviour identical: phase 5's playback section
+  green with every hook (`data-player-*`, `g.playing`, `__PLAYBACK__`)
+  unchanged. Rule change, the user's: `tone` left the plugin boundary
+  test's forbidden list (a plugin brings its own instrument since the
+  host owns only the context; `verovio` stays forbidden). `@battuta/api`
+  0.1.10 → **0.1.11**. Tests: `audio.test.ts` (4), `performance.test.ts`
+  (8: the merge cases moved from core, the gate table, the performance),
+  `midiExport.test.ts` on a built performance (6, assertions kept),
+  `host.test.ts` +7 (the two queries, the view service, `onView:`, the
+  audio capability, the export registry end to end, duplicate
+  declaration), core's `playback.test.ts` reporting facts (5), the api's
+  export validation; editor 141, core 224, api 19, plugins 132; e2e phase 5
+  222 (its playback section untouched; one DEV hook elsewhere in the
+  script followed the session method's rename, `playbackShaping()` →
+  `notationFacts()`), lyrics 26, app 18, keyboard 25, and the shell smoke
+  6 of 6 — all green. Not moved yet, by design: Tone.js
+  and the samples stay the App's instrument until 7b, so the initial
+  chunk is **596.0 kB** (ceiling 605.5) and the budget drops in 7b.
+  `App.tsx` 3,091 → 3,133 (+42: the view adapter, the timemap adapter and
+  the export registration replaced two smaller blocks; the row and the
+  player leave in 7b). 7b is next.
+- **Decision: slice 7 splits into 7a and 7b; the host owns the audio
+  context, the plugin owns the instrument and the performance
+  (2026-09-15).** The pattern since slice 5, applied to playback, after
+  two corrections by the user. The first draft put the performance (ties
+  merged, gates applied, clones mapped) into core as data the host
+  renders — wrong owner: how a score is PERFORMED is an interpretation,
+  there can be several players, and the playback plugin is the only
+  consumer; core keeps what it reads from MEI (which note ties into
+  which, which marks a note carries) and the player decides what that
+  means in sound. The second draft gave the host a sampled piano as a
+  "sound out" service — wrong again: the platform capability is the
+  `AudioContext` (one per app, unlocked inside a user gesture, its clock),
+  not an instrument. So the host's services are the MIDI ports (slice 3)
+  and, new, **the audio context**: `ctx.audio.unlock()`, `context()` and
+  `timeAt(ms)` — a plugin connects its own synth or sampler to it, and a
+  metronome or a note preview can share it tomorrow without fighting for
+  the unlock. Tone.js and the Salamander subset move into the playback
+  plugin in 7b, behind a dynamic import, and the budget drops there; the
+  boundary test's ban on `tone` in a plugin is lifted (verovio stays).
+  7a also lands the read-only render service `ctx.query.timemap()`, the
+  facts `ctx.query.notation()`, the highlight as `ctx.view`, `onView:`
+  fired, and the export half of `formats` (`contributes.exports`,
+  `ctx.formats.registerExport`, `onFormat:` fired, host module
+  `formats.ts`), and rewrites the in-App player onto all of it first — a
+  lookahead scheduler over its sampler and the MIDI sink, its own
+  performance from timemap and facts — so 7b moves it with *API may
+  grow: none*. `onPlay` stays reserved and unfired — a key would be a
+  plugin binding. The briefs are in PLANNING.md.
 - **Decision: validity lives in core and the api asks it — `harmValid` is
   back (2026-09-15, in-house; api 0.1.9 → 0.1.10).** Slice 6 moved the
   whole harmony grammar into the plugin and let `core.setHarm` write any
