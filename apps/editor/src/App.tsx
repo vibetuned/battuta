@@ -6,12 +6,10 @@ import { host, useStore, Slot, Panels, LaneInput, laneFace, confirmDialog, tauri
 import { ShortcutEditor } from "./ShortcutEditor";
 import { loadSettings, saveSettings, detectLayout } from "./settings";
 import { DocumentSession } from "./session";
-import { converter } from "./converter";
 // Musical Unicode (𝅝 𝅗𝅥 𝅘𝅥𝅯 𝄆 𝄇 𝄐 𝄪 …) has NO macOS system font — the UI
 // glyphs rendered as tofu there. Bundled Noto Music (35KB, OFL) fills
 // exactly those blocks via @font-face unicode-range below.
 import notoMusicUrl from "./assets/fonts/NotoMusic-Regular.woff2?url";
-import { IMPORT_FORMATS, EXPORT_FORMATS } from "./formats";
 import type { LaneSpec } from "@battuta/api";
 import { saveStoredSession, loadStoredSession, clearStoredSession, type StoredSession } from "./sessionStore";
 
@@ -1033,9 +1031,10 @@ export default function App() {
   /**
    * Open any file the registry knows: MEI directly (keeps its path), the
    * rest converted to MEI by the import that claims its extension
-   * (host/formats.ts — the App's own Verovio converters until slice 8b, a
-   * plugin's after). Converted documents carry NO path — a plain ctrl+s
-   * must never overwrite the .musicxml/.abc/.krn source with MEI.
+   * (host/formats.ts; the converters are @battuta/plugin-formats' since
+   * slice 8b, and opening one of its extensions is what wakes it).
+   * Converted documents carry NO path — a plain ctrl+s must never
+   * overwrite the .musicxml/.abc/.krn source with MEI.
    */
   const openFile = useCallback(
     (filename: string, data: string | ArrayBuffer, path?: string) => {
@@ -1173,45 +1172,35 @@ export default function App() {
   }, []);
 
   /**
-   * The App's own converters, as INTERNAL registrations in the host's
-   * formats registry (slice 8a) — exactly what the formats plugin declares
-   * and registers in 8b: the five Verovio imports and the three Verovio
-   * exports through the lazy converter worker, SVG through the render
-   * pool (engraving: the host's, and it stays). Registered once, so the
-   * menu rows and the accept list are there with or without a document —
-   * and reading the document through `host.query.mei()`, as a plugin must,
-   * never through the App's own session: the first 8b attempt stopped on
-   * a producer that had no document at all, because this rehearsal had
-   * closed over the session and hidden the gap (formats/POSTMORTEM-2026-09-16.md §7.1).
+   * The SVG export: the App's ONE remaining internal registration in the
+   * host's formats registry. Engraving is a host service — these pages
+   * come from the render pool, not from a converter — so it stays here
+   * while the five Verovio imports and the three Verovio exports are
+   * @battuta/plugin-formats' since slice 8b.
+   *
+   * It reads the document through `host.query.mei()`, as a plugin must,
+   * never through the App's own session: 8b's first attempt stopped on a
+   * producer that had no document at all, because this rehearsal had
+   * closed over the session and hidden the gap
+   * (`packages/plugins/formats/POSTMORTEM-2026-09-16.md` §7.1).
    */
   const poolRef = useRef<RenderPool | null>(null);
   poolRef.current = pool;
   useEffect(() => {
     const registrations = [
-      ...IMPORT_FORMATS.map((f) =>
-        host.formats.registerImport({ id: f.id, label: f.label, exts: f.exts, ...(f.binary ? { binary: true } : {}), ...(f.roots ? { roots: f.roots } : {}) }, (file) => converter.toMEI(f.id, file.bytes ?? file.text ?? "")),
-      ),
-      // In the table's order — that is the menu's order.
-      ...EXPORT_FORMATS.map((f) =>
-        host.formats.register({ id: f.id, label: f.label, ext: f.ext, mime: f.mime }, async () => {
-          const mei = host.query.mei();
-          if (mei === null) throw new Error("no document is open");
-          if (f.id === "svg") {
-            const p = poolRef.current;
-            if (!p) throw new Error("the renderer is not ready");
-            const name = host.document.get()?.name || "score";
-            // The page-view engraving, one file per page (1-based indices).
-            const svgs: string[] = [];
-            const count = await p.renderDocumentPages(mei, (i, svg) => {
-              svgs[i - 1] = svg;
-            });
-            return { files: svgs.slice(0, count).map((svg, i) => ({ bytes: svg, filename: count > 1 ? `${name}-p${i + 1}.svg` : `${name}.svg` })) };
-          }
-          const out = await converter.fromMEI(f.id, mei);
-          // The worker returns MIDI as base64 (a standard .mid file's bytes).
-          return { bytes: f.binary ? Uint8Array.from(atob(out), (c) => c.charCodeAt(0)) : out };
-        }),
-      ),
+      host.formats.register({ id: "svg", label: "SVG (pages)", ext: "svg", mime: "image/svg+xml" }, async () => {
+        const mei = host.query.mei();
+        if (mei === null) throw new Error("no document is open");
+        const p = poolRef.current;
+        if (!p) throw new Error("the renderer is not ready");
+        const name = host.document.get()?.name || "score";
+        // The page-view engraving, one file per page (1-based indices).
+        const svgs: string[] = [];
+        const count = await p.renderDocumentPages(mei, (i, svg) => {
+          svgs[i - 1] = svg;
+        });
+        return { files: svgs.slice(0, count).map((svg, i) => ({ bytes: svg, filename: count > 1 ? `${name}-p${i + 1}.svg` : `${name}.svg` })) };
+      }),
     ];
     return () => {
       for (const d of registrations) d.dispose();

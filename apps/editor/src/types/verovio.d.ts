@@ -1,14 +1,11 @@
 /**
  * Minimal ambient types for verovio's subpath exports (the npm package ships
- * none for them). Only the surface battuta uses; extend as needed.
+ * none for them). Only the surface the HOST uses: the render build and the
+ * engraving half of the toolkit. The Humdrum-enabled build and the
+ * conversion calls left with the converters in slice 8b — they are declared
+ * in `packages/plugins/formats/src/verovio.d.ts`, and more narrowly.
  */
 declare module "verovio/wasm" {
-  const createVerovioModule: () => Promise<unknown>;
-  export default createVerovioModule;
-}
-
-declare module "verovio/wasm-hum" {
-  /** The Humdrum-enabled build (bigger; the conversion worker only). */
   const createVerovioModule: () => Promise<unknown>;
   export default createVerovioModule;
 }

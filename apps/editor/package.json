@@ -16,6 +16,7 @@
   "dependencies": {
     "@battuta/api": "*",
     "@battuta/core": "*",
+    "@battuta/plugin-formats": "*",
     "@battuta/plugin-harmony": "*",
     "@battuta/plugin-lyrics": "*",
     "@battuta/plugin-onscreen-keyboard": "*",

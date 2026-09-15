@@ -1,0 +1,28 @@
+{
+  "name": "@battuta/plugin-formats",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "description": "Everything battuta reads and writes beyond MEI: MusicXML (plain and zipped), ABC, Plaine & Easie and Humdrum in; written-score MIDI, Humdrum and PAE out — through Verovio's Humdrum-enabled build in the plugin's own worker.",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./manifest": "./src/manifest.ts"
+  },
+  "//": [
+    "exports point at src/, NOT a built dist/: Vite and tsc both consume linked TypeScript, so a plugin has no build step and no prepare.",
+    "dependencies: @battuta/api and verovio — the CONVERTER build only (verovio/wasm-hum + verovio/esm), which is this plugin's whole purpose. Engraving stays the host's render service; plugin-boundaries fails the build on a render or layout call, and src/verovio.d.ts does not even declare one. No react: this plugin renders nothing."
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@battuta/api": "*",
+    "verovio": "^6.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

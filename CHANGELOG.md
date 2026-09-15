@@ -55,6 +55,50 @@ is taken, and each slice as it closes, with the `App.tsx` line count
   refusals) and the query test extended; editor 122, api 18, plugins 105;
   `verify-phase5` 222 (its two harmony hooks now read `select[data-lanes]`; one flaky voice-navigation check in a back-to-back run passed on its own), `verify-lyrics` 26, `verify-app` 18, the keyboard 25, all green.
   `App.tsx` **3,117 → 3,109**; initial chunk **599.0 kB** (ceiling 605.5).
+- **Slice 8b — the format converters are a plugin (2026-09-16). CLOSED
+  on the second attempt.** `packages/plugins/formats`: five imports
+  (MusicXML plain and zipped, ABC, Plaine & Easie, Humdrum) and three
+  exports (MIDI of the written score, Humdrum, PAE), all of them Verovio's
+  Humdrum-enabled build inside the plugin's **own worker** — which is the
+  slice's second claim after the dist one: *a worker is a plugin's to
+  ship, not a host service to ask for*, so the manifest declares no
+  capability at all. The **table moved into `src/manifest.ts`** (rule 3
+  leaves nowhere else: the manifest must declare the formats and may
+  import nothing but the api), each entry naming its Verovio call
+  (`from` / `op`) beside its contribution, and it stays the single source
+  of truth — `convert.test.ts` moved with it, assertions unchanged,
+  holding it against the real toolkit. Ids are `battuta.formats.<format>`
+  with **PAE and Humdrum sharing one**, so six activation events cover
+  eight registrations: an activation event names a capability the user
+  reached for, not a function signature. **SVG left the table entirely**
+  rather than just staying unregistered — it is engraving from the render
+  pool, not a conversion, and a table that is the single source of truth
+  for X must contain exactly the things that are X; the App carries its
+  one entry inline. **The number that matters is not the budget line**:
+  the initial chunk moved 365.0 → **364.5 kB** (the worker was never in
+  it), while the **13.45 MB `convertWorker` asset** is now referenced by
+  `plugin-formats-*.js` and by nothing else, with the entry's static
+  closure `battuta-shared` alone. **`@battuta/api` 0.1.14, unchanged** —
+  the one addition this plugin needed (`ctx.query.mei()`) was made
+  in-house first, after the first attempt stopped on it; the
+  `vite.config.ts` edit the brief allowed was measured unnecessary (a
+  worker is a separate Rollup sub-build, out of `manualChunks`' reach).
+  Two things the second attempt found and wrote up: **"off" is measured in
+  what is released, not in what leaves the UI** — the registrations
+  disposed cleanly while a 12 MB worker kept running, so `Converter` gained
+  a `dispose()` added to `ctx.subscriptions` last (disposed first, so
+  nothing is mid-conversion when the worker goes) and the suite asserts
+  the termination; and **when a plugin is hard to test because a platform
+  global is missing, stand in the global, not a seam in your own code** —
+  a `FakeWorker` on `globalThis`, which is also the only thing in the
+  repository that checks the id → Verovio mapping on the wire. Tests:
+  `convert.test.ts` (7, moved), `formats.test.ts` (17, new); editor 130,
+  core 224, api 20, plugins **186**. E2e: `verify-formats` **14 checks,
+  every assertion identical** — only the `.mxl` fixture's path (it lives
+  with the pinning test) and the three export ids changed; app 18, phase 2
+  20, phase 3 21, phase 4 67, phase 5 221, lyrics 25, keyboard 24, the
+  shell smoke 7 of 7. Union keymap snapshot byte-identical.
+  `App.tsx` **2,946 → 2,935**.
 - **Slice 8b stopped, and its one gap closed (2026-09-16, in-house; api
   0.1.13 → 0.1.14).** The formats plugin's first attempt delivered
   nothing and left `packages/plugins/formats/POSTMORTEM-2026-09-16.md`

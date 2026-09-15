@@ -1,11 +1,14 @@
 /**
  * Formats end-to-end check — importing and exporting through the UI.
  *
- * Written before slice 8a moves import detection and the export rows onto
- * the host's `formats` registry, and before 8b moves the Verovio
- * converters into a plugin, so both have something to be behaviour-neutral
- * against (PLANNING.md: "if none drives the feature you are extracting,
- * add one FIRST"). Everything goes through what a user touches — the file
+ * Written before slice 8a moved import detection and the export rows onto
+ * the host's `formats` registry, and before 8b moved the Verovio
+ * converters into @battuta/plugin-formats, so both had something to be
+ * behaviour-neutral against (PLANNING.md: "if none drives the feature you
+ * are extracting, add one FIRST"). Green unchanged through both; 8b moved
+ * only what its own design decides — the `.mxl` fixture's path (it lives
+ * with the pinning test, which is the plugin's now) and the three export
+ * ids (a plugin's are `<pluginId>.<format>`), never an assertion. Everything goes through what a user touches — the file
  * input (what "open file…" and drag-and-drop feed) and the battuta menu:
  *
  *  1. a compressed MusicXML (.mxl, binary) opens as a new unsaved tab
@@ -57,7 +60,7 @@ try {
 
   // --- 1. compressed MusicXML (binary) -------------------------------------
   let tabs0 = await tabNames();
-  await openFile(`${ROOT}/apps/editor/test/fixtures/sample.mxl`);
+  await openFile(`${ROOT}/packages/plugins/formats/test/fixtures/sample.mxl`);
   const first = await waitNotice("imported sample.mxl").then(() => true).catch(() => false);
   if (!first) {
     // The converter worker's dependency (the Humdrum Verovio build) is
@@ -66,7 +69,7 @@ try {
     // for the reload to settle and import once more.
     await page.waitForFunction(() => document.querySelectorAll(".tile .ms").length >= 3, null, { timeout: 60000 });
     tabs0 = await tabNames();
-    await openFile(`${ROOT}/apps/editor/test/fixtures/sample.mxl`);
+    await openFile(`${ROOT}/packages/plugins/formats/test/fixtures/sample.mxl`);
     await waitNotice("imported sample.mxl");
   }
   check(`an .mxl imports through the file input (${(await notice()).trim()})`, (await notice()).includes("compressed MusicXML → MEI"));
@@ -123,9 +126,14 @@ try {
     document.querySelector("[data-menu-toggle]").click();
     return ids;
   });
-  // Relative order of the four Verovio rows: where the registry puts the
-  // playback plugin's own export around them is the registry's business.
-  check(`the menu lists the exports in order (${exportIds.join(", ")})`, exportIds.filter((id) => ["midi", "svg", "humdrum", "pae"].includes(id)).join(",") === "midi,svg,humdrum,pae");
+  // Relative order of the four rows the Verovio formats produce. Where the
+  // registry puts the playback plugin's own export around them is the
+  // registry's business, and SVG leads because it is the host's last
+  // INTERNAL export while the other three are the formats plugin's
+  // declared ones (8a moved this same assertion once, for the same
+  // reason).
+  const VEROVIO_ROWS = ["svg", "battuta.formats.midi", "battuta.formats.humdrum", "battuta.formats.pae"];
+  check(`the menu lists the exports in order (${exportIds.join(", ")})`, exportIds.filter((id) => VEROVIO_ROWS.includes(id)).join(",") === VEROVIO_ROWS.join(","));
 
   const exportOne = async (id) => {
     await page.locator("[data-menu-toggle]").click();
@@ -135,11 +143,11 @@ try {
     await download.saveAs(path);
     return { name: download.suggestedFilename(), bytes: readFileSync(path) };
   };
-  const midi = await exportOne("midi");
+  const midi = await exportOne("battuta.formats.midi");
   check(`MIDI (written score) downloads an SMF named ${midi.name}`, midi.name === "tune.mid" && midi.bytes.subarray(0, 4).toString("latin1") === "MThd");
-  const krn = await exportOne("humdrum");
+  const krn = await exportOne("battuta.formats.humdrum");
   check(`Humdrum downloads **kern named ${krn.name}`, krn.name === "tune.krn" && krn.bytes.toString("utf8").startsWith("**kern"));
-  const pae = await exportOne("pae");
+  const pae = await exportOne("battuta.formats.pae");
   check(`Plaine & Easie downloads PAE named ${pae.name}`, pae.name === "tune.pae" && /@data:/.test(pae.bytes.toString("utf8")));
   const svg = await exportOne("svg");
   check(`SVG downloads the engraved page named ${svg.name}`, svg.name === "tune.svg" && svg.bytes.toString("utf8").includes("<svg"));

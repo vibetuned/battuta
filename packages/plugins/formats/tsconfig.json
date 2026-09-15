@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // DOM for `Worker` and `atob`, WebWorker for the worker module's own
+    // `postMessage` / `onmessage`. The same pair the editor compiled these
+    // two files under before they moved; naming a platform type is not
+    // touching the DOM, and plugin-boundaries still fails the build on a
+    // window/document/navigator global.
+    "lib": ["ES2022", "DOM", "WebWorker"],
+    "types": [],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}

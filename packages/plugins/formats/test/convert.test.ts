@@ -2,8 +2,15 @@
  * The format table must never promise what the bundled Verovio cannot
  * do. Runs the REAL Humdrum-enabled toolkit (the one convertWorker
  * ships) over a tiny sample of every import format and every export
- * format: an entry added to formats.ts without Verovio support — or a
+ * format: an entry added to the table without Verovio support — or a
  * Verovio upgrade that drops one — fails here.
+ *
+ * Moved from `apps/editor/test/` with the converters in slice 8b; the
+ * assertions are unchanged. The table lives in `src/manifest.ts` now (the
+ * manifest must declare the formats and may import nothing but the api),
+ * and each entry names its Verovio call as `from` / `op` because its `id`
+ * is the global contribution id. SVG left the table entirely: engraving
+ * is the host's render service, not a conversion.
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import { readFileSync } from "node:fs";
@@ -13,9 +20,9 @@ import { fileURLToPath } from "node:url";
 // @ts-ignore — the wasm module ships no types
 import createVerovioModule from "verovio/wasm-hum";
 import { VerovioToolkit } from "verovio/esm";
-import { IMPORT_FORMATS, EXPORT_FORMATS } from "../src/formats";
+import { EXPORT_FORMATS, IMPORT_FORMATS } from "../src/manifest";
 
-/** One four-note C-major sample per text import format. */
+/** One four-note C-major sample per text import format, keyed by its Verovio `from`. */
 const SAMPLES: Record<string, string> = {
   musicxml: `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="4.0">
@@ -40,9 +47,9 @@ beforeAll(async () => {
 
 describe("every import format converts to MEI with the bundled Verovio", () => {
   for (const f of IMPORT_FORMATS.filter((f) => !f.binary)) {
-    it(`${f.id} (.${f.exts[0]})`, () => {
-      tk.setOptions({ inputFrom: f.id });
-      expect(tk.loadData(SAMPLES[f.id]!), `Verovio rejected the ${f.id} sample`).toBeTruthy();
+    it(`${f.from} (.${f.exts[0]})`, () => {
+      tk.setOptions({ inputFrom: f.from });
+      expect(tk.loadData(SAMPLES[f.from]!), `Verovio rejected the ${f.from} sample`).toBeTruthy();
       const mei = tk.getMEI({ scoreBased: true });
       expect(mei).toContain("<mei");
       expect(mei).toContain("<note"); // the notes survived, not just a shell
@@ -51,7 +58,7 @@ describe("every import format converts to MEI with the bundled Verovio", () => {
   }
 
   it("every text import format has a sample here", () => {
-    for (const f of IMPORT_FORMATS.filter((f) => !f.binary)) expect(SAMPLES[f.id], `add a ${f.id} sample`).toBeDefined();
+    for (const f of IMPORT_FORMATS.filter((f) => !f.binary)) expect(SAMPLES[f.from], `add a ${f.from} sample`).toBeDefined();
   });
 
   it("mxl (zip) imports EVEN AFTER a leaked inputFrom (the worker's sequence)", () => {
@@ -80,11 +87,11 @@ describe("every export format produces output with the bundled Verovio", () => {
     return m;
   };
 
-  it("midi / humdrum / pae / svg", () => {
+  it("midi / humdrum / pae", () => {
     mei();
     for (const f of EXPORT_FORMATS) {
-      const out = f.id === "midi" ? tk.renderToMIDI() : f.id === "humdrum" ? tk.getHumdrum() : f.id === "pae" ? tk.renderToPAE() : tk.renderToSVG(1);
-      expect(out.length, `${f.id} export came back empty`).toBeGreaterThan(0);
+      const out = f.op === "midi" ? tk.renderToMIDI() : f.op === "humdrum" ? tk.getHumdrum() : tk.renderToPAE();
+      expect(out.length, `${f.op} export came back empty`).toBeGreaterThan(0);
     }
     // MIDI is base64 of a standard MIDI file — "MThd" header
     expect(atob(tk.renderToMIDI()).startsWith("MThd")).toBe(true);

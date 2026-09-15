@@ -322,7 +322,11 @@ worker would have shipped as two byte-identical copies Vite deduplicates
 until the first edit), the gap written up — an export producer had no
 way to read the document, because 8a's rehearsal had it by closure — and
 closed in-house the same day: `ctx.query.mei()` (api 0.1.14), the App's
-own registrations rewritten to read through it. **8b reopens and is
+own registrations rewritten to read through it. **8b closed on its second
+attempt, 2026-09-16**: `packages/plugins/formats` holds the five imports,
+the three Verovio exports, the table and the worker; the api did not grow
+(0.1.14 unchanged), the 13.45 MB `convertWorker` asset is reached only
+from the plugin's chunk, and `App.tsx` is 2,946 → 2,935. **Slice 9 is
 next.**
 
 From here on slices are
@@ -1240,6 +1244,25 @@ the dist figure.
 **Done when.** Every import and export format works as in 0.0.3 with the
 plugin on; with it off the open dialog lists `.mei` only and the menu's
 export rows are SVG alone.
+
+**Closed 2026-09-16, second attempt.** All hold; api 0.1.14 unchanged;
+`verify-formats.mjs` green with every assertion identical (only the
+`.mxl` fixture's path and the three export ids changed). *As built,
+beyond the brief:* SVG left the format table entirely rather than sitting
+in it unregistered — it is engraving, and a table that is the single
+source of truth for what Verovio CONVERTS must hold only conversions; the
+App carries its one entry inline. The `vite.config.ts` edit the brief
+allowed was not needed (measured in the first attempt). `verovio/wasm-hum`
+left the editor's ambient types as well as its use, and the plugin's copy
+is deliberately narrower — the engraving calls are not declared, so rule
+1b is a compile error there before it is a test failure. *Found and
+written up:* "off" is measured in what is RELEASED, not in what leaves
+the UI (the registrations disposed while a 12 MB worker kept running;
+`Converter.dispose()` now goes into `ctx.subscriptions` last, so it runs
+first), and a plugin that needs a missing platform global in tests should
+stand in the GLOBAL rather than open a seam in its own code (a
+`FakeWorker` on `globalThis`, which also became the only check anywhere
+of the id → Verovio mapping).
 
 #### Slice 9 — Folder view (≈1 week)
 

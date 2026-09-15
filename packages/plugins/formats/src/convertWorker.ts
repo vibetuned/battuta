@@ -1,11 +1,16 @@
 /**
  * Format conversion worker: Verovio's HUMDRUM-ENABLED build (≈4.6MB
- * heavier than the render pool's), so it lives in its own worker that
- * the app spawns lazily — only when the user actually imports or
- * exports a non-MEI format — and the render path never pays for it.
+ * heavier than the host's render-pool build), so it lives in its own
+ * worker that this plugin spawns lazily — only when the user actually
+ * imports or exports a non-MEI format — and the editing and engraving
+ * paths never pay for it.
  *
- * import: any IMPORT_FORMATS id -> MEI (getMEI, score-based)
+ * import: any IMPORT_FORMATS `from` value -> MEI (getMEI, score-based)
  * export: MEI -> midi (base64) | humdrum | pae
+ *
+ * Nothing here engraves: `renderToSVG` and the layout calls are the
+ * host's render service, and this package's `verovio.d.ts` does not even
+ * declare them.
  */
 import createVerovioModule from "verovio/wasm-hum";
 import { VerovioToolkit } from "verovio/esm";
