@@ -60,7 +60,7 @@ the same stance DESIGN.md takes on Rust.
 | `formats` | exports (`contributes.exports` + `registerExport`, since 7a) and imports (`contributes.imports` — extensions, text-or-bytes, root elements for a shared `.xml` — + `registerImport`, since 8a): the menu row and the open dialog's accept list exist before the plugin loads, `onFormat:<id>` wakes it, detection is the host's | `host/formats.ts` (the registry); the App's Verovio converters as internal registrations until 8b moves them, with `formats.ts`' table and its pinning test |
 | `overlays` | a per-tile draw hook on the interaction overlay, given the tile's bbox, id → bbox map, effective context and timemap | the caret/selection overlay; **this is the point Phases 6 and 7 need** (ghost piano roll, facsimile strips, confidence tint) |
 | `header` / `docHeader` / `statusBar` / `menu` | items in the four UI slots, added at runtime or **declared in the manifest** (the host renders a declared item before the plugin's code loads; the click activates it — decided 2026-09-14 for the 🎹) | the six status-bar selects, the battuta menu, the player row (`docHeader` is where slice 7's controls go) |
-| `panels` | a side/bottom panel (React node behind a slot) | none yet — first consumers: the on-screen keyboard (bottom), the folder view (side); later reference-track solo/mute, flagged-element lists |
+| `panels` | a side/bottom panel (React node behind a slot). The side area is on the LEFT, below the header, and pushes the score right while a panel is up (decided 2026-09-16 with the first side consumer) | the on-screen keyboard (bottom, 4b), the folder view (side, 9b); later reference-track solo/mute, flagged-element lists |
 | `playback` | nothing to contribute: a player is a plugin that SCHEDULES — it reads the timemap and the notation facts, decides the performance (ties, gates, clones, speed — there can be several players), and plays it with its own instrument on the host's audio context, or on the host's MIDI out (below) | `player.ts`, `midiExport.ts`; the performance logic in `core/playback.ts` (which leaves core for the player: decided 2026-09-15) |
 | `documentHooks` | `onOpen` / `beforeSave` / `onExternalChange` | session restore, external-change guard in `session.ts` |
 | `workspace` | `openFolder()` (native dialog), `readDir`, `openDocument(path)` — routed through the same open path as ctrl+o so imports convert and the session records it — and `watch(path)` | `open_score`/`file_mtime`/`initial_score` in `main.rs`; live watching is the still-open item from 0.0.2 (a `notify` watcher). Access is **scoped to the folder the user picked** (Tauri 2 capability scopes); the browser build reports "not available" since WebKit has no File System Access API |
@@ -334,7 +334,22 @@ scoped to the folders the user picked, a `notify` watcher in the shell,
 unavailable in a browser), `ctx.documents` with `path` and `dirty` on
 every snapshot, and the external-change guard gone live; the shell
 smoke's eighth check picks a folder without a dialog, lists it, refuses
-an outside read and sees a change. **9b is next.**
+an outside read and sees a change. **9b closed 2026-09-16, and it is the
+measurement the phase was built to take**: `packages/plugins/folder-view`
+is a whole feature that never lived in the editor, and `App.tsx` is
+**2,991 → 2,991** — the host's entire diff is the two lines in
+`plugins.ts` every plugin costs. The api did not grow (0.1.15 unchanged),
+because 9a built every call against this panel as its named consumer.
+Four findings the e2e made and no unit test could, all in its BUILDING.md
+§7: the side panel area starts under the app header (its first consumer
+in five slices), a declared entry point has two DOM hooks over its life,
+an error state has to carry its way out, and `openFolder` answers the
+same `false` for "no shell" and "no folder". Its three host gaps closed
+in-house the same day, with the user's four changes to the panel: the
+side area starts below the header, sits on the left and pushes the score
+right; the live guard accepts `created` as well as `modified` (macOS);
+`.mei` only stays; the rows lose their dot and bold and the active tab's
+score is highlighted. **Slice 10 is next.**
 
 From here on slices are
 handed to sessions without the surrounding context, on purpose, to test
@@ -1384,7 +1399,8 @@ the folder view must know which extensions are scores. The host's
 `openExtensions` store is not on the api; if the plugin needs it,
 `ctx.formats.extensions: Store<readonly string[]>` is the shape to
 propose (consumer: this list; a second: a drag-and-drop target). Write
-the gap; do not resolve it — or list `.mei` only and say so.
+the gap; do not resolve it — or list `.mei` only and say so. *Decided
+2026-09-16, after the slice: `.mei` only stays; no addition.*
 
 **Stop when.** The panel needs anything beyond `ctx.workspace`,
 `ctx.documents`, `ctx.panels`, the declared slot item, `ctx.settings`,
@@ -1404,6 +1420,25 @@ row; the CHANGELOG bullet.
 **Done when.** The panel works end to end in the shell; the browser build
 shows its notice; turning the plugin off removes the panel and the 📁
 together.
+
+**Closed 2026-09-16.** All hold; api 0.1.15 unchanged; `App.tsx`
+2,991 → 2,991. The extension question was answered the way this brief
+allowed — `.mei` only, with the gap written (BUILDING.md §7.7) and the
+addition named (`ctx.formats.extensions`, a STORE rather than a getter,
+because the answer changes when a format plugin is switched); copying the
+host's list into the plugin was the third option and is the one that
+would have rotted. *As built, beyond the brief:* the panel clears 92 px
+at its top, because the side area is `top: 0` under a sticky 75 px app
+header — the area's first consumer found it wrong after five slices
+(§7.1). The clearance is pinned by both e2e scripts rather than trusted;
+the gap is the host's to close, either by starting the side area below
+the header or by telling a panel its inset. A new `verify-folder-view.mjs`
+(15 checks) is the browser half and `probe5` the shell half. *Not green,
+and not this slice's:* 9a's probe4 asserts the watcher reports `modified`
+for an append, and macOS FSEvents reports `created` — it fails with this
+plugin absent, and the same mismatch stops 9a's live guard firing there
+(`App.tsx` filters `kind !== "modified"`). probe5 reports the guard
+rather than asserting it; §7.6 has the account.
 
 #### Slice 10 — Reference layers on the overlay point (≈2 weeks)
 

@@ -386,7 +386,7 @@ if (typeof window !== "undefined" && (import.meta.env.DEV || "__TAURI__" in wind
 export { memorySettings };
 export type { PluginInfo, PluginState } from "./registry";
 export { useStore } from "./store";
-export { Slot, Panels } from "./slots";
+export { Slot, Panels, SIDE_PANEL_WIDTH } from "./slots";
 export { LaneStore, LaneInput, laneFace } from "./lanes";
 export type { LaneAdapter, LaneState, LaneOption, DeclaredLane } from "./lanes";
 export { HostAudioService } from "./audio";

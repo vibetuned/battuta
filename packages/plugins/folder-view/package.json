@@ -1,0 +1,31 @@
+{
+  "name": "@battuta/plugin-folder-view",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "description": "A side panel listing the scores in a folder you opened: click to open, open tabs marked, unsaved ones starred, and the list follows the disk as it changes.",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./manifest": "./src/manifest.ts",
+    "./tree": "./src/tree.ts"
+  },
+  "//": [
+    "exports point at src/, NOT a built dist/: Vite and tsc both consume linked TypeScript, so a plugin has no build step and no prepare.",
+    "./tree is exported so the panel's list model can be read by a test outside this package without reaching into src/ by path; nothing in the app imports it.",
+    "dependencies: @battuta/api and react (a panel plugin renders into a host area) and nothing else of the workspace. react-dom is NOT here: the host owns the React tree and the root."
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@battuta/api": "*",
+    "react": "^18.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

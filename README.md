@@ -85,6 +85,8 @@ cd apps/editor/src-tauri && cargo run --release   # loads localhost:5173 — BLA
 The old WebKitGTK 2.52 blank-webview issue no longer reproduces;
 `sh spikes/verify-tauri.sh` smoke-tests the self-contained build
 (including launching with a `.mei` argument — the file-association path).
+It runs the shell with `BATTUTA_EPHEMERAL_STORAGE=1`, an in-memory WebView
+data store, so its test scores never reach your recovered session.
 
 ### Packaging (0.0.1)
 

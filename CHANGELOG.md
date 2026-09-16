@@ -55,6 +55,121 @@ is taken, and each slice as it closes, with the `App.tsx` line count
   refusals) and the query test extended; editor 122, api 18, plugins 105;
   `verify-phase5` 222 (its two harmony hooks now read `select[data-lanes]`; one flaky voice-navigation check in a back-to-back run passed on its own), `verify-lyrics` 26, `verify-app` 18, the keyboard 25, all green.
   `App.tsx` **3,117 → 3,109**; initial chunk **599.0 kB** (ceiling 605.5).
+- **The shell smoke leaves the user's session alone (2026-09-16).** Every
+  run of `verify-tauri.sh` restored the recovered session from the WebView's
+  localStorage, opened its test scores into it and saved it back — a session
+  full of smoke files to erase by hand before the next start. The shell now
+  builds its window in code (tauri.conf.json's `windows` is empty) and takes
+  `BATTUTA_EPHEMERAL_STORAGE=1`: an incognito WebView whose localStorage,
+  IndexedDB and caches live in memory and vanish with the process. The smoke
+  sets it on all three launches, asserts the shell acknowledged it, and
+  fingerprints WebKit's per-origin storage before and after — it must not
+  change. Nothing the smoke does can reach what the user had open. Two
+  things the polluted session had been hiding: an empty store starts on a
+  blank untitled score (rests only), so the playback probe had nothing to
+  light — the first launch now gets a fixture score as its argument; and
+  `on_page_load` fires at Started and at Finished, so every probe ran
+  twice and probe3's second copy logged a FAILED line each run — the probes
+  are scheduled once now, on Finished. 12 checks.
+- **Slice 9b's gaps closed, and the side panel placed (2026-09-16,
+  in-house).** The plugin slice wrote up three host gaps and the user
+  asked for four changes to how the panel looks and sits; all in one
+  pass. **The side area** (host/slots.tsx) now starts BELOW the header —
+  the App measures the header and publishes its height as
+  `--battuta-header-h`, the area's `top` reads it (folder-view §7.1: the
+  area had been "mounted since slice 1" and wrong for five slices because
+  nothing had ever been put in it) — sits on the LEFT, as most
+  applications place a file view, and PUSHES the score right (`<main>`
+  takes a matching left margin while a side panel is up) instead of
+  covering it, which had made editing beside it impossible; the plugin's
+  92 px clearance hack is gone. **The live guard** ignores only `removed`:
+  macOS FSEvents keeps a recently created file's "created" flag on every
+  later event (§7.6), so an open file reporting created or modified has
+  changed under us either way; the shell smoke's probe4 accepts both
+  kinds. And the watcher's event paths are now canonical, like every path
+  the service hands out — macOS reports `/var/folders/…` for a root
+  admitted as `/private/var/…`, so the guard's lookup by path missed
+  until they matched. **The extension question** the 9b brief left open is decided:
+  `.mei` only stays — the folder view is a view of MEI scores, and a
+  MusicXML or ABC file in the folder is opened through the dialog and
+  becomes an MEI tab the view then shows; no `ctx.formats.extensions`.
+  **The panel's rows**: no dot and no bold for open scores; the score in
+  the active tab is highlighted (`#cfe2f5`, `data-folder-active`), and an
+  unsaved one keeps its `*` — the panel now takes `ctx.document` beside
+  `ctx.documents`. **A convention** from §7.2: a declared entry point has
+  two hooks over its life, the host's before the plugin loads and the
+  plugin's own once it is active; anything addressing it from outside
+  matches both. **And a bug the user caught by launching the app:** the
+  shell's probes 3, 4 and 5 — page view and play, a folder pick, the
+  folder view — ran on EVERY launch, not only under the smoke, so a
+  normal start switched views, sounded a note and opened a folder by
+  itself; they are gated behind the smoke's flags now (`BATTUTA_SHELL_TEST_FILE`
+  for playback, `BATTUTA_WORKSPACE_TEST_DIR` for the two workspace probes),
+  and the smoke now launches the shell once with no flag and fails if
+  any of the three logs a line. Probe5 is also hermetic:
+  the folder view remembers its folder across runs, so the previous
+  smoke's temp folder came back at startup and the probe opened a
+  `two.mei` there while the script appended to the new one — "guard no"
+  for the wrong reason; it now picks (the pick command returns the test
+  folder without a dialog) and clicks only a row whose path carries the
+  test folder's name. Tests: editor 138, plugins 222; the folder-view e2e and
+  the shell smoke with the layout and the kinds.
+- **Slice 9b — the folder view (2026-09-16). CLOSED, and it is the
+  measurement.** `packages/plugins/folder-view` is the first plugin that
+  is **not an extraction** — nothing of it ever lived in the editor — so
+  the number the phase has been working towards is the one that did not
+  move: **`App.tsx` 2,991 → 2,991**, with the host's entire diff being the
+  two lines in `plugins.ts` that every plugin costs and a `package.json`
+  dependency. A whole feature, and the host did not grow for it.
+  What it does: a side panel over a folder the user picked — sub-folders
+  opening in place, open tabs marked and unsaved ones starred from
+  `ctx.documents` (never off the DOM), a click opening through the host's
+  ONE open path, and a recursive watch keeping the list level with the
+  disk. Entry point a declared 📁 (`dimUntilActive`), activation on that
+  command and on `onSettings:folder`, `capabilities: ["workspace"]`, and
+  in a browser the panel opens and says the desktop app is required.
+  **`@battuta/api` 0.1.15, unchanged** — 9a built every call against this
+  panel as its named consumer, which is why this ran without a stop; the
+  one question 9a left open on purpose is answered the way it allowed:
+  the panel lists `.mei` only, because the extensions that are currently
+  openable are the host's `openExtensions` and are not on the api. Copying
+  that list into the plugin is the tempting third option and would be
+  wrong the first time a user turned the formats plugin off — the addition
+  to propose is `ctx.formats.extensions: Store<readonly string[]>`, a
+  store rather than a getter for exactly that reason, with a test already
+  written that will change when it lands. **Four things the e2e found that
+  no unit test could**, all in BUILDING.md §7: the **side panel area
+  starts underneath the app header** (`top: 0`, z-index 32, against a
+  sticky 75 px header at 35 — the area has existed since slice 1 and this
+  is its first consumer, so it had been wrong for five slices; the plugin
+  clears it and both scripts click through the cleared strip so a header
+  that grows fails a test); **a declared entry point has two hooks over
+  its life** (`data-slot-command` asleep, the plugin's own once a runtime
+  item replaces the face — and the shell probe only found out on its
+  SECOND run, because the first had persisted a folder that woke the
+  plugin at startup); **an error state has to carry its way out** (a
+  remembered folder that had been deleted showed the reason and no button
+  to pick another); and **"no shell" and "no folder" are the same
+  `false`** from `openFolder`, so opening the browser build once would
+  have wiped the desktop app's remembered folder — `available` is the
+  discriminator, pinned by two tests that differ only in whether the
+  bridge exists. Tests: `tree.test.ts` (15, the list model as a table),
+  `folder-view.test.ts` (21, against a real host and a fake shell bridge);
+  editor 138, core 224, api 20, plugins **222**. E2e: a new
+  `verify-folder-view.mjs` (**15 checks**, the browser half — the entry
+  point, the side area, the honest refusal) and `probe5` in the shell
+  smoke driving the same UI end to end (folder picked without a dialog,
+  two scores listed, one opened by clicking its row, that row marked open
+  from `ctx.documents`); every other script unchanged. Union keymap
+  snapshot byte-identical; initial chunk **368.7 kB** against the 375.0 kB
+  ceiling 9a set. **One gate is not green and it is not this slice's:**
+  9a's probe4 asserts the watcher reports `modified` for an append, and
+  macOS FSEvents reports `created` for a file created moments earlier —
+  it fails with this plugin absent, and the same mismatch stops 9a's live
+  guard firing on macOS (`App.tsx` filters `kind !== "modified"`). probe5
+  therefore reports the guard rather than asserting it, and was verified
+  against the shell binary directly. Written up in §7.6, not resolved:
+  the guard and probe4 are both 9a's.
 - **Slice 8b — the format converters are a plugin (2026-09-16). CLOSED
   on the second attempt.** `packages/plugins/formats`: five imports
   (MusicXML plain and zipped, ABC, Plaine & Easie, Humdrum) and three

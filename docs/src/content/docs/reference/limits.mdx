@@ -34,7 +34,6 @@ preserved verbatim rather than understood — safe, but not editable in the UI.
 | --- | --- |
 | MusicXML **export** | Verovio converts *from* MusicXML, not to it. [Import](../../guide/files/#importing) works — MusicXML, `.mxl`, ABC, Plaine & Easie and Humdrum all open |
 | PDF / print output | [SVG pages export](../../guide/files/#exporting) exists; PDF does not (the SVGs print well from a browser) |
-| Live file watching | External changes are detected **when you save** (the desktop app alerts before overwriting) — not the moment they happen; live watching arrives with the folder view in 0.1.0 |
 | Splice-at-caret and overlay-as-new-layer paste | Only replace-measures is implemented |
 | Split view | Cross-file work happens through tabs |
 | Selection playback, metronome, per-staff mute | The page-view player is all-or-nothing |
@@ -64,9 +63,11 @@ architecture is what 0.1.0 builds.
 would weigh the editor down become plugins and the editor becomes a host,
 so a capability you don't use costs you nothing. The first extractions are
 existing features — the on-screen keyboard, the lanes, playback, the format
-converters — which should change nothing you can see, followed by a
-**folder view** (open a folder of scores in a side panel, with live file
-watching). Requests are always welcome:
+converters — which should change nothing you can see. The first feature
+BUILT on the host has landed: the [folder view](../../guide/folder-view/),
+a side panel over a folder of scores, which also brought **live file
+watching** — a score that changes on disk is now announced the moment it
+happens, not at the moment you save. Requests are always welcome:
 [file yours](https://github.com/vibetuned/battuta/issues).
 
 The two research features arrive as the first plugins built on that host:

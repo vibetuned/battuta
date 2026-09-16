@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
 import { RenderPool, type TileResult } from "./render/renderPool";
 import { keyMatches, type Keymap, type Layout } from "./keymap";
-import { host, useStore, Slot, Panels, LaneInput, laneFace, confirmDialog, tauriInvoke, blockOfEvents, rule, gate, modal, isMod, type ActionStep, type KeyEvent, type Outcome } from "./host";
+import { host, useStore, Slot, Panels, SIDE_PANEL_WIDTH, LaneInput, laneFace, confirmDialog, tauriInvoke, blockOfEvents, rule, gate, modal, isMod, type ActionStep, type KeyEvent, type Outcome } from "./host";
 import { ShortcutEditor } from "./ShortcutEditor";
 import { loadSettings, saveSettings, detectLayout } from "./settings";
 import { DocumentSession } from "./session";
@@ -1270,6 +1270,22 @@ export default function App() {
     host.document.set(active && session ? infoOf(active) : null);
   }, [docs, session, version, activeId, active]);
 
+  // The side panel area (host/slots.tsx) sits on the left, below the
+  // header, and PUSHES the score right rather than covering it: the header's
+  // measured height is published as a CSS variable the area's `top` reads,
+  // and <main> takes a matching left margin while a side panel is up.
+  const headerRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    const publish = () => document.documentElement.style.setProperty("--battuta-header-h", `${el.getBoundingClientRect().bottom}px`);
+    publish();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(publish) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, []);
+  const sidePanelUp = useStore(host.panels.panels).some((p) => p.side === "side");
+
   // The workspace's opener and the LIVE external-change guard. A path a
   // plugin opens goes through the one open path (an already-open tab is
   // focused, an import converts, the mtime is recorded); a file open here
@@ -1299,7 +1315,11 @@ export default function App() {
       },
     });
     const changes = host.workspace.onChange((e) => {
-      if (e.kind !== "modified") return;
+      // A file that is OPEN here and reports created or modified has
+      // changed under us either way — macOS FSEvents keeps a recently
+      // created file's "created" flag on every later event (folder-view
+      // §7.6); only a removal is not an edit to compare against.
+      if (e.kind === "removed") return;
       const doc = docsRef.current.find((d) => d.path === e.path);
       const invoke = tauriInvoke();
       if (!doc || !invoke) return;
@@ -2412,7 +2432,7 @@ export default function App() {
 
   return (
     <div className={showPerf ? undefined : "no-perf"} style={{ fontFamily: `system-ui, "Noto Music", sans-serif`, padding: 12, paddingBottom: 36 }}>
-      <header style={{ display: "flex", flexDirection: "column", gap: 6, position: "sticky", top: 0, zIndex: 35, background: "#fff", margin: "-12px -12px 4px", padding: "12px 12px 6px", borderBottom: "1px solid #e3e7ec" }}>
+      <header ref={headerRef} style={{ display: "flex", flexDirection: "column", gap: 6, position: "sticky", top: 0, zIndex: 35, background: "#fff", margin: "-12px -12px 4px", padding: "12px 12px 6px", borderBottom: "1px solid #e3e7ec" }}>
       <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
         <span style={{ position: "relative" }}>
           <button data-menu-toggle onClick={() => setMenuOpen((o) => !o)} style={{ fontWeight: 700, fontSize: 14, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
@@ -2768,7 +2788,7 @@ export default function App() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         ref={mainRef}
-        style={{ position: "relative", userSelect: "none" }}
+        style={{ position: "relative", userSelect: "none", marginLeft: sidePanelUp ? SIDE_PANEL_WIDTH : 0 }}
         data-caret={caretId ?? ""}
         data-selection={selection.length}
         data-block={block ? `${block.measureFrom}-${block.measureTo}/${block.staffFrom}-${block.staffTo}` : ""}

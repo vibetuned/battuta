@@ -249,6 +249,14 @@ Conventions the tests cannot see, still binding:
   host's vocabulary first and the implementation second — otherwise the
   mechanism the old code used becomes the requirement.
 
+- **A declared entry point has TWO hooks over its life.** Before the
+  plugin's code loads the host renders it (`[data-slot-command="<id>"]`);
+  once the plugin is active its runtime item REPLACES that face and
+  carries the plugin's own hook. Anything that addresses the button from
+  outside — an e2e, a shell probe — matches both, and does not assume the
+  panel is closed: `onSettings:` may have opened it at startup. Found by
+  the folder view's shell probe, which passed on a fresh profile and
+  failed on the second run (folder-view/BUILDING.md §7.2).
 - **A point is rehearsed from outside the App, or it is not rehearsed.**
   When the host half of a slice registers the App's own version of a
   contribution (an internal lane, export, import), that registration

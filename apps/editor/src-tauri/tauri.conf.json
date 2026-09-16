@@ -10,13 +10,7 @@
   },
   "app": {
     "withGlobalTauri": true,
-    "windows": [
-      {
-        "title": "battuta",
-        "width": 1280,
-        "height": 860
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }

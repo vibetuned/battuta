@@ -1,0 +1,77 @@
+---
+title: Folder view
+description: Working through a folder of scores — the side panel, what its marks mean, and live file watching.
+sidebar:
+  order: 10
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+Most editing sessions are not one file: they are a folder of movements, a
+set of exercises, a directory someone sent you. The folder view puts that
+folder down the left of the window — the score moves over to make room,
+it is never covered — so opening the next score is a click instead of a
+dialog.
+
+Click the **📁** in the header to show or hide it; the panel's **×** does
+the same.
+
+<Aside type="caution" title="The desktop app only">
+A browser tab cannot be handed a folder to read, so in the web editor the
+panel opens and says so. Everything else in battuta works there.
+</Aside>
+
+## Opening a folder
+
+**choose a folder…** asks the system for one. battuta can read **that
+folder and nothing else** — there is no general file access behind this,
+and every read outside the folder you picked is refused. Pick another one
+any time with the **…** button beside its name.
+
+The folder you opened is remembered, so it is there the next time you
+start battuta. If it has moved or been deleted since, the panel says so
+and offers to pick another.
+
+## The list
+
+Sub-folders open in place — click one to expand it, click again to
+collapse — so a folder with a directory per work behaves the way you
+expect. Hidden files and folders are skipped.
+
+Click a score to open it. It opens exactly as **open file…** would: a
+file already open is brought to the front rather than opened twice, and a
+format that needs [converting](../files/#opening-other-formats) converts
+on the way in.
+
+| Mark | Means |
+| --- | --- |
+| highlighted row | the score in the active tab |
+| trailing `*` | open, with unsaved changes — the same marker the tab shows |
+
+<Aside type="note" title="Which files are listed">
+The panel lists **`.mei`** scores and folders — it is a view of MEI
+scores. battuta opens MusicXML, ABC, Plaine & Easie and Humdrum too:
+open those with **open file…** and they become MEI tabs, which the view
+then shows.
+</Aside>
+
+## Live file watching
+
+While the panel is up, battuta watches the folder. A score added,
+renamed or deleted — by you in another program, by a sync client, by a
+`git pull` — appears or disappears in the list without a refresh.
+
+The same watch protects what you have open. If a file open in a tab
+changes on disk, battuta tells you **the moment it happens**:
+
+> "two.mei" changed on disk — saving will ask before overwriting
+
+Saving still asks for confirmation before it overwrites, as it always
+did; the difference is that you now hear about the change while you can
+still do something about it, rather than at the moment you save.
+
+## Turning it off
+
+battuta menu → **🌣 shortcuts** → **plugins** → *Folder view*. The 📁 and
+the panel go together, and battuta stops watching. Nothing about your
+scores changes — the folder view only ever reads.

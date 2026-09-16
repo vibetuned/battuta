@@ -243,6 +243,11 @@ fn workspace_watch(app: tauri::AppHandle, ws: tauri::State<'_, Workspace>, path:
             _ => return,
         };
         for path in ev.paths {
+            // Canonical, like every path this service hands out (roots and
+            // entries are canonicalised), so a listener can compare the
+            // event's path with one it got from `read_dir`: macOS reports
+            // `/var/folders/…` for a root admitted as `/private/var/…`.
+            let path = std::fs::canonicalize(&path).unwrap_or(path);
             let _ = app.emit("workspace-change", serde_json::json!({ "id": id, "path": path.to_string_lossy(), "kind": kind }));
         }
     })
@@ -499,11 +504,34 @@ fn main() {
         .manage(Workspace::default())
         .setup(|app| {
             use tauri::Manager;
+            // The window is built here, not in tauri.conf.json, for one
+            // switch: BATTUTA_EPHEMERAL_STORAGE=1 gives the WebView an
+            // in-memory data store (incognito), so localStorage — the
+            // recovered session, settings, plugin state — IndexedDB and
+            // caches vanish with the process and the user's own storage is
+            // never opened. The shell smoke sets it on every launch: before,
+            // each run left its test scores in the user's session, to be
+            // erased by hand (2026-09-16).
+            let ephemeral = std::env::var("BATTUTA_EPHEMERAL_STORAGE").as_deref() == Ok("1");
+            if ephemeral {
+                eprintln!("[shell] storage: ephemeral (BATTUTA_EPHEMERAL_STORAGE=1) — nothing this run stores survives it");
+            }
+            tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::default())
+                .title("battuta")
+                .inner_size(1280.0, 860.0)
+                .incognito(ephemeral)
+                .build()?;
             spawn_midi(app.app_handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![bench_echo, bench_report, js_log, open_score, save_score, save_score_as, export_file, file_mtime, confirm_dialog, midi_open_outputs, midi_close_outputs, midi_send, initial_score, workspace_pick_folder, workspace_open_folder, workspace_read_dir, workspace_read_file, workspace_watch, workspace_unwatch])
-        .on_page_load(|webview, _| {
+        .on_page_load(|webview, payload| {
+            // Fired at Started and at Finished; the probes below must be
+            // scheduled once — twice, the second copy of probe3 found the
+            // view already switched and logged a FAILED line every run.
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+                return;
+            }
             eprintln!("[shell] page loaded: {}", webview.url().map(|u| u.to_string()).unwrap_or_default());
             // Headless shell self-test: exercise the save command end to end.
             if let Ok(test_file) = std::env::var("BATTUTA_SHELL_TEST_FILE") {
@@ -519,65 +547,117 @@ fn main() {
                    if (inv) inv('js_log', { msg: 'probe: __TAURI__=' + (window.__TAURI__ ? 'present' : 'MISSING') + ' tiles=' + document.querySelectorAll('.tile').length }); \
                  }, 3000);",
             );
-            // probe3: playback end to end — switch to page view (which wakes
-            // the playback plugin: its lazy chunk, then Tone's, must resolve
-            // over tauri://), press play, and wait for the first note to
-            // light. The player loads the Salamander mp3s through
-            // decodeAudioData before it starts, so a lit note also proves
-            // WebKitGTK's gstreamer mp3 support on this system — the check
-            // the old __SAMPLE_URL__ hook made, now through the real UI
-            // (slice 7b moved the samples into a plugin, which may not set
-            // globals). Without a user gesture the context stays suspended,
-            // so nothing sounds; the schedule and the highlight run anyway.
-            let _ = webview.eval(
-                "setTimeout(() => { \
-                   const inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke; \
-                   if (!inv) return; \
-                   const byText = (t) => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === t); \
-                   const pv = byText('page view'); \
-                   if (!pv) { inv('js_log', { msg: 'probe3: playback FAILED: no page view button' }); return; } \
-                   pv.click(); \
-                   const t0 = Date.now(); \
-                   const step = () => { \
-                     const toggle = document.querySelector('[data-player-toggle]'); \
-                     if (toggle && !toggle.dataset.probed && document.querySelector('.pages .page svg')) { toggle.dataset.probed = '1'; toggle.click(); } \
-                     const lit = document.querySelectorAll('.pages g.playing').length; \
-                     const tm = window.__PLAYBACK__ ? window.__PLAYBACK__.events.length : 0; \
-                     if (lit > 0) { inv('js_log', { msg: 'probe3: playback ok (plugin + Tone chunks loaded over tauri://, piano decoded, ' + tm + ' timemap events, ' + lit + ' lit)' }); return; } \
-                     const notice = document.querySelector('[data-notice]'); \
-                     if (notice && notice.textContent.includes('playback failed')) { inv('js_log', { msg: 'probe3: playback FAILED: ' + notice.textContent.trim() }); return; } \
-                     if (Date.now() - t0 > 9000) { inv('js_log', { msg: 'probe3: playback FAILED: timeout (toggle=' + Boolean(toggle) + ' timemap=' + tm + ')' }); return; } \
-                     setTimeout(step, 250); \
-                   }; \
-                   step(); \
-                 }, 4000);",
-            );
-            // probe4: the workspace service end to end — with
-            // BATTUTA_WORKSPACE_TEST_DIR set the pick returns that folder
-            // without a dialog; list it, refuse a read outside the roots,
-            // watch it, and report the first change the smoke script makes.
-            let _ = webview.eval(
-                "setTimeout(() => { \
-                   const inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke; \
-                   const listen = window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.listen; \
-                   if (!inv || !listen) return; \
-                   inv('workspace_pick_folder', {}) \
-                     .then((root) => { if (!root) throw new Error('no folder picked'); return inv('workspace_read_dir', { path: root }).then((entries) => ({ root, entries })); }) \
-                     .then(({ root, entries }) => inv('workspace_read_dir', { path: '/' }).then( \
-                         () => { throw new Error('a read outside the roots was allowed'); }, \
-                         () => ({ root, entries }))) \
-                     .then(({ root, entries }) => { \
-                       let reported = false; \
-                       listen('workspace-change', (e) => { \
-                         if (reported) return; reported = true; \
-                         inv('js_log', { msg: 'probe4: workspace ok (' + entries.length + ' entries, scoped, change ' + e.payload.kind + ' ' + String(e.payload.path).split('/').pop() + ')' }); \
-                       }); \
-                       return inv('workspace_watch', { path: root }); \
-                     }) \
-                     .then((id) => inv('js_log', { msg: 'probe4: watching #' + id })) \
-                     .catch((e) => inv('js_log', { msg: 'probe4: workspace FAILED: ' + e })); \
-                 }, 5000);",
-            );
+            // probes 3–5 drive the REAL UI (page view + play, a folder pick, the
+            // folder view). They run only under the shell smoke: a normal launch
+            // must never switch views, sound a note or open a folder by itself
+            // (2026-09-16 — the user saw exactly that).
+            if std::env::var("BATTUTA_SHELL_TEST_FILE").is_ok() {
+                // probe3: playback end to end — switch to page view (which wakes
+                // the playback plugin: its lazy chunk, then Tone's, must resolve
+                // over tauri://), press play, and wait for the first note to
+                // light. The player loads the Salamander mp3s through
+                // decodeAudioData before it starts, so a lit note also proves
+                // WebKitGTK's gstreamer mp3 support on this system — the check
+                // the old __SAMPLE_URL__ hook made, now through the real UI
+                // (slice 7b moved the samples into a plugin, which may not set
+                // globals). Without a user gesture the context stays suspended,
+                // so nothing sounds; the schedule and the highlight run anyway.
+                let _ = webview.eval(
+                    "setTimeout(() => { \
+                       const inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke; \
+                       if (!inv) return; \
+                       const byText = (t) => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === t); \
+                       const pv = byText('page view'); \
+                       if (!pv) { inv('js_log', { msg: 'probe3: playback FAILED: no page view button (buttons: ' + [...document.querySelectorAll('button')].map((b) => b.textContent.trim()).join(' | ') + '; tabs: ' + document.querySelectorAll('.tab').length + ')' }); return; } \
+                       pv.click(); \
+                       const t0 = Date.now(); \
+                       const step = () => { \
+                         const toggle = document.querySelector('[data-player-toggle]'); \
+                         if (toggle && !toggle.dataset.probed && document.querySelector('.pages .page svg')) { toggle.dataset.probed = '1'; toggle.click(); } \
+                         const lit = document.querySelectorAll('.pages g.playing').length; \
+                         const tm = window.__PLAYBACK__ ? window.__PLAYBACK__.events.length : 0; \
+                         if (lit > 0) { inv('js_log', { msg: 'probe3: playback ok (plugin + Tone chunks loaded over tauri://, piano decoded, ' + tm + ' timemap events, ' + lit + ' lit)' }); return; } \
+                         const notice = document.querySelector('[data-notice]'); \
+                         if (notice && notice.textContent.includes('playback failed')) { inv('js_log', { msg: 'probe3: playback FAILED: ' + notice.textContent.trim() }); return; } \
+                         if (Date.now() - t0 > 9000) { inv('js_log', { msg: 'probe3: playback FAILED: timeout (toggle=' + Boolean(toggle) + ' timemap=' + tm + ')' }); return; } \
+                         setTimeout(step, 250); \
+                       }; \
+                       step(); \
+                     }, 4000);",
+                );
+            }
+            if let Ok(test_dir) = std::env::var("BATTUTA_WORKSPACE_TEST_DIR") {
+                // probe4: the workspace service end to end — with
+                // BATTUTA_WORKSPACE_TEST_DIR set the pick returns that folder
+                // without a dialog; list it, refuse a read outside the roots,
+                // watch it, and report the first change the smoke script makes.
+                let _ = webview.eval(
+                    "setTimeout(() => { \
+                       const inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke; \
+                       const listen = window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.listen; \
+                       if (!inv || !listen) return; \
+                       inv('workspace_pick_folder', {}) \
+                         .then((root) => { if (!root) throw new Error('no folder picked'); return inv('workspace_read_dir', { path: root }).then((entries) => ({ root, entries })); }) \
+                         .then(({ root, entries }) => inv('workspace_read_dir', { path: '/' }).then( \
+                             () => { throw new Error('a read outside the roots was allowed'); }, \
+                             () => ({ root, entries }))) \
+                         .then(({ root, entries }) => { \
+                           let reported = false; \
+                           listen('workspace-change', (e) => { \
+                             if (reported) return; reported = true; \
+                             inv('js_log', { msg: 'probe4: workspace ok (' + entries.length + ' entries, scoped, change ' + e.payload.kind + ' ' + String(e.payload.path).split('/').pop() + ')' }); \
+                           }); \
+                           return inv('workspace_watch', { path: root }); \
+                         }) \
+                         .then((id) => inv('js_log', { msg: 'probe4: watching #' + id })) \
+                         .catch((e) => inv('js_log', { msg: 'probe4: workspace FAILED: ' + e })); \
+                     }, 5000);",
+                );
+                // probe5: the folder view end to end, through its real UI — the
+                // declared 📁 (matched by EITHER hook: the plugin may already be
+                // active from a remembered folder), the panel, a pick that lands on
+                // the TEST folder (the pick command returns it without a dialog),
+                // a score opened by clicking ITS row — matched by the folder's
+                // name in the row's title, because a folder remembered from an
+                // earlier run lists a two.mei of its own — marked open through
+                // ctx.documents, and the live external-change guard's notice once
+                // the smoke script appends to the file. The guard is REPORTED,
+                // not required ("guard yes" / "guard no (no notice within 6 s)").
+                let folder_name = std::path::Path::new(&test_dir).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                let js5 = format!(
+                    "setTimeout(() => {{ \
+                       const inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke; \
+                       if (!inv) return; \
+                       const FOLDER = {folder:?}; \
+                       const fail = (why) => inv('js_log', {{ msg: 'probe5: folder view FAILED: ' + why }}); \
+                       const t0 = Date.now(); \
+                       let picked = false, clicked = false, entries = 0, ready = 0; \
+                       const step = () => {{ \
+                         const panel = document.querySelector('[data-folder-view]'); \
+                         if (!panel) {{ \
+                           const t = document.querySelector('[data-slot-command=\"battuta.folder-view.toggle\"], [data-folder-toggle]'); \
+                           if (!t) {{ fail('no folder-view button in the header'); return; }} \
+                           if (!t.dataset.probe) {{ t.dataset.probe = '1'; t.click(); }} \
+                         }} \
+                         if (panel && !picked) {{ const pick = panel.querySelector('[data-folder-pick]'); if (pick) {{ picked = true; pick.click(); }} }} \
+                         const rows = [...document.querySelectorAll('[data-folder-entry]')].filter((r) => (r.title || '').indexOf('/' + FOLDER + '/') >= 0); \
+                         if (rows.length) entries = rows.length; \
+                         const two = rows.find((r) => r.dataset.folderEntry === 'two.mei'); \
+                         if (two && !clicked) {{ clicked = true; two.click(); }} \
+                         const marked = Boolean(two && two.hasAttribute('data-folder-open')); \
+                         const notice = document.querySelector('[data-notice]'); \
+                         const guard = Boolean(notice && notice.textContent.indexOf('changed on disk') >= 0); \
+                         if (marked && !ready) ready = Date.now(); \
+                         if (marked && (guard || Date.now() - ready > 8000)) {{ inv('js_log', {{ msg: 'probe5: folder view ok (' + entries + ' entries, opened two.mei, marked open, guard ' + (guard ? 'yes' : 'no (no notice within 8 s)') + ')' }}); return; }} \
+                         if (Date.now() - t0 > 14000) {{ fail('timeout (picked=' + picked + ' clicked=' + clicked + ' entries=' + entries + ' marked=' + marked + ')'); return; }} \
+                         setTimeout(step, 250); \
+                       }}; \
+                       step(); \
+                     }}, 7500);",
+                    folder = folder_name
+                );
+                let _ = webview.eval(&js5);
+            }
             let _ = webview.eval(
                 "setTimeout(() => { \
                    const inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke; \

@@ -139,7 +139,16 @@ export function Slot({ store, name, onCommand, plugins }: { store: SlotStore; na
 }
 
 const BOTTOM: React.CSSProperties = { position: "fixed", left: 0, right: 0, bottom: 24, zIndex: 32, background: "#1f2733", color: "#dde", borderTop: "1px solid #3a4656", maxHeight: "40vh", overflow: "auto" };
-const SIDE: React.CSSProperties = { position: "fixed", top: 0, right: 0, bottom: 24, width: 280, zIndex: 32, background: "#fff", borderLeft: "1px solid #e3e7ec", overflow: "auto" };
+/**
+ * The side area: on the LEFT, as most applications put a file view, and
+ * BELOW the app header — its top is the header's measured height, which
+ * the App publishes as `--battuta-header-h` (2026-09-16; the first side
+ * panel found the area starting under the header, folder-view §7.1). It
+ * does not overlay the score: the App gives `<main>` a matching left
+ * margin while a side panel is up, so the editor is pushed right.
+ */
+export const SIDE_PANEL_WIDTH = 280;
+const SIDE: React.CSSProperties = { position: "fixed", left: 0, top: "var(--battuta-header-h, 83px)", bottom: 24, width: SIDE_PANEL_WIDTH, zIndex: 32, background: "#fff", borderRight: "1px solid #e3e7ec", overflow: "auto" };
 
 export function Panels({ store, side }: { store: PanelStore; side: PanelSide }) {
   const panels = useStore(store.panels).filter((p) => p.side === side);

@@ -13,6 +13,7 @@
  *   { manifest: mine, load: () => import("@battuta/plugin-mine") },
  */
 import type { PluginEntry } from "@battuta/api";
+import { manifest as folderView } from "@battuta/plugin-folder-view/manifest";
 import { manifest as formats } from "@battuta/plugin-formats/manifest";
 import { manifest as harmony } from "@battuta/plugin-harmony/manifest";
 import { manifest as lyrics } from "@battuta/plugin-lyrics/manifest";
@@ -27,4 +28,5 @@ export const BUILTIN_PLUGINS: readonly PluginEntry[] = [
   { manifest: harmony, load: () => import("@battuta/plugin-harmony") },
   { manifest: playback, load: () => import("@battuta/plugin-playback") },
   { manifest: formats, load: () => import("@battuta/plugin-formats") },
+  { manifest: folderView, load: () => import("@battuta/plugin-folder-view") },
 ];
