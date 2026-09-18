@@ -1,6 +1,6 @@
 {
   "name": "@battuta/plugin-lyrics",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "license": "AGPL-3.0-only",
   "description": "The lyrics lane: type syllables at the caret, space or enter advances to the next note, - hyphenates a word across notes.",
   "private": true,

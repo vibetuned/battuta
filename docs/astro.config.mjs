@@ -69,7 +69,7 @@ export default defineConfig({
         },
         {
           label: "Working with scores",
-          items: [{ slug: "guide/arranging" }, { slug: "guide/playback" }, { slug: "guide/files" }],
+          items: [{ slug: "guide/arranging" }, { slug: "guide/playback" }, { slug: "guide/pitch-reference" }, { slug: "guide/files" }, { slug: "guide/folder-view" }],
         },
         {
           label: "Reference",

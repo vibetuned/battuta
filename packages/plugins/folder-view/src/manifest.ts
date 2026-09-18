@@ -29,14 +29,17 @@ export const SETTING_FOLDER = "folder";
 export const manifest: PluginManifest = {
   id: "battuta.folder-view",
   name: "Folder view",
-  version: "0.1.0",
+  version: "1.0.0",
   description: "A side panel listing the scores in a folder you opened: click one to open it, see which are already open and which have unsaved changes, and watch the list follow the folder as files are added, changed or removed.",
   // ^0.1.15 is the version that carries what a folder view needs and
   // cannot make itself, all of it from slice 9a: `ctx.workspace`
   // (available, pickFolder, openFolder, readDir, openDocument, watch),
   // `ctx.documents` with `path` and `dirty` on each, and the `workspace`
   // capability being offered at all.
-  engines: { battuta: "^0.1.15" },
+  // ^1.0.0 — the contract as released with battuta 0.1.0 (2026-09-18). The
+  // notes above name what of it this plugin needs and the 0.1.x number
+  // that first carried it; the range is the release.
+  engines: { battuta: "^1.0.0" },
   activationEvents: [
     // The 📁 (a declared slot item, below). The registry fires
     // `onCommand:` implicitly when a declared item is clicked; declaring

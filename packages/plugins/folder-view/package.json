@@ -1,6 +1,6 @@
 {
   "name": "@battuta/plugin-folder-view",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "license": "AGPL-3.0-only",
   "description": "A side panel listing the scores in a folder you opened: click to open, open tabs marked, unsaved ones starred, and the list follows the disk as it changes.",
   "private": true,

@@ -29,14 +29,17 @@ export const TEMPO_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 export const manifest: PluginManifest = {
   id: "battuta.playback",
   name: "Playback",
-  version: "0.1.0",
+  version: "1.0.0",
   description: "The page-view player: play/pause, stop, speed, MIDI out and transpose, a progress bar that seeks, a sampled piano on the host's AudioContext — and the playback-MIDI export, the same performance written to a file.",
   // ^0.1.11 is the version that carries everything this plugin plays on:
   // `ctx.audio` (unlock/context/timeAt), `ctx.query.timemap()` and
   // `notation()`, `ctx.view.highlight` / `clearHighlight`, the export half
   // of `formats`, and `onView:` actually fired. All of it landed in 7a,
   // built against this plugin as its named consumer.
-  engines: { battuta: "^0.1.12" },
+  // ^1.0.0 — the contract as released with battuta 0.1.0 (2026-09-18). The
+  // notes above name what of it this plugin needs and the 0.1.x number
+  // that first carried it; the range is the release.
+  engines: { battuta: "^1.0.0" },
   activationEvents: [
     // Page view is where the player lives: entering it is what the row is
     // for, and a user who never opens page view never loads any of this.

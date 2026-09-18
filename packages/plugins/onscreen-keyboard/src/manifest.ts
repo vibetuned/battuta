@@ -38,7 +38,7 @@ export const SETTING_OPEN = "open";
 export const manifest: PluginManifest = {
   id: "battuta.onscreen-keyboard",
   name: "On-screen keyboard",
-  version: "0.1.0",
+  version: "1.0.0",
   description: "A touch panel that projects the keymap: one button per action, sticky ctrl-free modifier latches, a digit pad, and a two-octave piano that enters notes through the MIDI service.",
   // ^0.1.4 rather than ^0.1.0: this plugin needs `ctx.actions` (0.1.1),
   // manifest-declared slot items (0.1.2), `ctx.activatedBy`,
@@ -46,7 +46,10 @@ export const manifest: PluginManifest = {
   // overriding a declared one (0.1.3), and `dimUntilActive` (0.1.4).
   // Pinning the range it actually uses is what makes the engine check
   // worth running.
-  engines: { battuta: "^0.1.4" },
+  // ^1.0.0 — the contract as released with battuta 0.1.0 (2026-09-18). The
+  // notes above name what of it this plugin needs and the 0.1.x number
+  // that first carried it; the range is the release.
+  engines: { battuta: "^1.0.0" },
   activationEvents: [
     // A touch-first device gets the panel without being asked, exactly as
     // 0.0.3 did from `matchMedia("(pointer: coarse)")` — the difference is

@@ -146,6 +146,23 @@ notice.
 
 ## 7. Dead ends
 
+- **A trace drawn as one polyline.** Consecutive voiced frames an octave
+  apart — a new note, or an octave error — were joined by a vertical wall
+  through the strip and across the tile. The pen now lifts on a leap of
+  more than six semitones (`LEAP_SEMITONES`), so the trace reads as note
+  segments. Found while shooting the docs, together with the bars: the
+  written notes of the OTHER staff were drawn on the picked staff's axis,
+  so a bass eighth appeared as a faint bar under the treble trace; the
+  overlay now fits through and draws only the notes whose head lies in
+  the picked staff's band.
+- **"The top voice" as the highest pitch per onset.** The docs' synthesized
+  take (`docs/scripts/build-shots.mjs`) first sang whatever was highest at
+  each onset, which where the melody rests or holds is the accompaniment
+  a fifth or more below — the trace dived to the bass eighths and made the
+  plugin look wrong. A singer does not drop there: an onset more than
+  seven semitones under the previous kept note is skipped. The e2e's take
+  keeps the simple rule, because its deviation check takes the nearest
+  written pitch and is unaffected.
 - **Unlocking only on the button.** The first e2e run failed with "audio
   is not available": Playwright sets the file input directly, no click
   ever ran `unlock`, and the host creates the context on the first

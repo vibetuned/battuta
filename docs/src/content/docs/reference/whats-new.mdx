@@ -11,6 +11,52 @@ A user-facing digest. The full engineering record — every phase, every fix, ev
 probed Verovio behaviour — lives in
 [CHANGELOG.md](https://github.com/vibetuned/battuta/blob/main/CHANGELOG.md).
 
+## 1.0.0 — 2026-09-18
+
+The first stable version. Underneath, battuta became a **host**: most
+features are now plugins, loaded only when something they declared
+happens, with a Plugins tab to turn each one off. Nothing about your
+scores changed — with every plugin off, an MEI file saves byte-identical.
+[Plugins →](../plugins/)
+
+### New
+
+- **Pitch reference** (🎙): load a recording of a score and see its pitch
+  traced over every measure and over the whole file, against the written
+  notes — where the take is sharp, flat, early or late, in cents. Play the
+  take, or the written notes through MIDI, from a playhead that follows
+  the caret. Detected in the editor; nothing is uploaded.
+  [Pitch reference →](../../guide/pitch-reference/)
+- **Folder view** (📁, desktop app): the scores in a folder you opened, in
+  a panel on the left, click to open; the list follows the disk, and a
+  score you have open that changes on disk is announced the moment it
+  happens. [Folder view →](../../guide/folder-view/)
+- **The Plugins tab** in the shortcut editor: every plugin with a switch
+  and its state; off is immediate and remembered.
+  [Plugins →](../plugins/)
+
+### Changed
+
+- **Panels push, never cover.** The side panel sits on the left below the
+  header and moves the score right; a bottom panel pads the score so the
+  last measures stay reachable.
+- **MIDI playback delivers in order.** Note-offs before note-ons at the
+  same instant, whatever the timer does, so a synth is never handed a
+  note it cannot release. battuta still sends plain notes on channel 1 and
+  never a program change — what sounds is your synth's choice.
+  [Playback →](../../guide/playback/#playing-through-midi-devices)
+- **The playback controls, the lyrics and harmony lanes, the reflection
+  cycle, the on-screen keyboard and the format converters** are plugins
+  now. Same keys, same behaviour; each can be turned off.
+
+### For plugin authors
+
+- `@battuta/api` is **1.0.0**. Manifests, activation events, commands as
+  data, the query facade, slots, panels, lanes, overlays, formats, the
+  audio, MIDI, view and workspace services — the surface is pinned by a
+  report and grows one question at a time.
+  [Writing a plugin →](../writing-a-plugin/)
+
 ## 0.0.3 — 2026-09-12
 
 A quality-of-life round: ten requests from the first release users, plus two
@@ -200,7 +246,7 @@ editing, articulations and ornaments, voices, voltas, tuplets, harmony lanes and
 rebindable keymap.
 
 <Aside type="note" title="Version numbers">
-battuta is pre-1.0 and moves in feature rounds rather than on a release calendar.
-The guide describes 0.0.2, the current release. If something here is missing from
+battuta moves in feature rounds rather than on a release calendar.
+The guide describes 1.0.0, the current release. If something here is missing from
 your build, update — 0.0.1 predates everything on this page.
 </Aside>

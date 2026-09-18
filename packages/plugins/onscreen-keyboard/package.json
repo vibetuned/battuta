@@ -1,6 +1,6 @@
 {
   "name": "@battuta/plugin-onscreen-keyboard",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "license": "AGPL-3.0-only",
   "description": "The on-screen keyboard: a touch panel that projects the union keymap — one button per action, sticky modifier latches, and a two-octave piano registered as a virtual MIDI input.",
   "private": true,

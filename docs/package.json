@@ -1,6 +1,6 @@
 {
   "name": "@battuta/docs",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "private": true,
   "license": "AGPL-3.0-only",
   "description": "battuta user guide \u2014 Astro Starlight site; notation figures rendered by Verovio, icons rasterised by cairo",

@@ -33,12 +33,15 @@ export const DEFAULT_TEMPO = 120;
 export const manifest: PluginManifest = {
   id: "battuta.pitch-reference",
   name: "Pitch reference",
-  version: "0.1.0",
+  version: "1.0.0",
   description: "Load a recording of the score and see its pitch traced over every measure and over the whole file, with the written notes on the same axis — where the take is sharp, flat, early or late; play the take, or the written notes through MIDI, from the same playhead.",
   // ^0.1.16 is the version that carries `ctx.overlays` (slice 10a, built
   // against this plugin as its consumer) and the staff context types the
   // pitch axis is read from; `ctx.audio` (7a) decodes the file.
-  engines: { battuta: "^0.1.16" },
+  // ^1.0.0 — the contract as released with battuta 0.1.0 (2026-09-18). The
+  // notes above name what of it this plugin needs and the 0.1.x number
+  // that first carried it; the range is the release.
+  engines: { battuta: "^1.0.0" },
   activationEvents: [
     // The 🎙 (a declared slot item, below). The registry fires
     // `onCommand:` implicitly when a declared item is clicked; declaring

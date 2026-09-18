@@ -15,23 +15,27 @@ it. Verovio does all notation rendering — battuta never draws notation.
 
 ## Status
 
-**0.0.3 released (2026-09-12).** The editor is feature-complete for its
-v1 scope — tiled Verovio rendering, text-editor caret and selection,
-reversible commands with byte-identical undo, note entry (keyboard, MIDI
-and an on-screen keyboard), copy/paste with the duration validator,
-context editing, articulations and ornaments, voices, voltas, tuplets,
-harmony and lyrics lanes, staff groups, a rebindable keymap, import of
-every format Verovio reads and export of every one it writes, playback
-to the built-in piano or to MIDI devices, session restore — and packaged
-for Linux (deb + AppImage, apt repository), macOS (signed and notarized
-universal dmg, Homebrew cask) and Windows (NSIS installer, winget), each
-carrying the app icon and registering the `.mei` file association.
+**1.0.0 released (2026-09-18).** The first stable version. The editor is
+a **host**: tiles, caret, selection, reversible commands with
+byte-identical undo, note entry, copy/paste with the duration validator,
+context editing, the keymap and the score on disk — and around it, eight
+plugins on declared extension points, loaded only when something they
+declared happens: the reflection cycle, the on-screen keyboard, the
+lyrics and harmony lanes, playback (a sampled piano or your MIDI
+devices, and the playback-MIDI export), the format converters (every
+format Verovio reads and writes), a folder view with live file watching
+(desktop), and the pitch reference — a recording's pitch traced over the
+score, with a playhead that follows the caret and plays the take or the
+written notes. `@battuta/api` 1.0.0 is the contract, and every package —
+application, core, api, plugins — carries the one number; every plugin ships a
+README (how to use it) and a BUILDING (how it was built). Packaged for
+Linux (deb + AppImage, apt repository), macOS (signed and notarized
+universal dmg, Homebrew cask) and Windows (NSIS installer, winget).
 
-Phases 0–8 are done; the full record, phase by phase, lives in
-[CHANGELOG.md](CHANGELOG.md). Next up: the extension architecture
-(Phase 9, v0.1.0) — features become plugins and the editor becomes a
-host, with reference layers for transcription and OMR correction
-arriving as its first overlay plugins — see [PLANNING.md](PLANNING.md).
+Phases 0–9 are done; the full record, phase by phase, lives in
+[CHANGELOG.md](CHANGELOG.md). Next: the second overlay plugins — the
+piano-roll reference layer and OMR correction — planned against API
+surface only in [PLANNING.md](PLANNING.md).
 
 ## Layout
 

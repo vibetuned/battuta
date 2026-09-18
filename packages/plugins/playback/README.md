@@ -38,7 +38,7 @@ plugin appears in the shortcut editor or on the on-screen keyboard.
 | `midiTranspose` | settings | Semitones added to the MIDI sends and to the playback-MIDI export (±12 offered, ±24 accepted). Default 0. Never applied to the piano. |
 | — | storage | nothing |
 
-All three were editor settings until 0.1.0 and are carried into this
+All three were editor settings until 1.0.0 and are carried into this
 plugin's namespace once, automatically, the first time you run this
 version.
 

@@ -90,6 +90,24 @@
       "alt": "The note being sounded lights up as the score plays — audio and highlight come from the same timeline.",
       "width": 900,
       "height": 380
+    },
+    {
+      "name": "pitch-reference",
+      "alt": "The pitch reference panel: the controls — load, ▶ song and ▶ score, bar 1, the recorded tempo, the transposition, on the score — above the strip: the waveform, a tick per measure, the written notes as blue bars, the recording's pitch as the yellow trace, the dashed line where bar 1 begins and the white playhead.",
+      "width": 1280,
+      "height": 162
+    },
+    {
+      "name": "pitch-reference-tiles",
+      "alt": "The same recording over the measures in edit view: the trace sits on the staff nearest its pitch, fitted through that measure's noteheads, with the written notes as faint bars for their length — a note held short stops early, a sharp one runs above its head.",
+      "width": 1248,
+      "height": 245
+    },
+    {
+      "name": "folder-view",
+      "alt": "The folder view on the left, the score pushed right to make room: the folder's name and the … button to pick another, sub-folders that open in place (Schumann expanded), and a row per .mei score — click one to open it.",
+      "width": 640,
+      "height": 300
     }
   ]
 }

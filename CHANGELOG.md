@@ -9,7 +9,7 @@ with reference layers and OMR folded into it — stays in
 decision, one per slice as it closes — is the unreleased section
 below.
 
-## 0.1.0 — unreleased (Phase 9 — Extension architecture)
+## 1.0.0 — 2026-09-18 (Phase 9 — Extension architecture)
 
 The plan — extension points, host API, the ten slices, exit criteria —
 is in [PLANNING.md](PLANNING.md). What lands here: each decision as it
@@ -55,6 +55,30 @@ is taken, and each slice as it closes, with the `App.tsx` line count
   refusals) and the query test extended; editor 122, api 18, plugins 105;
   `verify-phase5` 222 (its two harmony hooks now read `select[data-lanes]`; one flaky voice-navigation check in a back-to-back run passed on its own), `verify-lyrics` 26, `verify-app` 18, the keyboard 25, all green.
   `App.tsx` **3,117 → 3,109**; initial chunk **599.0 kB** (ceiling 605.5).
+- **Screenshots of the folder view and the pitch reference in the guide
+  (2026-09-18).** `docs/scripts/build-shots.mjs` grew three shots at the
+  end of its run, generated like every other: the pitch reference panel and
+  a row of tiles under its trace, from a take synthesized from the score's
+  own timemap and sung a little human (a slow vibrato, notes a few cents
+  off and a few ms late) so the trace reads as a take; and the folder view
+  listing a folder, which the browser cannot have — so the shot gives the
+  workspace service a bridge-shaped fake answering the shell's own
+  commands, and only the folder is invented. Embedded with `<Shot>` in the
+  two guide pages; every shot regenerated at the released UI. The two
+  pages were reachable only from What's new: they joined the sidebar's
+  *Working with scores* group (beside playback and files), the landing
+  page's cards, and the tour's header table (the 📁 and the 🎙).
+- **Released 1.0.0 (2026-09-18).** The first stable version, tagged by the
+  user, and ONE number for everything: the application (from 0.0.3), core
+  (from 0.0.0), the docs site (from 0.0.1), `@battuta/api` (from 0.1.18 —
+  the contract the phase set out to make, promoted as its exit criterion
+  says, every plugin's manifest asking for `^1.0.0`) and the eight plugins
+  (from the 0.1.0 they were born at and never moved from — the user
+  noticed). The plan had named the application's release 0.1.0; the user
+  chose to align it with the contract, so the phase's heading here carries
+  the number that shipped. The surface report is rewritten at 1.0.0.
+  DESIGN.md's *Host and plugins* section is written from the notes
+  accumulated slice by slice, which closes the phase's documents.
 - **"▶ score" beside "▶ song" (2026-09-18).** The user's one missing piece
   on trying it: the written notes, plainly, through MIDI, from the same
   playhead. `src/scorePlayer.ts` hands every note from the playhead on to

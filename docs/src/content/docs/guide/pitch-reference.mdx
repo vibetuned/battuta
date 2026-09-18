@@ -6,6 +6,7 @@ sidebar:
 ---
 
 import { Aside } from "@astrojs/starlight/components";
+import Shot from "../../../components/Shot.astro";
 
 You have the score and you have a recording of it — your own take, a
 student's, a performance you are transcribing. The pitch reference puts
@@ -29,6 +30,8 @@ score, and is forgotten when you close battuta. What is remembered is the
 alignment you settled on, per score (see below).
 
 ## The strip
+
+<Shot name="pitch-reference" caption="The panel: the controls above, the whole recording below — waveform, measure ticks, the written notes in blue, the trace in yellow." />
 
 The whole recording, left to right:
 
@@ -102,6 +105,8 @@ notes' onsets. The written notes appear as faint bars for their length,
 so a note held too short or too long shows as a trace that stops early or
 runs on. Uncheck it to see the notation alone; the panel keeps the
 recording.
+
+<Shot name="pitch-reference-tiles" caption="The trace over the measures, on the noteheads: where the take was sharp, flat, early or late is visible at the note." />
 
 <Aside type="caution" title="One voice at a time">
 The detector reads one pitch at a time, so it wants a voice or a single

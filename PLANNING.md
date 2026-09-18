@@ -358,8 +358,12 @@ Slice 10b (2026-09-18) closed the phase's last plugin the same day:
 context, plain YIN, an offset and a rate against the score's own tempo,
 the trace on every tile through the overlays point and fitted onto the
 noteheads — with `App.tsx` and core untouched, which is the claim the
-phase was run to test. **What remains is the phase exit: DESIGN.md's
-*Host and plugins* section, `@battuta/api` 1.0, the 0.1.0 release.**
+phase was run to test. **1.0.0 was released on 2026-09-18** — one number
+for everything: the application, core, the docs, `@battuta/api` (every
+plugin asking for `^1.0.0`) and the eight plugins. The plan below says
+0.1.0 for the application; the user chose to align it with the contract
+at release. DESIGN.md's *Host and plugins* section is written, and the
+phase's documents are closed.
 
 From here on slices are
 handed to sessions without the surrounding context, on purpose, to test

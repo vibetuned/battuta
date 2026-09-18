@@ -113,17 +113,24 @@ export function pitchRange(written: readonly WrittenNote[], frames: readonly Pit
   return { lo: Math.floor(lo) - 2, hi: Math.ceil(hi) + 2 };
 }
 
-/** The trace as SVG path data: a segment per run of voiced frames, gaps where the frame was unvoiced. */
+/** Between two consecutive voiced frames, a jump of more than this is a new note (or an octave error), not a glide: the pen lifts rather than draw a wall. */
+export const LEAP_SEMITONES = 6;
+
+/** The trace as SVG path data: a segment per run of voiced frames, gaps where the frame was unvoiced or the pitch leapt. */
 export function tracePath(frames: readonly PitchFrame[], x: (tMs: number) => number, y: (midi: number) => number): string {
   let d = "";
   let pen = false;
+  let last: number | null = null;
   for (const f of frames) {
     if (f.midi === null) {
       pen = false;
+      last = null;
       continue;
     }
+    if (pen && last !== null && Math.abs(f.midi - last) > LEAP_SEMITONES) pen = false;
     d += `${pen ? "L" : "M"}${x(f.t * 1000).toFixed(1)} ${y(f.midi).toFixed(2)}`;
     pen = true;
+    last = f.midi;
   }
   return d;
 }

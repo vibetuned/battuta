@@ -48,7 +48,7 @@ Verovio-readable format, MIDI/SVG/Humdrum/Plaine & Easie export — see
 [Files](../../guide/files/) — and, in 0.0.3, [lyrics](../../guide/harmony/#lyrics)
 and [playback through MIDI devices](../../guide/playback/#playing-through-midi-devices).
 Third-party plugins stay out of scope; the first-party extension
-architecture is what 0.1.0 builds.
+architecture is what 1.0.0 built.
 
 ## Rough edges
 
@@ -59,15 +59,16 @@ architecture is what 0.1.0 builds.
 
 ## Coming next
 
-**An extension architecture (0.1.0)** is the next round: features that
-would weigh the editor down become plugins and the editor becomes a host,
-so a capability you don't use costs you nothing. The first extractions are
-existing features — the on-screen keyboard, the lanes, playback, the format
-converters — which should change nothing you can see. The first feature
-BUILT on the host has landed: the [folder view](../../guide/folder-view/),
-a side panel over a folder of scores, which also brought **live file
-watching** — a score that changes on disk is now announced the moment it
-happens, not at the moment you save. Requests are always welcome:
+**The extension architecture shipped in 1.0.0**: features that would weigh
+the editor down are plugins and the editor is a host, so a capability you
+don't use costs you nothing — see [Plugins](../plugins/) and
+[What's new](../whats-new/). Next on the same points: a **piano-roll
+reference layer** (a MIDI take drawn behind the score, the way the
+[pitch reference](../../guide/pitch-reference/) draws a recording's pitch),
+**OMR correction** with the scanned source above each measure, and
+measure-by-measure alignment for the pitch reference, so a take with
+rubato lines up bar by bar. Third-party plugins stay out of scope.
+Requests are always welcome:
 [file yours](https://github.com/vibetuned/battuta/issues).
 
 The two research features arrive as the first plugins built on that host:

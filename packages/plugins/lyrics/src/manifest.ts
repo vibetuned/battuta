@@ -24,13 +24,16 @@ export const COMMAND_OPEN = "battuta.lyrics.open";
 export const manifest: PluginManifest = {
   id: "battuta.lyrics",
   name: "Lyrics lane",
-  version: "0.1.0",
+  version: "1.0.0",
   description: "Type syllables under the notes: space or enter advances to the next note, - hyphenates a word across several, and the verse is written into the MEI as <syl> inside <verse>.",
   // ^0.1.5 carries the lanes point itself: `contributes.lanes`,
   // `ctx.lanes`, `core.setSyl` and `ctx.query.lyricAt` all landed in slice
   // 5a. Pinning the range it actually uses is what makes the engine check
   // worth running.
-  engines: { battuta: "^0.1.5" },
+  // ^1.0.0 — the contract as released with battuta 0.1.0 (2026-09-18). The
+  // notes above name what of it this plugin needs and the 0.1.x number
+  // that first carried it; the range is the release.
+  engines: { battuta: "^1.0.0" },
   activationEvents: [
     // Picking the lane in the status bar. The host fires this for a
     // DECLARED lane whose spec nobody has registered yet, waits, and opens

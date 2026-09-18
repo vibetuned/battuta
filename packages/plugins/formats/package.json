@@ -1,6 +1,6 @@
 {
   "name": "@battuta/plugin-formats",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "license": "AGPL-3.0-only",
   "description": "Everything battuta reads and writes beyond MEI: MusicXML (plain and zipped), ABC, Plaine & Easie and Humdrum in; written-score MIDI, Humdrum and PAE out — through Verovio's Humdrum-enabled build in the plugin's own worker.",
   "private": true,

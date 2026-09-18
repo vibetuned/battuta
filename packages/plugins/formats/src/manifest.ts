@@ -65,7 +65,7 @@ const FORMAT_IDS = [...new Set([...IMPORT_FORMATS, ...EXPORT_FORMATS].map((f) =>
 export const manifest: PluginManifest = {
   id: ID,
   name: "Format converters",
-  version: "0.1.0",
+  version: "1.0.0",
   description: "MusicXML (plain and zipped), ABC, Plaine & Easie and Humdrum convert to MEI on open; MIDI (written score), Humdrum and Plaine & Easie are written back out. Verovio's Humdrum-enabled build, in this plugin's own worker, loaded on the first conversion.",
   // ^0.1.14 is the version that carries both halves of `formats` as a
   // plugin needs them: `contributes.imports` (extensions, text-or-bytes,
@@ -74,7 +74,10 @@ export const manifest: PluginManifest = {
   // from 8a — and `ctx.query.mei()`, which 8a's rehearsal did not need
   // because it had the session by closure and this plugin cannot
   // (POSTMORTEM-2026-09-16.md §7.1).
-  engines: { battuta: "^0.1.14" },
+  // ^1.0.0 — the contract as released with battuta 0.1.0 (2026-09-18). The
+  // notes above name what of it this plugin needs and the 0.1.x number
+  // that first carried it; the range is the release.
+  engines: { battuta: "^1.0.0" },
   // Opening a file of a claimed extension, or picking one of the three
   // export rows. Nothing else: no `onStartup` — a session that only ever
   // touches MEI never fetches the Humdrum build, which is the point of

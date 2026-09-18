@@ -15,9 +15,12 @@ export const COMMAND_CYCLE = "battuta.reflection.cycle";
 export const manifest: PluginManifest = {
   id: "battuta.reflection",
   name: "Reflection cycle",
-  version: "0.1.0",
+  version: "1.0.0",
   description: "shift+R cycles a block of music through its serial forms: prime → inversion → retrograde → retrograde inversion → prime.",
-  engines: { battuta: "^0.1.0" },
+  // ^1.0.0 — the contract as released with battuta 0.1.0 (2026-09-18). The
+  // notes above name what of it this plugin needs and the 0.1.x number
+  // that first carried it; the range is the release.
+  engines: { battuta: "^1.0.0" },
   // The key press is the only thing that can ever need this plugin: no
   // view, no format, no document predicate, no startup work. The registry
   // fires onCommand: implicitly when a contributed binding matches, so a

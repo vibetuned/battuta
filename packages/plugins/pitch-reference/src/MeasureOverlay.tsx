@@ -91,9 +91,15 @@ export function MeasureOverlay({ tile, state }: { tile: TileOverlayProps; state:
   const notes = s.written.filter((n) => n.measureId === tile.measureId);
   const picked = pickStaff(tile.staves, frames, notes);
   if (!picked) return null;
-  const heads = notes.flatMap((n) => {
+  // The measure's notes ON THIS STAFF — a head within the staff's band; the
+  // other staves' notes are neither fitted through nor drawn as bars.
+  const own = notes.filter((n) => {
     const b = tile.boxes[n.id];
-    return b && within(picked.staff.lines, b.y + b.height / 2) ? [{ midi: n.midi, y: b.y + b.height / 2 }] : [];
+    return b !== undefined && within(picked.staff.lines, b.y + b.height / 2);
+  });
+  const heads = own.map((n) => {
+    const b = tile.boxes[n.id]!;
+    return { midi: n.midi, y: b.y + b.height / 2 };
   });
   const axis = fitAxis(picked.axis, heads);
   const xOf = timeToX(win, notes, tile.boxes, tile.width);
@@ -103,7 +109,7 @@ export function MeasureOverlay({ tile, state }: { tile: TileOverlayProps; state:
   const first = voiced[0];
   return (
     <svg data-pitch-ref-measure data-frames={voiced.length} data-fit={axis.fit} data-staff={picked.staff.n} data-first-y={first && first.midi !== null ? axis.yOf(first.midi).toFixed(1) : ""} width={tile.width} height={tile.height} style={LAYER}>
-      {notes.map((n, i) => (
+      {own.map((n, i) => (
         <rect key={`${n.id}-${i}`} x={xOf(n.fromMs)} width={Math.max(1, xOf(n.toMs) - xOf(n.fromMs))} y={axis.yOf(n.midi) - 1.5} height={3} fill="rgba(60,120,220,0.22)" />
       ))}
       <path d={tracePath(frames, xAtWav, (m) => axis.yOf(m))} fill="none" stroke="#e0a000" strokeWidth={2} strokeLinejoin="round" opacity={0.9} />

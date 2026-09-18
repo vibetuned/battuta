@@ -1,6 +1,6 @@
 {
   "name": "@battuta/plugin-harmony",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "license": "AGPL-3.0-only",
   "description": "The harmony lanes: chord symbols above the staff and Roman numerals below, typed at the caret with completions.",
   "private": true,

@@ -11,7 +11,7 @@
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export const API_VERSION = "0.1.18";
+export const API_VERSION = "1.0.0";
 
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";

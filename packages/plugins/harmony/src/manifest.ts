@@ -35,7 +35,7 @@ export const LANES: Record<string, LaneContribution> = {
 export const manifest: PluginManifest = {
   id: "battuta.harmony",
   name: "Harmony lanes",
-  version: "0.1.0",
+  version: "1.0.0",
   description: "Chord symbols above the staff and Roman numeral analysis below: type at the caret, tab completes, enter commits and advances. Both are startid-anchored <harm> elements in the MEI.",
   // ^0.1.8 carries what harmony needs beyond the lanes point itself: the
   // `core.setHarm` message, `HarmKind` and `ctx.query.harmAt`. Two numbers
@@ -44,7 +44,10 @@ export const manifest: PluginManifest = {
   // changed what `core.setHarm` PROMISES — it used to refuse text the
   // grammar rejected and now writes what it is given, as `core.setSyl`
   // always did.
-  engines: { battuta: "^0.1.10" },
+  // ^1.0.0 — the contract as released with battuta 0.1.0 (2026-09-18). The
+  // notes above name what of it this plugin needs and the 0.1.x number
+  // that first carried it; the range is the release.
+  engines: { battuta: "^1.0.0" },
   // The lane box is the only way in — harmony has no key, and never had
   // one. A user who never picks a harmony lane loads none of this.
   activationEvents: [`onLane:${LANE_CHORD}`, `onLane:${LANE_RNA}`],

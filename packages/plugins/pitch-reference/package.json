@@ -1,6 +1,6 @@
 {
   "name": "@battuta/plugin-pitch-reference",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "license": "AGPL-3.0-only",
   "description": "A recording's pitch, detected with YIN and traced over every measure of the score and over the whole file, with the written pitch on the same axis — the first reference layer.",
   "private": true,

@@ -1,4 +1,4 @@
-// @battuta/api 0.1.18 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
+// @battuta/api 1.0.0 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
 
 // ---- ../dist/.tsbuildinfo
 {"version":"5.9.3"}
@@ -457,7 +457,7 @@ export interface FormatsService {
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export declare const API_VERSION = "0.1.18";
+export declare const API_VERSION = "1.0.0";
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";
 export type { Disposable } from "./disposable.js";
