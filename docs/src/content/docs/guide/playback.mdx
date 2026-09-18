@@ -34,7 +34,13 @@ it (120 bpm when unset). The speed select multiplies on top.
 
 Check **MIDI** in the player row and play sends note events to **every
 connected MIDI output** — a hardware synth, a DAW, the IAC bus — instead of
-sounding the built-in piano. It is the same performance: the expanded form,
+sounding the built-in piano. What goes on the wire is notes only — note-on
+and note-off on **channel 1**, one velocity, and "all notes off" when it
+stops. battuta never sends a program change, so the instrument you hear is
+whatever your synth or DAW has on the track, or the channel-1 part, that
+receives it; and since every output receives the same notes, a DAW that
+listens to more than one of them plays each note more than once. It is the
+same performance: the expanded form,
 merged ties, articulation gates, tempo and speed all apply identically, and
 the notation highlight keeps following. The **st** select beside the checkbox
 transposes the MIDI sends by that many semitones (±12, applied live — handy

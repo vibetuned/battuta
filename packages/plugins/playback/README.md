@@ -48,6 +48,13 @@ version.
   you seek to); playing just the block you selected is not built.
 - **No instrument choice, no volume, no mixer.** One sampled piano, one
   velocity. The MIDI box is the way to hear anything else.
+- **No program change, no channel choice.** On the wire battuta sends
+  note-on and note-off on channel 1 at one velocity, and "all notes off"
+  when it stops — nothing that names an instrument. What sounds is
+  whatever your synth or DAW has on the track or the channel-1 part that
+  receives it, and the sends go to EVERY connected output (and the
+  `battuta` virtual source in the desktop app), so a DAW that listens to
+  more than one of them hears each note more than once.
 - **Nothing is written to the score.** No playback markings, no cached
   timings — with every plugin off, your MEI is byte-identical.
 - **An edit stops it.** Every stamp in the schedule came from the

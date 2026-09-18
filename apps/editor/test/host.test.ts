@@ -58,6 +58,7 @@ function echoPlugin(): { entry: PluginEntry; state: { log: string[]; loads: numb
             });
             ctx.slots.add("header", { id: "echo-btn", render: () => null });
             ctx.panels.open({ id: "echo-panel", side: "bottom", title: "Echo", render: () => null });
+            ctx.overlays.add({ id: "echo-overlay", render: () => null });
             ctx.subscriptions.add({ dispose: () => state.log.push("disposed") });
             ctx.storage.set("count", (ctx.storage.get<number>("count") ?? 0) + 1);
             ctx.settings.set("greeting", "hi");
@@ -77,6 +78,7 @@ const fakeAdapter = (execute = vi.fn()): SessionAdapter & { execute: ReturnType<
   harmAt: (id, kind) => (id === "n1" && kind === "chord" ? "Cmaj7" : ""),
   timemap: async () => ({ events: [{ tstamp: 0, on: ["n1"] }, { tstamp: 500, off: ["n1"] }], notes: { n1: { pitch: 60, duration: 500 } }, idMap: {} }),
   notation: () => ({ ties: { n1: "n2" }, marks: { n1: ["slur"] } }),
+  eventIdAt: () => null,
   mei: () => '<mei meiversion="5.0"><music/></mei>',
   execute,
   pitchEventsIn: (block) => [[{ eventId: `e-${block.measureFrom}`, pitches: [{ pname: "c", oct: 4 }] }]],
@@ -216,7 +218,7 @@ describe("activation and commands", () => {
 });
 
 describe("off and on again", () => {
-  it("deactivates, fires every disposable, withdraws bindings/slots/panels, persists the switch", async () => {
+  it("deactivates, fires every disposable, withdraws bindings/slots/panels/overlays, persists the switch", async () => {
     const plugin = echoPlugin();
     const settings = memorySettings();
     const host = makeHost([plugin.entry], { settings });
@@ -224,11 +226,13 @@ describe("off and on again", () => {
     await flush();
     expect(host.slots.items.get().header.map((i) => i.id)).toEqual(["test.echo:echo-btn"]); // keyed by plugin, like a declared item
     expect(host.panels.panels.get().map((p) => p.id)).toEqual(["echo-panel"]);
+    expect(host.overlays.specs.get().map((o) => `${o.pluginId}:${o.id}`)).toEqual(["test.echo:echo-overlay"]);
 
     await host.registry.setEnabled("test.echo", false);
     expect(plugin.state.log.slice(-2)).toEqual(["deactivate", "disposed"]);
     expect(host.slots.items.get().header).toEqual([]);
     expect(host.panels.panels.get()).toEqual([]);
+    expect(host.overlays.specs.get()).toEqual([]);
     expect(host.keymap.get()["test.echo.say"]).toBeUndefined();
     expect(host.commands.ownerOf("test.echo.say")).toBeUndefined();
     expect(host.registry.info("test.echo")).toMatchObject({ state: "disabled", enabled: false });

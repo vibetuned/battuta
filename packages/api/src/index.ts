@@ -11,7 +11,7 @@
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export const API_VERSION = "0.1.15";
+export const API_VERSION = "0.1.18";
 
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";
@@ -22,10 +22,11 @@ export { toDisposable, DisposableStore } from "./disposable.js";
 export type { Version } from "./semver.js";
 export { parseVersion, satisfiesEngine } from "./semver.js";
 
-export type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKind, NotationFacts, NoteMark, ViewMode, EditorState, DocumentInfo, DocumentQueries } from "./document.js";
+export type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKind, NotationFacts, NoteMark, ClefContext, MeterContext, StaffContext, ViewMode, EditorState, DocumentInfo, DocumentQueries } from "./document.js";
 export type { Timemap, TimemapEvent, TimemapNote } from "./render.js";
 export type { AudioService } from "./audio.js";
 export type { HighlightCue, ViewService } from "./view.js";
+export type { OverlayBox, OverlayStaff, TileOverlayProps, OverlaySpec, OverlaysService } from "./overlays.js";
 export type { ExportContribution, ExportFile, ExportPayload, ImportContribution, ImportFile, FormatsService } from "./formats.js";
 export type { DirEntry, WatchEvent, WatchEventKind, WorkspaceService } from "./workspace.js";
 

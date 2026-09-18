@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
 import { RenderPool, type TileResult } from "./render/renderPool";
 import { keyMatches, type Keymap, type Layout } from "./keymap";
-import { host, useStore, Slot, Panels, SIDE_PANEL_WIDTH, LaneInput, laneFace, confirmDialog, tauriInvoke, blockOfEvents, rule, gate, modal, isMod, type ActionStep, type KeyEvent, type Outcome } from "./host";
+import { host, useStore, Slot, Panels, SIDE_PANEL_WIDTH, LaneInput, laneFace, TileOverlays, confirmDialog, tauriInvoke, blockOfEvents, rule, gate, modal, isMod, type ActionStep, type KeyEvent, type Outcome, type OverlayStore } from "./host";
 import { ShortcutEditor } from "./ShortcutEditor";
 import { loadSettings, saveSettings, detectLayout } from "./settings";
 import { DocumentSession } from "./session";
@@ -161,7 +161,7 @@ export const DEFAULT_ZOOM = 1;
  * matches the document re-renders; clean tiles are cache hits. After each
  * sync batch settles, onSettled fires (drives the edit-latency HUD).
  */
-function TileGrid({ session, version, pool, zoom, onRendered, onSettled, onLayout }: { session: DocumentSession; version: number; pool: RenderPool; zoom: number; onRendered: (r: TileResult) => void; onSettled: () => void; onLayout: () => void }) {
+function TileGrid({ session, version, pool, zoom, overlays, onRendered, onSettled, onLayout }: { session: DocumentSession; version: number; pool: RenderPool; zoom: number; overlays: OverlayStore; onRendered: (r: TileResult) => void; onSettled: () => void; onLayout: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [tiles, setTiles] = useState<ReadonlyMap<number, TileState>>(new Map());
   const [headers, setHeaders] = useState<ReadonlyMap<string, TileState>>(new Map());
@@ -369,9 +369,15 @@ function TileGrid({ session, version, pool, zoom, onRendered, onSettled, onLayou
   // Offsets can be negative (cropping a forced variant's padding above the
   // first staff); overflow:hidden keeps the crop, and rowTop covers all real
   // ink above the line, so no content is ever clipped.
-  const aligned = (t: TileState, rowTop: number, rowBoxH: number) => (
+  // The overlays point's lookups, stable per session: a tile's layer
+  // re-measures on its layout key, not on every grid render.
+  const staffNOf = useCallback((id: string) => session.staffRefById.get(id)?.staffN, [session]);
+  const contextOf = useCallback((measureIndex: number, n: number) => session.contexts[measureIndex]?.get(n), [session]);
+  const aligned = (t: TileState, rowTop: number, rowBoxH: number, index?: number) => (
     <div style={{ width: t.w * zoom, height: rowBoxH, overflow: "hidden", position: "relative" }}>
       <div style={{ position: "absolute", top: `${(rowTop - t.staffTop) * zoom}px`, width: t.w * zoom, height: t.h * zoom }} dangerouslySetInnerHTML={{ __html: t.svg }} />
+      {/* The overlays point (slice 10a): plugins draw over the tile here — above the SVG, below the caret — and nothing is mounted while no overlay is registered. A header cell has no index and no layer. */}
+      {index !== undefined && <TileOverlays store={overlays} measureIndex={index} measureId={session.score.measures[index]?.attrs["xml:id"] ?? null} layoutKey={`${t.displayKey}|${zoom}|${rowTop}|${rowBoxH}`} staffNOf={staffNOf} contextOf={contextOf} />}
     </div>
   );
 
@@ -400,7 +406,7 @@ function TileGrid({ session, version, pool, zoom, onRendered, onSettled, onLayou
                         m{index + 1}
                         {tile.cached ? " · cache" : ` · ${tile.ms.toFixed(1)} ms`}
                       </span>
-                      {aligned(tile, rowTop, rowBoxH)}
+                      {aligned(tile, rowTop, rowBoxH, index)}
                     </>
                   ) : (
                     <div className="placeholder" style={{ width: estimateW * zoom, height: rowBoxH }}>
@@ -1352,6 +1358,7 @@ export default function App() {
       blockOf: (ids) => blockOfEvents(session.index, ids),
       lyricAt: (id) => session.sylAt(id),
       harmAt: (id, kind) => session.harmAt(id, kind),
+      eventIdAt: (caret) => session.index.eventIdAt(caret) ?? null,
       timemap: async () => {
         if (!pool) throw new Error("the renderer is not ready");
         const { xml, expand } = session.serializeForPlayback();
@@ -2362,7 +2369,9 @@ export default function App() {
     // view. Margins clear the sticky header and the status bar.
     if (caretId !== lastScrolledCaret.current) {
       lastScrolledCaret.current = caretId;
-      if (gr.top < 70 || gr.bottom > window.innerHeight - 45) {
+      // …and the bottom panel area, whose height the host publishes (a caret behind a panel is as lost as one below the fold).
+      const bottomPanelH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--battuta-bottom-h")) || 0;
+      if (gr.top < 70 || gr.bottom > window.innerHeight - 45 - bottomPanelH) {
         g.scrollIntoView({ block: "center", behavior: "smooth" });
       }
     }
@@ -2788,13 +2797,13 @@ export default function App() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         ref={mainRef}
-        style={{ position: "relative", userSelect: "none", marginLeft: sidePanelUp ? SIDE_PANEL_WIDTH : 0 }}
+        style={{ position: "relative", userSelect: "none", marginLeft: sidePanelUp ? SIDE_PANEL_WIDTH : 0, paddingBottom: "var(--battuta-bottom-h, 0px)" }}
         data-caret={caretId ?? ""}
         data-selection={selection.length}
         data-block={block ? `${block.measureFrom}-${block.measureTo}/${block.staffFrom}-${block.staffTo}` : ""}
         data-entry={entryMode ? `${entryDur}${entryDots ? "." : ""}` : ""}
       >
-        {session && pool && view === "tiles" && <TileGrid key={activeId ?? -1} session={session} version={version} pool={pool} zoom={zoom} onRendered={onRendered} onSettled={onSettled} onLayout={onLayout} />}
+        {session && pool && view === "tiles" && <TileGrid key={activeId ?? -1} session={session} version={version} pool={pool} zoom={zoom} overlays={host.overlays} onRendered={onRendered} onSettled={onSettled} onLayout={onLayout} />}
         {session && pool && view === "pages" && <PageView key={`${activeId}-${version}`} session={session} pool={pool} />}
         {caretRect && view === "tiles" && <div className="caret" style={caretRect} />}
         {view === "tiles" && <LaneInput store={host.lanes} caretRect={caretRect} />}

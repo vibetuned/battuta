@@ -1,4 +1,4 @@
-// @battuta/api 0.1.15 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
+// @battuta/api 0.1.18 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
 
 // ---- ../dist/.tsbuildinfo
 {"version":"5.9.3"}
@@ -113,6 +113,7 @@ import type { MidiService } from "./midi.js";
 import type { ActionsService, KeymapEntry } from "./actions.js";
 import type { AudioService } from "./audio.js";
 import type { ViewService } from "./view.js";
+import type { OverlaysService } from "./overlays.js";
 import type { FormatsService } from "./formats.js";
 import type { WorkspaceService } from "./workspace.js";
 import type { LanesService } from "./lanes.js";
@@ -196,6 +197,8 @@ export interface PluginContext {
     readonly panels: {
         open(panel: PanelSpec): Disposable;
     };
+    /** The overlays point: draw over every measure tile in edit view, from the tile's measured boxes and staff lines — never on the SVG. */
+    readonly overlays: OverlaysService;
     /** Text lanes at the caret: register the spec of a lane you declared; open it from your own key. */
     readonly lanes: LanesService;
     /** The app's one AudioContext (capability "audio"): unlock it in your click, connect your own instrument, convert clocks with timeAt. */
@@ -271,7 +274,7 @@ export declare class DisposableStore implements Disposable {
  * `@battuta/api`, and the boundary test keeps it that way.
  */
 import type { CaretPosition, BlockSelection, PitchEvent, SylValue, HarmKind, NotationFacts } from "@battuta/core";
-export type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKind, NotationFacts, NoteMark } from "@battuta/core";
+export type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKind, NotationFacts, NoteMark, ClefContext, MeterContext, StaffContext } from "@battuta/core";
 import type { Timemap } from "./render.js";
 export type ViewMode = "tiles" | "pages";
 /** Caret and selections, in model coordinates. */
@@ -354,6 +357,13 @@ export interface DocumentQueries {
      * exports are its first consumers.
      */
     mei(): string | null;
+    /**
+     * The id of the event at a caret position — a note, chord or rest — or
+     * null when there is none (no document, an empty layer). Added
+     * 2026-09-18 for the pitch reference's playhead, which follows the caret
+     * to the same moment of the recording.
+     */
+    eventIdAt(caret: CaretPosition): string | null;
 }
 
 // ---- formats.d.ts
@@ -447,17 +457,18 @@ export interface FormatsService {
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export declare const API_VERSION = "0.1.15";
+export declare const API_VERSION = "0.1.18";
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";
 export type { Disposable } from "./disposable.js";
 export { toDisposable, DisposableStore } from "./disposable.js";
 export type { Version } from "./semver.js";
 export { parseVersion, satisfiesEngine } from "./semver.js";
-export type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKind, NotationFacts, NoteMark, ViewMode, EditorState, DocumentInfo, DocumentQueries } from "./document.js";
+export type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKind, NotationFacts, NoteMark, ClefContext, MeterContext, StaffContext, ViewMode, EditorState, DocumentInfo, DocumentQueries } from "./document.js";
 export type { Timemap, TimemapEvent, TimemapNote } from "./render.js";
 export type { AudioService } from "./audio.js";
 export type { HighlightCue, ViewService } from "./view.js";
+export type { OverlayBox, OverlayStaff, TileOverlayProps, OverlaySpec, OverlaysService } from "./overlays.js";
 export type { ExportContribution, ExportFile, ExportPayload, ImportContribution, ImportFile, FormatsService } from "./formats.js";
 export type { DirEntry, WatchEvent, WatchEventKind, WorkspaceService } from "./workspace.js";
 export type { SetPitchesMessage, SetSylMessage, SetHarmMessage, CommandMessage, CommandMessageType } from "./messages.js";
@@ -810,6 +821,63 @@ export interface MidiService {
     openOutputs(): Promise<MidiOutputs | null>;
 }
 
+// ---- overlays.d.ts
+/**
+ * The overlays extension point (slice 10a, 2026-09-18): what a plugin may
+ * DRAW over the notation in edit view — a layer per measure tile, above
+ * the score and below the host's own caret and selection, that never
+ * touches the SVG. The host measures the tile for the plugin: the boxes of
+ * its events and the lines of its staves with the context in force, all
+ * in the tile's own CSS pixels (zoom applied), so a plugin maps a pitch or
+ * a time to a place without knowing how Verovio laid the measure out.
+ *
+ * Draw-only: the layer takes no pointer events, so the host's hit-testing
+ * underneath is untouched, and it sits over the SVG's own highlights, so
+ * draw translucently. A plugin wanting a control puts it in a slot or a
+ * panel. Time is not in here: the timemap (`ctx.query.timemap()`) names
+ * each measure by the same engraved id, and its notes carry the pitches.
+ */
+import type { ReactNode } from "react";
+import type { Disposable } from "./disposable.js";
+import type { StaffContext } from "./document.js";
+/** A box in the tile's CSS pixels: origin at the tile's top-left, zoom applied. */
+export interface OverlayBox {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+/** One staff of the tile: the y of each of its lines, top to bottom, and the context in force (clef, key, meter). */
+export interface OverlayStaff {
+    n: number;
+    lines: readonly number[];
+    context: StaffContext;
+}
+/** What the host hands an overlay for one tile — measured again whenever the tile is laid out again (a render, a zoom, a reflow). */
+export interface TileOverlayProps {
+    /** 0-based index of the measure the tile shows. */
+    measureIndex: number;
+    /** The measure's engraved id — what the timemap's `measureOn` names — or null when the measure carries none. */
+    measureId: string | null;
+    /** The tile's box; the layer covers exactly this area. */
+    width: number;
+    height: number;
+    /** The engraved events in the tile (notes, chords, rests) → their box. A note's box is its HEAD (stem and flag excluded), so its centre is the pitch's place; a chord's notes are listed as well as the chord, since the timemap's pitches are per note. */
+    boxes: Readonly<Record<string, OverlayBox>>;
+    /** The tile's staves in staff order. */
+    staves: readonly OverlayStaff[];
+}
+export interface OverlaySpec {
+    /** Unique within the plugin. Adding the same id again replaces the earlier overlay. */
+    id: string;
+    /** Render over one tile. Called for every rendered tile in edit view while the disposable lives; return null to draw nothing there. */
+    render: (tile: TileOverlayProps) => ReactNode;
+}
+export interface OverlaysService {
+    /** Mount an overlay on every tile until disposed (or the plugin deactivates). */
+    add(spec: OverlaySpec): Disposable;
+}
+
 // ---- render.d.ts
 /**
  * What the host's RENDER service hands out about the document, as data:
@@ -937,8 +1005,22 @@ export interface CaretPosition {
     /** Index of the event the caret is on, within its layer. */
     eventIndex: number;
 }
+// ClefContext — from packages/core/dist/context.d.ts
+export interface ClefContext {
+    shape: string;
+    line: number;
+    /** Octave displacement (8, 15) and its direction, e.g. G-clef ottava bassa. */
+    dis?: number;
+    disPlace?: "above" | "below";
+}
 // HarmKind — from packages/core/dist/harm.d.ts
 export type HarmKind = "chord" | "rna";
+// MeterContext — from packages/core/dist/context.d.ts
+export interface MeterContext {
+    count?: string;
+    unit?: string;
+    sym?: string;
+}
 // NotationFacts — from packages/core/dist/playback.d.ts
 export interface NotationFacts {
     /** noteId -> the note it ties INTO (chains resolve link by link). */
@@ -959,6 +1041,18 @@ export interface Pitch {
 export interface PitchEvent {
     eventId: string;
     pitches: Pitch[];
+}
+// StaffContext — from packages/core/dist/context.d.ts
+export interface StaffContext {
+    n: number;
+    lines: number;
+    clef: ClefContext;
+    /** MEI keysig value: "0", "3s", "2f", … */
+    keysig: string;
+    meter: MeterContext;
+    /** Chromatic/diatonic transposition of a transposing staff, if any. */
+    transSemi?: number;
+    transDiat?: number;
 }
 // SylValue — from packages/core/dist/lyrics.d.ts
 export interface SylValue {

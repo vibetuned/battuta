@@ -1,0 +1,116 @@
+---
+title: Pitch reference
+description: A recording's pitch traced over the score — load a take, see where it is sharp, flat, early or late, measure by measure.
+sidebar:
+  order: 11
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+You have the score and you have a recording of it — your own take, a
+student's, a performance you are transcribing. The pitch reference puts
+the two together: the recording's pitch is detected in the editor and
+drawn over the notes, so the place where the take goes sharp, flat, early
+or late is visible **at the note**, not on a tuner.
+
+Click the **🎙** in the header. A panel opens at the bottom of the window.
+
+## Loading a recording
+
+**load a recording…** takes any audio file the browser can decode: wav,
+mp3, ogg, flac, m4a. Nothing leaves your machine — the pitch is detected
+in the editor, in the background, and the panel shows the progress. When
+it is done a notice says how long the take is, how many frames had a
+pitch and how far, in cents, the trace sits from the written pitch on
+average — once, and then the panel is just the strip and its controls.
+
+The recording is not a document: it opens no tab, is never saved with the
+score, and is forgotten when you close battuta. What is remembered is the
+alignment you settled on, per score (see below).
+
+## The strip
+
+The whole recording, left to right:
+
+| What | Drawn as |
+| --- | --- |
+| the waveform | a grey band |
+| each measure's start, through the alignment | a thin vertical tick |
+| the written notes | blue bars — a bar per note, at its pitch, for its length |
+| the recording's pitch | the yellow trace; a gap where nothing pitched was heard |
+| where bar 1 begins | a dashed yellow line |
+| the playhead | a white line: **▶** plays the recording from it, drag anywhere on the strip to move it |
+
+Sing in tune and the trace runs along the blue bars. A note taken early
+starts before its bar; a sharp one runs above it.
+
+## Listening
+
+Two transports start from the white line. **▶ song** plays the recording
+and **⏸** pauses it where it is. **▶ score** plays the written notes
+through every connected MIDI output — plain notes, at the recording's
+pace, so the two can run together and you hear the take against the
+reference pitch; without a MIDI output it says so. The line moves while
+either plays. Drag anywhere on the strip to move it. Click a note in the
+score and the line goes to that note's moment in the recording, through
+the alignment — so the way to hear how you took a passage is to click
+its first note and press play. Closing the panel stops both.
+
+<Aside type="note" title="Plain notes on purpose">
+*▶ score* is the reference pitch, nothing more: no piano, no ties, no
+articulations, channel 1 at one velocity, and whatever your synth or DAW
+has on that channel is what sounds. It plays in the take's register: the
+**st** value is undone on the notes, so with the trace at +12 for a voice
+an octave under the part, the reference sounds an octave under as well.
+The notation's real performer is the [playback](../playback/) plugin, in
+page view.
+</Aside>
+
+## Lining the two up
+
+Two numbers put the recording on the score's clock, and a third puts it in
+the score's octave:
+
+**bar 1 at** — where the score begins in the recording, in milliseconds.
+It is set for you at the first pitched sound. If the take had a count-in
+or a breath, type where bar 1 really begins.
+
+**st** — transpose the trace by that many semitones before it is compared
+and drawn. A voice singing an octave below the written part is
+−12; a transposing instrument, its interval. The detected pitch itself is
+untouched, so the strip's yellow line moves and the recording does not.
+
+**recorded at ♩=** — the tempo the take was played at, when it is not the
+score's own. Leave it empty and the score's tempo is used (the placeholder
+shows it). A take at ♩= 60 of a score marked ♩= 120 runs at half speed,
+and the bars stretch to match.
+
+<Aside type="note" title="The score's tempo is the grid">
+battuta does not guess a tempo from the audio. The score says how long a
+measure is; the recording is placed on that grid with the two numbers
+above. A take with rubato will drift from the bars within a phrase — that
+is the take, and seeing it is the point. Measure-by-measure alignment is
+planned as a later step.
+</Aside>
+
+## On the score
+
+With **on the score** checked, every measure in edit view carries its
+slice of the trace, drawn over the staff whose pitch is nearest: the
+trace sits exactly on that measure's noteheads, and time runs along the
+notes' onsets. The written notes appear as faint bars for their length,
+so a note held too short or too long shows as a trace that stops early or
+runs on. Uncheck it to see the notation alone; the panel keeps the
+recording.
+
+<Aside type="caution" title="One voice at a time">
+The detector reads one pitch at a time, so it wants a voice or a single
+instrument. A chord, or two parts recorded together, give a trace that
+jumps between them. Record the part you want to check on its own.
+</Aside>
+
+## Turning it off
+
+battuta menu → **🌣 shortcuts** → **plugins** → *Pitch reference*. The 🎙,
+the panel and the traces go together, and any analysis in progress
+stops. Nothing about your score changes — the plugin only ever reads it.

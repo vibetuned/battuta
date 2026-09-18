@@ -19,6 +19,7 @@ import type { MidiService } from "./midi.js";
 import type { ActionsService, KeymapEntry } from "./actions.js";
 import type { AudioService } from "./audio.js";
 import type { ViewService } from "./view.js";
+import type { OverlaysService } from "./overlays.js";
 import type { FormatsService } from "./formats.js";
 import type { WorkspaceService } from "./workspace.js";
 import type { LanesService } from "./lanes.js";
@@ -106,6 +107,8 @@ export interface PluginContext {
    */
   readonly slots: { add(slot: SlotName, item: SlotItem): Disposable };
   readonly panels: { open(panel: PanelSpec): Disposable };
+  /** The overlays point: draw over every measure tile in edit view, from the tile's measured boxes and staff lines — never on the SVG. */
+  readonly overlays: OverlaysService;
   /** Text lanes at the caret: register the spec of a lane you declared; open it from your own key. */
   readonly lanes: LanesService;
   /** The app's one AudioContext (capability "audio"): unlock it in your click, connect your own instrument, convert clocks with timeAt. */

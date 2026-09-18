@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // DOM, as the playback plugin has it: AudioContext and AudioBuffer are
+    // platform types this plugin NAMES (ctx.audio.context() decodes the
+    // file). Naming the type is not touching the DOM — plugin-boundaries
+    // still fails the build on a window/document/navigator global.
+    "lib": ["ES2022", "DOM"],
+    "types": [],
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}

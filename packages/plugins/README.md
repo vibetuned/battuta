@@ -52,6 +52,7 @@ Two things in the plan were misunderstood, so here they are plainly:
 | `apps/editor/src/host/keymapStore.ts` | Core keymap ∪ plugin bindings, reactive; overrides per layout. |
 | `apps/editor/src/host/actions.ts` | The key dispatcher as a table: rules, gates, modals in the App's order; `run(id)` walks the same table without a key. Read its header before writing an input surface. |
 | `apps/editor/src/host/slots.tsx` | `<Slot>` (header / docHeader / statusBar / menu) and `<Panels>` (bottom / side). Two kinds of item: runtime ones a plugin adds in `activate`, and **manifest-declared** ones the host renders before the plugin's code loads — a plugin's entry point. |
+| `apps/editor/src/host/overlays.tsx` | `<TileOverlays>`: the overlays point — a plugin's layer over every measure tile in edit view, handed the tile measured (event boxes, staff lines, contexts) in its own pixels. |
 | `apps/editor/src/host/services.ts` | Settings and storage namespaces, the enabled flag. |
 | `apps/editor/src/host/plugins.ts` | **The list of shipped plugins.** Adding a plugin = adding an entry here. |
 | `apps/editor/src/App.tsx` | The host UI. Plugin keys are dispatched at the END of its key handler (`host.dispatchKey`), slots sit in the header row, the battuta menu and the status bar. |
@@ -147,6 +148,7 @@ The api is a data contract. Nothing in it is a live object of the model.
 | make a sound (capability `audio`) | `ctx.audio.unlock()` FIRST in your click handler, before any await; then connect your own instrument to `ctx.audio.context()`; schedule attacks at `ctx.audio.timeAt(atMs)` for the same `atMs` you would hand a MIDI sink | the host owns the app's one AudioContext, never an instrument: bring your own (Tone.js is allowed) |
 | Verovio's timemap of the document (expanded form) | `ctx.query.timemap()` | `Promise<Timemap \| null>` — `events`, `notes` (sounding pitch per id), `idMap` (clone → engraved id); rejects with the render error |
 | the document as MEI text, for an export producer to convert | `ctx.query.mei()` | `string` (score-based, what the pages are engraved from) or null without a document |
+| which event the caret is on | `ctx.query.eventIdAt(ctx.editor.get().caret)` | the id of the note, chord or rest, or null; pair it with the timemap's onsets to find the caret's moment |
 | the notation facts a performance interprets | `ctx.query.notation()` | `NotationFacts` — `ties` (note → the note it ties into), `marks` (note → `slur` / `tenuto` / `staccato` / `staccatissimo`). What they MEAN in sound is yours to decide |
 | light the notation as it sounds (page view) | `ctx.view.highlight({ on, off, measureOn? })` in engraved ids; `ctx.view.clearHighlight()` | the view scrolls to `measureOn` when it leaves the window |
 | an export in the battuta menu, listed BEFORE your code loads | `contributes.exports: [{ id, label, ext, mime, title? }]`; activate on `onFormat:<id>`; in `activate`, `ctx.formats.registerExport(id, async () => ({ bytes, filename? }))` | the host saves it (download or the shell's dialog) as `<document>.<ext>` unless you name it |
@@ -162,6 +164,7 @@ The api is a data contract. Nothing in it is a live object of the model.
 | an entry point the user can click BEFORE your code loads (a 🎹 that opens your panel) | `contributes.slotItems: [{ id, slot, label, title?, command, order?, dimUntilActive? }]` in the manifest | the host renders a button; the click runs your command and activates you. `dimUntilActive` draws that face de-emphasised until you are running — for a button that OPENS something, "not active" means "not showing"; leave it unset for one that just runs a command |
 | a slot item that needs live state — or the declared entry point once you are active | `ctx.slots.add(slot, { id, order?, render })` at runtime; the same `id` as a declared item REPLACES its face while the item lives | `Disposable` — dispose (or deactivate) and the declared face is back |
 | a panel | `ctx.panels.open({ id, side: "bottom" \| "side", title, render })` | `Disposable` |
+| draw over every measure tile in edit view | `ctx.overlays.add({ id, render })` — `render(tile)` gets `TileOverlayProps`: `measureIndex`, `measureId` (what the timemap's `measureOn` names), `width` / `height`, `boxes` (engraved event id → box) and `staves` (`n`, the y of each line top to bottom, the `context` in force), all in the tile's CSS pixels | `Disposable`; draw-only and translucent — the layer takes no pointer events, sits above the SVG's own highlights and below the caret; nothing is mounted while no overlay is registered; time is `ctx.query.timemap()`'s, by the same measure ids |
 | a text lane at the caret, listed in the status bar BEFORE your code loads | `contributes.lanes: [{ id, label, name, glyph?, place }]` in the manifest; activate on `onLane:<id>` | picking it wakes you; register the spec in `activate` |
 | the lane's behaviour | `ctx.lanes.register(spec)` — `LaneSpec`: `attachesTo`, `advance`, `advanceOn`, optional `accepts` / `transform` / `complete` / `suggest` / `hint`, `read(eventId)`, `commit({ eventId, buffer, key, prevEventId })` → a message, null (unchanged) or `{ refuse }` | `Disposable`; the host owns the buffer, the keys, the editor box and the advance — you never see a key event |
 | open your lane from your own key | `ctx.lanes.open(id)` | true when it opened; leaves entry mode like the select does — decline on `ctx.editor.get().entryMode` first if your key must not |
@@ -327,6 +330,9 @@ for s in app phase2 phase3 phase4 phase5; do
 done
 BATTUTA_ROOT=$PWD CHROME=bundled SCRATCH=/tmp/battuta-e2e node spikes/verify-onscreen-keyboard.mjs   # the panel, by tapping (24)
 BATTUTA_ROOT=$PWD CHROME=bundled SCRATCH=/tmp/battuta-e2e node spikes/verify-lyrics.mjs              # the lyrics lane, by typing (26)
+BATTUTA_ROOT=$PWD CHROME=bundled node spikes/verify-overlays.mjs   # the overlays point, rehearsed from a plugin holding only ctx
+BATTUTA_ROOT=$PWD CHROME=bundled node spikes/verify-pitch-reference.mjs   # the pitch reference: a take synthesized from the timemap (30)
+BATTUTA_ROOT=$PWD node --experimental-strip-types spikes/diag-playback-stream.mjs score.mei   # a TOOL: replays a score's MIDI stream and names any pitch attacked while sounding
 sh spikes/verify-tauri.sh                     # the shell smoke; needs a display and Rust
 ```
 

@@ -9,7 +9,7 @@
  * built-in plugins unless the URL says ?plugins=off); `createHost` is
  * exported for tests, which pass memory-backed settings and storage.
  */
-import { API_VERSION, DisposableStore, type ActionsService, type ActivationEvent, type BlockSelection, type CommandMessage, type DocumentInfo, type DocumentQueries, type EditorState, type HostCapability, type KeymapEntry, type PitchEvent, type PluginContext, type PluginEntry, type PluginManifest, type Store, type SylValue, type HarmKind, type NotationFacts, type Timemap, type ViewMode, type ViewService } from "@battuta/api";
+import { API_VERSION, DisposableStore, type ActionsService, type ActivationEvent, type BlockSelection, type CommandMessage, type DocumentInfo, type DocumentQueries, type EditorState, type HostCapability, type KeymapEntry, type PitchEvent, type PluginContext, type PluginEntry, type PluginManifest, type Store, type SylValue, type HarmKind, type NotationFacts, type Timemap, type ViewMode, type ViewService, type CaretPosition } from "@battuta/api";
 import { isHarmText, type Command } from "@battuta/core";
 import { toCommand } from "./messages";
 import { keyMatches, type Layout } from "../keymap";
@@ -25,6 +25,7 @@ import { isPluginEnabled, memorySettings, pluginSettings, pluginStorage, setPlug
 import { BUILTIN_PLUGINS } from "./plugins";
 import { HostMidiService, detectMidiBackend } from "./midi";
 import { LaneStore } from "./lanes";
+import { OverlayStore } from "./overlays";
 import { HostAudioService } from "./audio";
 import { FormatStore } from "./formats";
 import { HostWorkspaceService, detectWorkspaceBridge, type WorkspaceAdapter } from "./workspace";
@@ -46,6 +47,8 @@ export interface SessionAdapter {
   blockOf(eventIds: readonly string[]): BlockSelection | null;
   lyricAt(eventId: string): SylValue | null;
   harmAt(eventId: string, kind: HarmKind): string;
+  /** The id of the event at a caret position, or null. */
+  eventIdAt(caret: CaretPosition): string | null;
   /** Verovio's timemap of the expanded form — a render service; rejects with the render error. */
   timemap(): Promise<Timemap>;
   /** The notation facts a performance interprets. */
@@ -74,6 +77,8 @@ export interface Host {
   readonly panels: PanelStore;
   /** Text lanes at the caret: the App binds its adapter and registers its internal lanes; plugins declare and register theirs. */
   readonly lanes: LaneStore;
+  /** The overlays point: what plugins draw over every measure tile in edit view (the tile grid mounts `<TileOverlays>` per tile). */
+  readonly overlays: OverlayStore;
   readonly registry: PluginRegistry;
   readonly commands: CommandTable;
   readonly notices: Store<Notice | null>;
@@ -170,6 +175,7 @@ export function createHost(options: HostOptions = {}): Host {
   const actionsService: ActionsService = { run: (id) => actions.run(id), ids: actionIds };
   const slots = new SlotStore();
   const panels = new PanelStore();
+  const overlays = new OverlayStore();
   const commands = new CommandTable();
   const notices = createStore<Notice | null>(null);
   const midi = options.midi ?? new HostMidiService(detectMidiBackend());
@@ -196,6 +202,7 @@ export function createHost(options: HostOptions = {}): Host {
     timemap: () => (adapter ? adapter.timemap() : Promise.resolve(null)),
     notation: () => adapter?.notation() ?? { ties: {}, marks: {} },
     mei: () => adapter?.mei() ?? null,
+    eventIdAt: (caret) => adapter?.eventIdAt(caret) ?? null,
   };
   let viewAdapter: ViewAdapter | null = null;
   const view: ViewService = {
@@ -231,6 +238,7 @@ export function createHost(options: HostOptions = {}): Host {
     actions: actionsService,
     slots: { add: (slot, item) => subscriptions.add(slots.add(slot, item, manifest.id)) },
     panels: { open: (panel) => subscriptions.add(panels.open(panel)) },
+    overlays: { add: (spec) => subscriptions.add(overlays.add(spec, manifest.id)) },
     lanes: {
       register: (spec) => {
         if (!manifest.contributes?.lanes?.some((l) => l.id === spec.id)) throw new Error(`plugin ${manifest.id} did not declare lane ${spec.id} in its manifest`);
@@ -332,6 +340,7 @@ export function createHost(options: HostOptions = {}): Host {
     slots,
     panels,
     lanes,
+    overlays,
     registry,
     commands,
     notices,
@@ -389,6 +398,8 @@ export { useStore } from "./store";
 export { Slot, Panels, SIDE_PANEL_WIDTH } from "./slots";
 export { LaneStore, LaneInput, laneFace } from "./lanes";
 export type { LaneAdapter, LaneState, LaneOption, DeclaredLane } from "./lanes";
+export { OverlayStore, TileOverlays, tileGeometry, measureTile } from "./overlays";
+export type { RegisteredOverlay, TileMeasurement, Rect } from "./overlays";
 export { HostAudioService } from "./audio";
 export type { AudioContextFactory } from "./audio";
 export { FormatStore } from "./formats";

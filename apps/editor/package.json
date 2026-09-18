@@ -21,6 +21,7 @@
     "@battuta/plugin-harmony": "*",
     "@battuta/plugin-lyrics": "*",
     "@battuta/plugin-onscreen-keyboard": "*",
+    "@battuta/plugin-pitch-reference": "*",
     "@battuta/plugin-playback": "*",
     "@battuta/plugin-reflection": "*",
     "react": "^18.3.0",

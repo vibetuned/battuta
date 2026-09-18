@@ -17,7 +17,7 @@
  * `@battuta/api`, and the boundary test keeps it that way.
  */
 import type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKind, NotationFacts } from "@battuta/core";
-export type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKind, NotationFacts, NoteMark } from "@battuta/core";
+export type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKind, NotationFacts, NoteMark, ClefContext, MeterContext, StaffContext } from "@battuta/core";
 import type { Timemap } from "./render.js";
 
 export type ViewMode = "tiles" | "pages";
@@ -104,4 +104,11 @@ export interface DocumentQueries {
    * exports are its first consumers.
    */
   mei(): string | null;
+  /**
+   * The id of the event at a caret position — a note, chord or rest — or
+   * null when there is none (no document, an empty layer). Added
+   * 2026-09-18 for the pitch reference's playhead, which follows the caret
+   * to the same moment of the recording.
+   */
+  eventIdAt(caret: CaretPosition): string | null;
 }

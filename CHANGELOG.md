@@ -55,6 +55,148 @@ is taken, and each slice as it closes, with the `App.tsx` line count
   refusals) and the query test extended; editor 122, api 18, plugins 105;
   `verify-phase5` 222 (its two harmony hooks now read `select[data-lanes]`; one flaky voice-navigation check in a back-to-back run passed on its own), `verify-lyrics` 26, `verify-app` 18, the keyboard 25, all green.
   `App.tsx` **3,117 → 3,109**; initial chunk **599.0 kB** (ceiling 605.5).
+- **"▶ score" beside "▶ song" (2026-09-18).** The user's one missing piece
+  on trying it: the written notes, plainly, through MIDI, from the same
+  playhead. `src/scorePlayer.ts` hands every note from the playhead on to
+  the host's MIDI sink at once as an on/off pair — channel 1, velocity
+  100, the off 10 ms early so a repeated pitch re-attacks — at the
+  recording's pace through the alignment, so the two transports sound
+  together; the sink's queue keeps the order and its panic is the pause.
+  No ties, no articulations, no instrument: the reference pitch, and the
+  playback plugin stays the performer. It sounds in the take's register:
+  the pitches are moved by the inverse of the trace's "st" (the user's
+  last fix — the trace is shifted to meet the notes, the notes are played
+  to meet the voice), and a change while it plays restarts it where it
+  is. The outputs are opened once on the
+  first press and kept, closed on deactivate; without any the button says
+  so. The plugin declares the `midi` capability. Tests: `scorePlayer.test.ts`
+  (3), the lifecycle against a fake MIDI backend reading the bytes (+2);
+  plugin suite 34; e2e 37.
+- **The pitch reference plays its recording (2026-09-18).** ▶ / ⏸ in the
+  panel plays the take from the white playhead through the host's context
+  (one buffer source per stretch, `src/player.ts`), the line moves while it
+  plays, and it is dragged anywhere on the strip (pointer capture). It
+  FOLLOWS THE CARET: a move of the caret puts the line at that event's
+  moment in the recording through the alignment, so hearing how a passage
+  was taken is a click on its first note and play. For that the api grew
+  one question, `ctx.query.eventIdAt(caret)` — the host answered it
+  internally since Phase 2 — 0.1.17 → 0.1.18; the plugin pairs it with the
+  onsets of every timemap id, rests included. The strip's click no longer
+  sets bar 1 (the number does); the playhead starts where bar 1 begins.
+  Closing the panel, clearing, another take and deactivation pause. Tests:
+  `player.test.ts` (3) and the lifecycle (+1), plugin suite 29; e2e 36.
+- **A transposition for the pitch reference, and a held note chased
+  (2026-09-18).** The panel gained a transposition, **st**: semitones added
+  to the detected pitch before it is compared and drawn (a voice an octave
+  under the written part, a transposing instrument); the detected trace is
+  kept as `raw`, the compared one derived, and the number is stored with
+  the alignment (`align:<name>` now carries `transpose`). Two of the
+  user's trims the same day: the octave buttons and the "trace" label went
+  (a number and "st" are enough), and the analysis summary — length,
+  voiced frames, cents — became a notice when the analysis lands rather
+  than panel text seen all the time. Plugin suite 25, e2e 31. **The held note:** the user heard one note of
+  `test.mei` sustain to the end of the piece, around the eighth attack.
+  A new tool, `spikes/diag-playback-stream.mjs`, opens a score in the real
+  editor, takes the host's timemap and facts, builds the player's own
+  performance and replays the MIDI stream in delivery order: the score is
+  clean — 137 attacks, 137 releases, no pitch attacked while sounding,
+  no off and on of one pitch within two ms, nothing sounding at the end
+  (the eighth attack, A4 for 112 ms, is followed by a rest); a dangling
+  `<tie>` whose notes no longer exist is harmless. The one mechanism
+  battuta itself could offer was found in the sink: every message rode its
+  own `setTimeout`, so two messages a few ms apart could leave in either
+  order under a coarse or throttled timer, and a same-pitch on before the
+  previous off holds a voice on a synth until the panic. The sink now
+  keeps ONE queue in delivery order behind one timer — by time, note-offs
+  before note-ons at the same instant, then scheduling order — so the
+  order is a property of the data (`midiOut.test.ts` +2, editor 146). Not
+  claimed as the cause: the piano the user heard was a FluidSynth left
+  running, whose channel-1 program is a piano, and every connected output
+  receives the same notes, so a second, slower route (a network session)
+  or a lost packet on it would hold a note the same way. An output choice
+  in the player row is the feature if that is what it is.
+- **The bottom panel area no longer covers the score (2026-09-18).** The
+  pitch reference panel sat over the last row of measures and made them
+  impossible to edit — the same flaw the side area had until 9b, and one
+  the on-screen keyboard had carried since slice 4b unnoticed. The bottom
+  area now publishes its measured height as `--battuta-bottom-h`; `<main>`
+  pads the score by it, so the last measures scroll clear, and the caret
+  follow counts the panel as part of the fold rather than scrolling the
+  caret to a place behind it. Pinned in `verify-pitch-reference.mjs` (the
+  padding equals the area's height, the last tile scrolls clear, the
+  padding goes back to nothing when the panel closes; 28 checks);
+  `verify-onscreen-keyboard.mjs` unchanged at 24. **And a MIDI report
+  rather than a fix:** the user hears a piano from the DAW whatever
+  instrument the track has. Battuta sends note-on and note-off on channel
+  1 at one velocity and "all notes off" at stop — no program change, no
+  controller, no system message, now or in any commit — to EVERY connected
+  output plus the `battuta` virtual source in the shell. What names the
+  instrument is therefore on the receiving side (a channel-1 part, a
+  default-instrument track, or a second route hearing the same notes);
+  the playback README now says exactly what the wire carries. A channel
+  or an output choice would be the feature if the receiver cannot be
+  told; not built unasked.
+- **Slice 10b — the pitch reference plugin (2026-09-18). CLOSED; Phase 9's
+  last plugin.** `packages/plugins/pitch-reference`, built in-house in the
+  five checkpoints the brief named, each verified before the next: a
+  recording decoded by the host's AudioContext (mono, 16 kHz); its pitch
+  by plain YIN, hand-rolled (window 1024, hop 160, threshold 0.15,
+  parabolic interpolation, unvoiced frames as gaps, a five-frame median),
+  in yielded chunks with a progress figure; alignment by two numbers, an
+  offset found at the first voiced run and a "recorded at ♩=" rate over
+  the score's tempo — taken from the timemap, never estimated — kept per
+  document name in `ctx.storage`, with the median deviation from the
+  written pitch shown in cents; the trace over every measure tile on the
+  overlays point, on the staff nearest its pitch, the axis fitted through
+  the measure's own noteheads (the clef alone for a measure of rests),
+  time along the notes' onsets, the written notes as faint bars; and the
+  panel's controls (load, clear, the strip that sets bar 1 on a click, the
+  tempo, on/off on the score). Decisions: no tempo detection, no polyphony,
+  a repeated measure shows its first pass, the recording is never stored
+  and never becomes a tab. `App.tsx` 3,017 → 3,017 and core untouched —
+  the phase's central claim, on a signal-processing feature. One host
+  refinement, closed in-house the same hour: a note's box on the overlays
+  point is its HEAD, not its group (the stem put the centre a fifth off);
+  `@battuta/api` 0.1.16 → 0.1.17 for that contract detail. Tests: the
+  plugin's five suites (25); editor 144; `spikes/verify-pitch-reference.mjs`
+  synthesizes a take from the score's own timemap with 300 ms of silence
+  first and reads the results off the page — offset found, median
+  deviation 0 cents, the trace starting 0.1 px from the first notehead
+  (25 checks); `verify-overlays.mjs` unchanged. What remains for the phase
+  exit is documents, not code: DESIGN.md's *Host and plugins* section
+  written from the notes, `@battuta/api` promoted to 1.0, the 0.1.0 release.
+- **Slice 10a — the overlays point (2026-09-18).** The last extension
+  point the phase names, built in-house against 10b as its consumer:
+  `ctx.overlays.add({ id, render })` mounts a layer over every measure
+  tile in edit view, and `render` gets the tile MEASURED — its box, a box
+  per engraved event, each staff's five lines with the context in force
+  (clef, key, meter), in the tile's own CSS pixels. Decisions: the layer
+  is draw-only (no pointer events; the host's hit-testing under it is
+  untouched) and sits above the SVG, below the caret; it re-measures when
+  the tile's ink moves (render, zoom, row reflow) and costs nothing while
+  no overlay is registered — nothing mounted, no layout read; time is not
+  in the props, because the timemap already names each measure by the
+  same engraved id and carries the pitches; a header cell gets no layer.
+  `@battuta/api` 0.1.15 → 0.1.16 (`OverlaysService`, `OverlaySpec`,
+  `TileOverlayProps`, `OverlayBox`, `OverlayStaff`; core's `StaffContext`,
+  `ClefContext`, `MeterContext` re-exported). Host module `overlays.tsx`,
+  allowlisted. `App.tsx` 2,991 → 3,017: the mount inside each tile's
+  aligned box and two session-stable lookups. Rehearsed from outside as
+  the convention asks: `spikes/verify-overlays.mjs` registers a plugin at
+  runtime that holds only `ctx` and reads its props off the page (14
+  checks). Tests: editor 143 (+5), api 20, the plugin suites unchanged.
+- **The first overlay plugin changes (decided 2026-09-18).** Slice 10's
+  plugin is a wav pitch reference, not the MIDI piano-roll ghost layer:
+  load a performance, detect its pitch (plain YIN, hand-rolled, on a
+  16 kHz mono downmix), trace it over every measure and over the whole
+  file in a bottom panel, with the written pitch on the same axis. Three
+  choices with it: the score's tempo is taken, never estimated from the
+  audio — alignment is an offset and a rate, with dynamic time warping as
+  the next version; web and desktop alike, since decoding is a method on
+  the host's AudioContext and a sidecar wav through the workspace is a
+  later step; built in-house in five usable checkpoints, stopping at any
+  if the api would have to grow. The piano-roll layer and OMR stay later
+  consumers of the same point.
 - **The shell smoke leaves the user's session alone (2026-09-16).** Every
   run of `verify-tauri.sh` restored the recovered session from the WebView's
   localStorage, opened its test scores into it and saved it back — a session

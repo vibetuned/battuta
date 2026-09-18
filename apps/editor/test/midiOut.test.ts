@@ -51,6 +51,38 @@ describe("MidiSink", () => {
     expect(sent).toHaveLength(3); // nothing pending survived
   });
 
+  it("at one instant a note-off goes out before a note-on, whatever order they were scheduled in", () => {
+    const sent: number[][] = [];
+    const sink = new MidiSink(["fake"], (d) => sent.push(d));
+    const at = performance.now() + 100;
+    sink.schedule([NOTE_ON, 60, 102], at); // the next note's attack, scheduled first
+    sink.schedule([NOTE_OFF, 60, 0], at); // the previous note's release, scheduled later
+    sink.schedule([NOTE_ON, 64, 102], at);
+    vi.advanceTimersByTime(105);
+    expect(sent).toEqual([
+      [NOTE_OFF, 60, 0],
+      [NOTE_ON, 60, 102],
+      [NOTE_ON, 64, 102],
+    ]);
+  });
+
+  it("messages due within a millisecond leave in time order in one flush; later ones wait their turn", () => {
+    const sent: number[][] = [];
+    const sink = new MidiSink(["fake"], (d) => sent.push(d));
+    const t0 = performance.now();
+    sink.schedule([NOTE_ON, 62, 102], t0 + 100.6);
+    sink.schedule([NOTE_OFF, 60, 0], t0 + 100.2);
+    sink.schedule([NOTE_ON, 65, 102], t0 + 300);
+    vi.advanceTimersByTime(102);
+    expect(sent).toEqual([
+      [NOTE_OFF, 60, 0],
+      [NOTE_ON, 62, 102],
+    ]);
+    vi.advanceTimersByTime(300);
+    expect(sent).toHaveLength(3);
+    expect(sent[2]).toEqual([NOTE_ON, 65, 102]);
+  });
+
   it("a note that already got its off is not re-released by panic", () => {
     const sent: number[][] = [];
     const sink = new MidiSink(["fake"], (d) => sent.push(d));

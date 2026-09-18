@@ -14,7 +14,7 @@
  * 🎹 that opens the on-screen keyboard cannot come from the keyboard's
  * own code). Decided 2026-09-14.
  */
-import { Fragment } from "react";
+import { Fragment, useLayoutEffect, useRef } from "react";
 import { toDisposable, type Disposable, type PanelSide, type PanelSpec, type SlotItem, type SlotItemContribution, type SlotName, type Store } from "@battuta/api";
 import { createStore, useStore } from "./store";
 import type { PluginInfo } from "./registry";
@@ -152,9 +152,33 @@ const SIDE: React.CSSProperties = { position: "fixed", left: 0, top: "var(--batt
 
 export function Panels({ store, side }: { store: PanelStore; side: PanelSide }) {
   const panels = useStore(store.panels).filter((p) => p.side === side);
+  const ref = useRef<HTMLElement>(null);
+  // The bottom area is fixed over the window's foot, so it PUBLISHES its
+  // height as `--battuta-bottom-h`: the App pads the score by it, so the
+  // last measures scroll clear of the panel and the caret is never
+  // followed to a place behind it (2026-09-18 — the pitch reference panel
+  // covered the last row and made it impossible to edit; the on-screen
+  // keyboard had the same flaw since slice 4b, unnoticed).
+  useLayoutEffect(() => {
+    if (side !== "bottom") return;
+    const root = document.documentElement;
+    const el = ref.current;
+    if (!el) {
+      root.style.setProperty("--battuta-bottom-h", "0px");
+      return;
+    }
+    const publish = () => root.style.setProperty("--battuta-bottom-h", `${el.getBoundingClientRect().height}px`);
+    publish();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(publish) : null;
+    ro?.observe(el);
+    return () => {
+      ro?.disconnect();
+      root.style.setProperty("--battuta-bottom-h", "0px");
+    };
+  }, [side, panels.length]);
   if (!panels.length) return null;
   return (
-    <aside data-panels={side} style={side === "bottom" ? BOTTOM : SIDE}>
+    <aside ref={ref} data-panels={side} style={side === "bottom" ? BOTTOM : SIDE}>
       {panels.map((p) => (
         <section key={p.id} data-panel={p.id} aria-label={p.title}>
           {p.render()}

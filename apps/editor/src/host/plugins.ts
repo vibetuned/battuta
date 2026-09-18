@@ -18,6 +18,7 @@ import { manifest as formats } from "@battuta/plugin-formats/manifest";
 import { manifest as harmony } from "@battuta/plugin-harmony/manifest";
 import { manifest as lyrics } from "@battuta/plugin-lyrics/manifest";
 import { manifest as onscreenKeyboard } from "@battuta/plugin-onscreen-keyboard/manifest";
+import { manifest as pitchReference } from "@battuta/plugin-pitch-reference/manifest";
 import { manifest as playback } from "@battuta/plugin-playback/manifest";
 import { manifest as reflection } from "@battuta/plugin-reflection/manifest";
 
@@ -29,4 +30,5 @@ export const BUILTIN_PLUGINS: readonly PluginEntry[] = [
   { manifest: playback, load: () => import("@battuta/plugin-playback") },
   { manifest: formats, load: () => import("@battuta/plugin-formats") },
   { manifest: folderView, load: () => import("@battuta/plugin-folder-view") },
+  { manifest: pitchReference, load: () => import("@battuta/plugin-pitch-reference") },
 ];

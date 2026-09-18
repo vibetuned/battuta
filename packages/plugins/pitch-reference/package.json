@@ -1,0 +1,32 @@
+{
+  "name": "@battuta/plugin-pitch-reference",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "description": "A recording's pitch, detected with YIN and traced over every measure of the score and over the whole file, with the written pitch on the same axis — the first reference layer.",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./manifest": "./src/manifest.ts",
+    "./yin": "./src/yin.ts",
+    "./align": "./src/align.ts"
+  },
+  "//": [
+    "exports point at src/, NOT a built dist/: Vite and tsc both consume linked TypeScript, so a plugin has no build step and no prepare.",
+    "./yin and ./align are exported so the detector and the alignment maths can be read from outside the package without reaching into src/ by path; nothing in the app imports them.",
+    "dependencies: @battuta/api and react (a panel and an overlay render into host areas) and nothing else of the workspace. No DSP library: YIN is ~120 lines and a dependency would have to be allowlisted for one consumer."
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@battuta/api": "*",
+    "react": "^18.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

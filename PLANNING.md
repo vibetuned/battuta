@@ -349,7 +349,17 @@ in-house the same day, with the user's four changes to the panel: the
 side area starts below the header, sits on the left and pushes the score
 right; the live guard accepts `created` as well as `modified` (macOS);
 `.mei` only stays; the rows lose their dot and bold and the active tab's
-score is highlighted. **Slice 10 is next.**
+score is highlighted. Slice 10a (2026-09-18) built the last point the
+phase names, `overlays`, against a rehearsal plugin that holds only
+`ctx`: the host measures each tile and a plugin draws in its pixels;
+geometry only, time stays in the timemap (api 0.1.16; `App.tsx` 3,017).
+Slice 10b (2026-09-18) closed the phase's last plugin the same day:
+`packages/plugins/pitch-reference` — a recording decoded by the host's
+context, plain YIN, an offset and a rate against the score's own tempo,
+the trace on every tile through the overlays point and fitted onto the
+noteheads — with `App.tsx` and core untouched, which is the claim the
+phase was run to test. **What remains is the phase exit: DESIGN.md's
+*Host and plugins* section, `@battuta/api` 1.0, the 0.1.0 release.**
 
 From here on slices are
 handed to sessions without the surrounding context, on purpose, to test
@@ -1440,33 +1450,117 @@ plugin absent, and the same mismatch stops 9a's live guard firing there
 (`App.tsx` filters `kind !== "modified"`). probe5 reports the guard
 rather than asserting it; §7.6 has the account.
 
-#### Slice 10 — Reference layers on the overlay point (≈2 weeks)
+#### Slice 10a — The overlays point (host) — CLOSED 2026-09-18
 
-**Delivers.** The `overlays` point — a per-tile draw hook on the
-interaction overlay given the tile's bbox, id → bbox map, effective
-context and timemap — built against its first consumer:
-`packages/plugins/reference-layers`, the **ghost piano-roll reference
-layer (old Phase 6)** to the spec below: MIDI and sound2midi-sidecar
-import as reference tracks, per-tile timemap extraction, translucent
-bars aligned to the tile's clef-based pitch axis, per-track solo, mute
-and colour in a panel, selection playback against the reference grid.
+**Delivers.** The `overlays` point, the last extension point the phase
+names: `ctx.overlays.add({ id, render })` mounts a layer over every
+measure tile in edit view while the disposable lives, and `render` is
+handed the tile MEASURED — its box, the box of every engraved event
+(notes, chords, rests) and each staff's five lines with the context in
+force (clef, key, meter), all in the tile's own CSS pixels — so a plugin
+maps a pitch or a time to a place without knowing how Verovio laid the
+measure out. The layer is draw-only (no pointer events: the host's
+hit-testing under it is untouched), sits above the SVG and below the
+caret, is re-measured when the tile's ink moves (a render, a zoom, a row
+reflow) and costs nothing while no overlay is registered: nothing is
+mounted, no layout is read. Time is deliberately NOT in the props: the
+timemap already names each measure by the same engraved id and carries
+the pitches, and a plugin reads it once for the document rather than per
+tile. Host module `overlays.tsx` (the store, the pure projection, the
+per-tile component); the api grows `OverlaysService`, `OverlaySpec`,
+`TileOverlayProps`, `OverlayBox`, `OverlayStaff` and re-exports core's
+`StaffContext` / `ClefContext` / `MeterContext` (0.1.15 → 0.1.16). Built
+against 10b as its named consumer.
 
-**Proves.** `overlays`, and the phase's central claim: a research
-feature implemented **entirely as a plugin** — zero edits to `App.tsx`
-or the core beyond the API package.
+**Changed from the original brief.** The first overlay plugin is no
+longer the MIDI piano-roll ghost layer: the user chose (2026-09-18) a
+simpler first reference — a wav file's pitch, traced over the measures —
+so the point hands out geometry only, and the "effective context and
+timemap" of the old brief became the staff contexts (in the props) and
+`ctx.query.timemap()` (already there). The piano-roll layer and OMR
+remain later consumers of the same point.
 
-**Leaves `App.tsx`.** Nothing; the exit criterion is that it did not
-have to.
+**Proves.** The point from outside the App before any plugin exists:
+`spikes/verify-overlays.mjs` registers a rehearsal plugin at runtime that
+holds only `ctx` and reads its props off the page — every rendered tile
+has the layer, boxes for its notes, five ascending lines per staff with
+the clef in force, the document's own measure id; every box inside its
+tile; a click through the layer still places the caret; a zoom
+re-measures; dispose removes every layer (14 checks).
 
-**Gates.** The plugin's suite (import, alignment, pitch mapping);
-Phase 6's exit criterion as an e2e path: load a stems MIDI behind its
-exported MEI, spot a transcription error, fix it, hear the corrected
-measure.
+**Leaves `App.tsx`.** Nothing; it gains 26 lines (2,991 → 3,017): the
+mount inside each tile's aligned box and two session-stable lookups.
 
-**Documents.** The plugin's two documents; a NEW guide page; Phase 7
-(OMR) re-planned as the second overlay plugin, citing API surface only;
-DESIGN.md's *Host and plugins* section written from the notes
-accumulated slice by slice; `@battuta/api` promoted to 1.0.
+**Gates.** `overlays.test.ts` (the store; the projection of measured
+rectangles into tile pixels — centred lines, sorted both ways, a staff the
+document does not know dropped); `host.test.ts` (an overlay is withdrawn
+with its plugin); `host-boundaries` (`overlays.tsx` allowed); the api
+surface at 0.1.16; the browser rehearsal above; every other suite
+unchanged (editor 143, api 20, the seven plugin suites).
+
+#### Slice 10b — The pitch reference plugin (in-house, stepwise) — CLOSED 2026-09-18
+
+**Closed.** Built the same day in the five checkpoints below, each verified
+before the next; `App.tsx` and core untouched; one host refinement (a
+note's box on the overlays point is its head, api 0.1.17). Tests: the
+plugin's five suites (25), editor 144, `spikes/verify-pitch-reference.mjs`
+(25 checks, a take synthesized from the score's own timemap). The
+**Documents** of the phase exit below — DESIGN.md's *Host and plugins*
+section, `@battuta/api` 1.0, the 0.1.0 release — are the remaining work of
+the phase, and they are the user's call.
+
+**Delivers.** `packages/plugins/pitch-reference`, the first reference
+layer and the plugin that closes the phase: a wav file of a performance,
+its pitch detected, traced over every measure in edit view and, in one
+bottom panel, over the whole file, with the WRITTEN pitch drawn on the
+same axis for comparison. Built in five checkpoints, each usable on its
+own, stopping at any of them if the host would have to grow:
+
+1. load and decode — a file input in the panel; `ctx.audio.context()`
+   decodes (the host owns the context; decoding is a method on it); a
+   mono downmix resampled to 16 kHz; the waveform envelope in a bottom
+   panel; the audio kept in memory only.
+2. the trace — plain YIN, hand-rolled (window 1024, hop 160, max lag 320,
+   threshold 0.15, parabolic interpolation on the dip), unvoiced frames
+   left as gaps, a five-frame median filter, fractional MIDI out; in a
+   Worker or yielded chunks so the UI never waits.
+3. alignment — two numbers: an offset (where bar 1 starts in the file,
+   detected from the first voiced frame and nudgeable) and a rate (the
+   take's tempo against the score's, a "recorded at ♩=" field defaulting
+   to the score's tempo). The written pitch from `ctx.query.timemap()`
+   drawn over the trace in the panel; offset and rate persisted per
+   document in `ctx.storage`. The score's tempo is taken, never estimated
+   from the audio.
+4. the measures — on `ctx.overlays`: each tile's window of the trace
+   mapped through offset and rate onto the tile's pitch axis (from its
+   staff lines and clef, checked against the boxes of its notes when it
+   has some), the written notes as a faint reference on the same axis.
+5. polish — cents-deviation colouring, gap handling, the panel's
+   controls (load, clear, offset, rate, show/hide).
+
+Web and desktop alike: everything runs in both; a sidecar wav next to the
+.mei through `ctx.workspace` is a later step, not this one. Dynamic time
+warping of the trace against the written pitch curve is the natural next
+version and needs nothing new from the host.
+
+**Proves.** The phase's central claim on a research feature: signal
+processing implemented entirely as a plugin — zero edits to `App.tsx` or
+core; if the api must grow, the slice stops and the gap is closed
+in-house.
+
+**Leaves `App.tsx`.** Nothing.
+
+**Gates.** The plugin's suite (YIN on synthetic tones — a 440 Hz sine
+reads 69.0 within 0.05, an octave jump, silence unvoiced; the alignment
+maths; the pitch axis from staff lines and clef); an e2e that loads a
+generated wav and reads the trace off the panel and a tile;
+`verify-overlays.mjs` unchanged.
+
+**Documents.** The plugin's two documents; a NEW guide page; Phase 7 (OMR)
+and the piano-roll reference re-planned as later overlay plugins, citing
+API surface only; DESIGN.md's *Host and plugins* section written from the
+notes accumulated slice by slice; `@battuta/api` promoted to 1.0; the
+release of 0.1.0.
 
 **Done when.** Phase 9's exit criteria hold.
 

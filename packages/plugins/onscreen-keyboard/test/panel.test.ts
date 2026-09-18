@@ -67,6 +67,7 @@ function fixture(saved?: { open?: boolean; enabled?: boolean }): Fixture {
     harmAt: () => "",
     timemap: async () => ({ events: [], notes: {}, idMap: {} }),
     notation: () => ({ ties: {}, marks: {} }),
+    eventIdAt: () => null,
     mei: () => "",
   };
   host.bindSession(adapter);
