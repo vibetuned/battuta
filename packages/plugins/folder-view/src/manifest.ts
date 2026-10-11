@@ -29,8 +29,8 @@ export const SETTING_FOLDER = "folder";
 export const manifest: PluginManifest = {
   id: "battuta.folder-view",
   name: "Folder view",
-  version: "1.0.0",
-  description: "A side panel listing the scores in a folder you opened: click one to open it, see which are already open and which have unsaved changes, and watch the list follow the folder as files are added, changed or removed.",
+  version: "1.1.0",
+  description: "A side panel listing the scores in a folder you opened: click one to open it, rename it or its folder in place, make new scores and folders, see which are already open and which have unsaved changes, and watch the list follow the folder as files are added, changed or removed.",
   // ^0.1.15 is the version that carries what a folder view needs and
   // cannot make itself, all of it from slice 9a: `ctx.workspace`
   // (available, pickFolder, openFolder, readDir, openDocument, watch),
@@ -39,7 +39,8 @@ export const manifest: PluginManifest = {
   // ^1.0.0 — the contract as released with battuta 0.1.0 (2026-09-18). The
   // notes above name what of it this plugin needs and the 0.1.x number
   // that first carried it; the range is the release.
-  engines: { battuta: "^1.0.0" },
+  // ^1.1.0: `ctx.workspace.rename` (2026-10-11) is the one thing past 1.0.0.
+  engines: { battuta: "^1.1.0" },
   activationEvents: [
     // The 📁 (a declared slot item, below). The registry fires
     // `onCommand:` implicitly when a declared item is clicked; declaring
@@ -51,7 +52,9 @@ export const manifest: PluginManifest = {
     // every user this code at launch.
     "onSettings:folder",
   ],
-  // The folders the user picked, read-only and scoped. Offered by every
+  // The folders the user picked, scoped; read, watched, and written only
+  // by rename in place and create-only folders and scores (api 1.1.0).
+  // Offered by every
   // build — `ctx.workspace.available` is what says whether the shell is
   // there, and the panel tells the user so rather than failing.
   capabilities: ["workspace"],

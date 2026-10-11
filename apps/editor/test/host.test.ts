@@ -601,7 +601,7 @@ describe("the workspace and the open documents (slice 9a)", () => {
     expect(host.workspace.available).toBe(false);
     expect(await host.workspace.pickFolder()).toBeNull();
     const opened: string[] = [];
-    host.bindWorkspace({ openDocument: async (p) => void opened.push(p) });
+    host.bindWorkspace({ openDocument: async (p) => void opened.push(p), renamed: () => undefined });
     await host.workspace.openDocument("/scores/a.mei");
     expect(opened).toEqual(["/scores/a.mei"]);
   });

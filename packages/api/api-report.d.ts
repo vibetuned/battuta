@@ -1,4 +1,4 @@
-// @battuta/api 1.0.0 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
+// @battuta/api 1.1.0 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
 
 // ---- ../dist/.tsbuildinfo
 {"version":"5.9.3"}
@@ -457,7 +457,7 @@ export interface FormatsService {
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export declare const API_VERSION = "1.0.0";
+export declare const API_VERSION = "1.1.0";
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";
 export type { Disposable } from "./disposable.js";
@@ -953,14 +953,17 @@ export interface ViewService {
 // ---- workspace.d.ts
 /**
  * The workspace host service (capability "workspace"): the folders the
- * user opened, read-only, and the files in them — a platform capability
- * with a shell backend (Tauri commands behind this facade) and a browser
- * backend that reports itself unavailable. Slice 9a, 2026-09-16.
+ * user opened and the files in them — a platform capability with a shell
+ * backend (Tauri commands behind this facade) and a browser backend that
+ * reports itself unavailable. Slice 9a, 2026-09-16.
  *
  * SCOPED: only folders the user picked (or a plugin re-admitted from an
- * earlier session with `openFolder`) can be listed, read or watched; the
- * shell refuses everything outside them. Nothing here writes — the save
- * path is the host's.
+ * earlier session with `openFolder`) can be listed, read, watched or
+ * written in; the shell refuses everything outside them. The writes
+ * (1.1.0, 2026-10-11, the folder view's) are `rename` in place and
+ * `createFolder` / `createFile`, which are create-only: nothing here
+ * overwrites, deletes or moves between folders, and an existing file's
+ * contents are written only by the host's save path.
  */
 import type { Disposable } from "./disposable.js";
 export interface DirEntry {
@@ -987,6 +990,33 @@ export interface WorkspaceService {
     openDocument(path: string): Promise<void>;
     /** Watch a folder (recursively) inside a picked root; events are coalesced per path. Dispose to stop. A no-op disposable when unavailable. */
     watch(path: string, listener: (event: WatchEvent) => void): Disposable;
+    /**
+     * Rename a file or folder in place — `newName` is a name, never a path —
+     * and resolve with its new path. Rejects with the reason: an empty or
+     * dot-led name, a separator in it, a name that already exists there, a
+     * picked root itself, anything outside the roots, or no shell. The host
+     * follows the rename: an open document at (or, for a folder, under) the
+     * old path takes the new one, so it saves where the file now is, and a
+     * renamed file's tab takes its new name. Added in 1.1.0 for the folder
+     * view.
+     */
+    rename(path: string, newName: string): Promise<string>;
+    /**
+     * Create an empty folder named `name` in the folder `dir` (a picked root
+     * or a folder under one) and resolve with its path. Rejects with the
+     * reason: a name refused as `rename` refuses it, a name that already
+     * exists, `dir` outside the roots or not a folder, or no shell. Added in
+     * 1.1.0 for the folder view.
+     */
+    createFolder(dir: string, name: string): Promise<string>;
+    /**
+     * Create a NEW file named `name` in `dir` with `contents` (UTF-8 text)
+     * and resolve with its path. Create-only: an existing name is refused,
+     * never overwritten — writing an existing file is the host's save path,
+     * not this. Rejections as `createFolder`. Added in 1.1.0 for the folder
+     * view's new score; open the result with `openDocument`.
+     */
+    createFile(dir: string, name: string, contents: string): Promise<string>;
 }
 
 // ---- re-exported from @battuta/core (declared there; printed here so the pin covers the shape)

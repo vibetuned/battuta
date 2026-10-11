@@ -25,9 +25,11 @@ export interface WorkspaceBridge {
   listen(event: string, cb: (e: { payload: unknown }) => void): Promise<() => void>;
 }
 
-/** What the App binds: opening a path through its open path (focus if already open, convert an import, record the mtime). */
+/** What the App binds: opening a path through its open path (focus if already open, convert an import, record the mtime), and following a rename. */
 export interface WorkspaceAdapter {
   openDocument(path: string): Promise<void>;
+  /** A file or folder was renamed: every open document at `from`, or under it, takes the path under `to`; recorded mtimes move with it. */
+  renamed(from: string, to: string): void;
 }
 
 interface ChangePayload {
@@ -89,6 +91,31 @@ export class HostWorkspaceService implements WorkspaceService {
   openDocument(path: string): Promise<void> {
     if (!this.adapter) return Promise.reject(new Error("no document opener is bound"));
     return this.adapter.openDocument(path);
+  }
+
+  /** Create-only, in a folder under a root; the shell refuses an existing name rather than overwrite it. */
+  async createFolder(dir: string, name: string): Promise<string> {
+    if (!this.bridge) throw new Error("the shell is required to create folders");
+    return this.created(await this.bridge.invoke("workspace_create_folder", { path: dir, name }), "workspace_create_folder");
+  }
+
+  async createFile(dir: string, name: string, contents: string): Promise<string> {
+    if (!this.bridge) throw new Error("the shell is required to create files");
+    return this.created(await this.bridge.invoke("workspace_create_file", { path: dir, name, contents }), "workspace_create_file");
+  }
+
+  private created(answer: unknown, cmd: string): string {
+    if (typeof answer !== "string") throw new Error(`${cmd} answered ${JSON.stringify(answer)}`);
+    return answer;
+  }
+
+  /** The shell renames (and refuses what it must); the App follows, so an open tab keeps saving to its file. */
+  async rename(path: string, newName: string): Promise<string> {
+    if (!this.bridge) throw new Error("the shell is required to rename files");
+    const to = await this.bridge.invoke("workspace_rename", { path, newName });
+    if (typeof to !== "string") throw new Error(`workspace_rename answered ${JSON.stringify(to)}`);
+    if (to !== path) this.adapter?.renamed(path, to);
+    return to;
   }
 
   watch(path: string, listener: (event: WatchEvent) => void): Disposable {

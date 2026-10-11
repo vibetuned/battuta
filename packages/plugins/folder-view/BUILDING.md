@@ -65,6 +65,8 @@ why the slice ran without a stop.
 - `ctx.workspace.openFolder(path)` — re-admit last session's folder.
 - `ctx.workspace.openDocument(path)` — the host's ONE open path: an import converts, an already-open tab is focused, the mtime is recorded for the external-change guard. None of that is this plugin's to reproduce.
 - `ctx.workspace.watch(root, fn)` — recursive, coalesced per path by the host.
+- `ctx.workspace.rename(path, newName)` — in place, a NAME not a path; resolves with the new path, and the host follows with any open tab (its path and name) and the recorded mtimes. **Added for this plugin in `@battuta/api` 1.1.0** (2026-10-11, the user's request after 1.0.0), the workspace's first write; the manifest asks for `^1.1.0`.
+- `ctx.workspace.createFolder(dir, name)` and `ctx.workspace.createFile(dir, name, contents)` — create-only (an existing name is refused, the file opened `create_new` by the shell), in a folder under the root or the root itself; resolve with the new path. **Also 1.1.0** (the same untagged number: the user's second request after 1.0.0, the same day). A new score's contents are this plugin's `blankScore(title)`, and it is opened with `openDocument`.
 - `ctx.settings.set("folder", path)`, `ctx.notice`.
 
 **UI**
@@ -91,10 +93,14 @@ was up (§7.5).
 
 **Document.** None. **Nothing mutates the document outside
 `ctx.execute`** — and the stronger statement holds: this plugin never
-writes anything, to the document or to disk. `ctx.execute` appears
-nowhere in `src/`; the browser e2e asserts `undoDepth === 0` after
-driving the whole panel; and the only write in the package is
-`ctx.settings.set`.
+writes to a document. `ctx.execute` appears nowhere in `src/`; the browser
+e2e asserts `undoDepth === 0` after driving the whole panel. To disk it
+writes only what the user asks for, through the workspace service, since
+1.1.0: a rename in place, a new folder, a new blank score — never an
+existing file's contents (that is the host's save path). Its own state
+is one `ctx.settings.set`. **Transient (memory):** the target folder for
+"+ score" / "+ folder" — the last folder clicked or the last score's
+folder, reset to the root with a new root, moved by a rename.
 
 ## 5. Command messages
 
@@ -334,6 +340,86 @@ view of MEI scores; a MusicXML or ABC file in the folder is opened through
 the open dialog and becomes an MEI tab, which the view then shows. No
 addition to the api; the assertion in `test/tree.test.ts` stands as the
 rule.
+
+### 7.9 Renaming, added after 1.0.0 (2026-10-11)
+
+The user asked to rename files and folders from the list. Decisions, each
+for a reason a next author would otherwise rediscover:
+
+- **The shell renames, the host follows, the plugin remaps.** The Rust
+  command `workspace_rename` checks the scope and the name and calls
+  `fs::rename` in the same parent; `HostWorkspaceService.rename` then
+  tells the App, which moves an open tab's path (and, for the renamed file
+  itself, its name) and the recorded mtime — without that, the next save
+  would recreate the old file and the external-change guard would compare
+  against nothing. The plugin only moves what IT keys by path: the folders
+  read and the folders expanded, so a renamed open folder stays open.
+- **A name, never a path.** Moving between folders is a different feature
+  with different failure modes; the command refuses a separator.
+- **The extension is edited out.** The list shows a score without `.mei`,
+  so the field does too, and `renamedName` puts it back (typing it again
+  does not double it). Changing a score's type from a list that only
+  shows `.mei` would make it vanish from that list.
+- **Refused:** an empty, `.`/`..` or dot-led name (hidden entries are not
+  listed, so the file would vanish), an existing name (except the same
+  file in another case — a case-only rename on a case-insensitive disk),
+  the picked root (its path IS the scope), anything outside the roots.
+- **Commit once.** Enter unmounts the field, and whether the browser then
+  sends a blur varies; a `done` ref makes Enter-then-blur one rename.
+- **F2 is the row's own key**, not a manifest binding: it only means
+  something with a row focused, and a binding would move the union keymap
+  snapshot for a gesture the shortcut editor cannot sensibly show.
+
+Tests: `tree.test.ts` (the name and the moved path, a table),
+`folder-view.test.ts` (a score, an open folder, a refusal — against a fake
+shell that renames in memory), the host's `workspace.test.ts` (the command,
+the follow, the browser refusal), the shell's two Rust unit tests (in
+place, and every refusal, on a temp folder), `verify-folder-view.mjs` §7 (the
+✎, F2, Enter, Escape, blur and a refusal, with a real pointer and keyboard,
+against a fake bridge) and `verify-tauri.sh` probe6 (the file moved on
+disk, the open tab and the list followed).
+
+### 7.10 New scores and folders, added after 1.0.0 (2026-10-11)
+
+The user's second request the same day: a create-folder and a
+create-score button.
+
+- **Create-only, by construction.** `workspace_create_file` refuses an
+  existing name and opens the file `create_new`, so even a race with
+  another program cannot overwrite; writing an existing file's contents
+  stays the host's save path, which asks first. A plugin can therefore
+  ADD files to a folder the user picked, never change one.
+- **Where things land is a target, and it is shown.** A file manager
+  creates in its selection; this list has no selection, so the target is
+  the last folder clicked, or the folder of the last score opened, or the
+  root — and the field for the new name appears first INSIDE that folder
+  (expanding it), with the buttons' titles naming it — and, at the user's
+  request the same day, MARKED: a 3 px blue bar at the left of the target
+  folder's row and a fainter tint than the active score's `#cfe2f5`, so the
+  two never read alike; when the target is the root, the bar sits beside
+  the folder's name in the header (`data-folder-target` on either). A target whose row
+  is no longer visible falls back to the root, so the field always sits
+  where the entry will land.
+- **A new folder becomes the target** (open, empty): "+ folder, a name,
+  + score, + score" builds a folder of pieces without a click in between.
+- **A new score is opened at once**, through the host's open path — the
+  reason to make one is to write in it. Its contents are this plugin's
+  `blankScore(title)`: the editor's "+" tab template (App.tsx), titled
+  after the name. The plugin cannot import the editor's, so
+  `blank.test.ts` pins the shape (one treble staff, 4/4, four measures of
+  rest, well-formed, title escaped) and the browser e2e opens the written
+  text in the real editor as four measures.
+- **One version for both requests.** The api's 1.1.0 was never tagged when
+  the creates arrived, so they joined it rather than bumping again; the
+  surface report was regenerated from the committed 1.0.0 baseline.
+
+Tests: `blank.test.ts` (new), `tree.test.ts` (`newScoreName`),
+`folder-view.test.ts` (the target's rule, a score written and opened, a
+folder made and targeted, a refusal, a rename moving the target), the
+host's `workspace.test.ts`, two more Rust tests (in the root and below;
+never overwrite, never outside), `verify-folder-view.mjs` §8 and
+`verify-tauri.sh` probe7 (a folder and a score on disk, the score opened
+as a tab, the list followed).
 
 ### 7.8 What did not happen
 

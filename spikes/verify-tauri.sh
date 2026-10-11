@@ -67,6 +67,11 @@ echo "$LOG" | grep -qE "probe4: workspace ok \(2 entries, scoped, change (modifi
 # 9a's, and whether it fires depends on the platform's event kind — see the
 # note on probe4 below.
 echo "$LOG" | grep -q "probe5: folder view ok" && echo "PASS  the folder view lists, opens a score and sees it change ($(echo "$LOG" | grep -o 'probe5: folder view ok (.*)' | head -1 | sed 's/probe5: folder view ok //'))" || { echo "FAIL  folder view: $(echo "$LOG" | grep -o 'probe5: .*' | head -2 | tr '\n' ' ')"; exit 1; }
+# probe6: the workspace's one write — two.mei, open in the active tab, renamed in place through the host's
+# service; on disk the file moved, and in the app the tab and the folder list followed.
+echo "$LOG" | grep -q "probe6: rename ok" && [ -f "$WSDIR/renamed.mei" ] && [ ! -e "$WSDIR/two.mei" ] && echo "PASS  a rename moves the file on disk, and the open tab and the list follow" || { echo "FAIL  rename: $(echo "$LOG" | grep -o 'probe6: .*' | head -1) (renamed.mei on disk: $([ -f "$WSDIR/renamed.mei" ] && echo yes || echo no))"; exit 1; }
+# probe7: create-only — a folder and a score in it, on disk; the score opened as a tab, the list followed.
+echo "$LOG" | grep -q "probe7: create ok" && [ -d "$WSDIR/made" ] && grep -q "<mei" "$WSDIR/made/fresh.mei" 2>/dev/null && echo "PASS  a new folder and a new score land on disk, the score opens as a tab and the list follows" || { echo "FAIL  create: $(echo "$LOG" | grep -o 'probe7: .*' | head -1) (made/fresh.mei on disk: $([ -f "$WSDIR/made/fresh.mei" ] && echo yes || echo no))"; exit 1; }
 
 # A NORMAL launch — no probe flags (the storage flag stays on) — must run none of the probes that drive
 # the UI (page view + play, a folder pick, the folder view): on 2026-09-16

@@ -6,8 +6,68 @@ out to do (plan + exit criteria, moved here from
 README's old Status section). The open phase — extension architecture,
 with reference layers and OMR folded into it — stays in
 [PLANNING.md](PLANNING.md); its running record — one bullet per
-decision, one per slice as it closes — is the unreleased section
-below.
+decision, one per slice as it closes — is each release's section
+below, and changes since the last tag gather under *Unreleased*.
+
+## Unreleased
+
+- **The target folder is marked, and `npm run tauri dev` works from the
+  root (2026-10-11).** Two requests together. The folder "+ score" and
+  "+ folder" create in now shows: a 3 px blue bar at the left of its row
+  and a faint tint (`#eef4fb`), never the active score's `#cfe2f5`; when
+  the target is the top folder, the bar sits beside the folder's name in
+  the header. `verify-folder-view.mjs` pins it (+4, 40 checks), and the
+  guide's folder view screenshot was regenerated — the other 17 shots came
+  out byte-identical. And a root script, `"tauri": "cd apps/editor &&
+  tauri"`, so `npm run tauri dev` (and `npm run tauri build`) run the
+  Tauri CLI where packaging always ran it; `tauri.conf.json` gained
+  `beforeDevCommand`, which starts Vite with `--port 5173 --strictPort`:
+  Vite does not pin its port, and on a busy 5173 it would have served on
+  5174 while the shell loaded 5173. Verified by launching it from the root
+  on an in-memory data store: DEV SERVER mode, the page loaded from
+  localhost:5173, ten tiles rendered.
+- **The folder view makes new scores and folders (2026-10-11).** The
+  user's second request the same day. **+ score** and **+ folder** in the
+  panel's header create in the target folder — the last folder clicked,
+  or the folder of the last score opened, the root until then; the
+  buttons' titles name it — through a field that appears first inside
+  that folder. A new score is the editor's blank (a treble staff, 4/4,
+  four empty measures) titled after its name, saved as `.mei` and opened
+  at once; a new folder appears open and empty and becomes the target.
+  Create-only by construction: the shell's `workspace_create_folder` and
+  `workspace_create_file` refuse an existing name and open the file
+  `create_new`, so nothing is overwritten even in a race; the name rules
+  are rename's, now one `valid_name` shared by both. The api grew
+  `createFolder` and `createFile` INTO the untagged 1.1.0 — no second
+  bump for a number nobody has consumed; the surface report was
+  regenerated from the committed 1.0.0 baseline. Tests: Rust 4 (+2),
+  editor 149 (+1), folder view 50 (+8, a new `blank.test.ts` holding the
+  template to the editor's), `verify-folder-view.mjs` +11 (the written
+  blank opened in the real editor as four measures), `verify-tauri.sh`
+  probe7 (a folder and a score on disk, the score opened as a tab). The
+  guide gained *New scores and folders*. Found on the way: the folder
+  view's BUILDING §4 still said the plugin never writes to disk — stale
+  since the rename, corrected.
+- **The folder view renames files and folders in place (2026-10-11).**
+  The user's first request after 1.0.0. Point at a row and click its ✎,
+  or select it and press F2: the name becomes a field, Enter or clicking
+  away renames, Esc cancels. A score is edited without its extension and
+  keeps `.mei`; a renamed open folder stays open. It is the workspace's
+  first WRITE, so it was built in the three places a write has to be
+  right: the shell's `workspace_rename` renames in the same parent and
+  refuses a separator, an empty or dot-led name, an existing name (but
+  allows a case-only rename on a case-insensitive disk), the picked root
+  and anything outside the roots; the host's service follows — the App
+  moves an open tab's path and name and the recorded mtime, so the next
+  save lands on the renamed file and the guard compares the same file;
+  the plugin moves only what it keys by path. `@battuta/api` 1.0.0 →
+  **1.1.0** (`WorkspaceService.rename`, additive) and the folder view
+  1.0.0 → **1.1.0** asking for `^1.1.0`; the application, core and docs
+  stay at 1.0.0 until the next release is numbered. Tests: Rust 2 (new),
+  editor 148 (+2), folder view 42 (+6), `verify-folder-view.mjs` +10 (the
+  UI with a real pointer and keyboard against a fake bridge),
+  `verify-tauri.sh` probe6 (the file moved on disk, the tab and the list
+  followed). The guide's folder view page gained a *Renaming* section.
 
 ## 1.0.0 — 2026-09-18 (Phase 9 — Extension architecture)
 

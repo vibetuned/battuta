@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import type { DirEntry } from "@battuta/api";
-import { baseOf, extOf, foldersToRefresh, isScore, listed, parentOf, rowsOf, titleOf } from "../src/tree";
+import { baseOf, extOf, foldersToRefresh, isScore, listed, movedPath, newScoreName, parentOf, renamedName, rowsOf, titleOf } from "../src/tree";
 
 const file = (path: string): DirEntry => ({ name: path.split("/").pop()!, path, kind: "file" });
 const dir = (path: string): DirEntry => ({ name: path.split("/").pop()!, path, kind: "dir" });
@@ -109,5 +109,43 @@ describe("foldersToRefresh", () => {
 
   it("the root changing refreshes the root once, not twice", () => {
     expect(foldersToRefresh("/r", loaded)).toEqual(["/r"]);
+  });
+});
+
+describe("renaming", () => {
+  it("a score is edited without its extension, which is put back once", () => {
+    const one = file("/s/one.mei");
+    expect(renamedName(one, "first")).toBe("first.mei");
+    expect(renamedName(one, "  first  ")).toBe("first.mei");
+    expect(renamedName(one, "first.mei")).toBe("first.mei"); // typed it anyway: not doubled
+    expect(renamedName(one, "first.MEI")).toBe("first.MEI");
+    expect(renamedName(file("/s/Two.MEI"), "two")).toBe("two.MEI"); // the extension keeps its own case
+    expect(renamedName(one, "first.txt")).toBe("first.txt.mei"); // the type does not change here
+  });
+
+  it("a folder is taken as typed; nothing to do is null", () => {
+    expect(renamedName(dir("/s/bach"), "Bach")).toBe("Bach");
+    expect(renamedName(dir("/s/bach"), "bach")).toBeNull();
+    expect(renamedName(file("/s/one.mei"), "one")).toBeNull();
+    expect(renamedName(file("/s/one.mei"), "   ")).toBeNull();
+  });
+
+  it("a path moves when it is the renamed one or under it, in either separator", () => {
+    expect(movedPath("/s/bach", "/s/bach", "/s/Bach")).toBe("/s/Bach");
+    expect(movedPath("/s/bach/bwv1.mei", "/s/bach", "/s/Bach")).toBe("/s/Bach/bwv1.mei");
+    expect(movedPath("C:\\s\\bach\\x.mei", "C:\\s\\bach", "C:\\s\\Bach")).toBe("C:\\s\\Bach\\x.mei");
+    expect(movedPath("/s/bachelor.mei", "/s/bach", "/s/Bach")).toBe("/s/bachelor.mei"); // a prefix of the NAME is not a parent
+    expect(movedPath("/s/one.mei", "/s/bach", "/s/Bach")).toBe("/s/one.mei");
+  });
+});
+
+describe("a new score's name", () => {
+  it("gets .mei unless it has it; an empty field is nothing", () => {
+    expect(newScoreName("Etude")).toBe("Etude.mei");
+    expect(newScoreName("  Etude op. 10  ")).toBe("Etude op. 10.mei");
+    expect(newScoreName("Etude.mei")).toBe("Etude.mei");
+    expect(newScoreName("Etude.MEI")).toBe("Etude.MEI");
+    expect(newScoreName("notes.txt")).toBe("notes.txt.mei");
+    expect(newScoreName("   ")).toBeNull();
   });
 });

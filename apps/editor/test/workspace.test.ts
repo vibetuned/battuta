@@ -3,7 +3,8 @@
  * browser (pick → null, read → refused, watch → a no-op), and in the shell
  * the commands with their arguments, watch events routed to the watch that
  * asked and coalesced per path, dispose unwatching, openDocument through
- * the bound adapter and refused without one.
+ * the bound adapter and refused without one, and rename — a name, not a
+ * path — followed by the adapter when the path changed.
  */
 import { describe, it, expect, vi } from "vitest";
 import type { WatchEvent } from "@battuta/api";
@@ -42,6 +43,9 @@ describe("in a browser (no bridge)", () => {
     const d = ws.watch("/x", () => undefined);
     d.dispose(); // nothing to undo, nothing thrown
     await expect(ws.openDocument("/x/a.mei")).rejects.toThrow(/no document opener/);
+    await expect(ws.rename("/x/a.mei", "b.mei")).rejects.toThrow(/shell is required/);
+    await expect(ws.createFolder("/x", "y")).rejects.toThrow(/shell is required/);
+    await expect(ws.createFile("/x", "y.mei", "<mei/>")).rejects.toThrow(/shell is required/);
   });
 });
 
@@ -101,10 +105,46 @@ describe("in the shell", () => {
     const f = fakeBridge();
     const ws = new HostWorkspaceService(f.bridge);
     const opened: string[] = [];
-    ws.bind({ openDocument: async (p) => void opened.push(p) });
+    ws.bind({ openDocument: async (p) => void opened.push(p), renamed: () => undefined });
     await ws.openDocument("/scores/a.mei");
     expect(opened).toEqual(["/scores/a.mei"]);
     ws.bind(null);
     await expect(ws.openDocument("/scores/a.mei")).rejects.toThrow(/no document opener/);
+  });
+
+  it("rename is the command with a NAME, resolves the new path, and the bound adapter follows it", async () => {
+    const f = fakeBridge({ workspace_rename: "/scores/first.mei" });
+    const ws = new HostWorkspaceService(f.bridge);
+    const followed: [string, string][] = [];
+    ws.bind({ openDocument: async () => undefined, renamed: (from, to) => void followed.push([from, to]) });
+    expect(await ws.rename("/scores/a.mei", "first.mei")).toBe("/scores/first.mei");
+    expect(f.calls.at(-1)).toEqual({ cmd: "workspace_rename", args: { path: "/scores/a.mei", newName: "first.mei" } });
+    expect(followed).toEqual([["/scores/a.mei", "/scores/first.mei"]]);
+  });
+
+  it("createFolder and createFile are the commands with the folder, the name and the contents; a refusal rejects with the reason", async () => {
+    const f = fakeBridge({ workspace_create_folder: "/scores/Bach", workspace_create_file: "/scores/Bach/fugue.mei" });
+    const ws = new HostWorkspaceService(f.bridge);
+    expect(await ws.createFolder("/scores", "Bach")).toBe("/scores/Bach");
+    expect(await ws.createFile("/scores/Bach", "fugue.mei", "<mei/>")).toBe("/scores/Bach/fugue.mei");
+    expect(f.calls.slice(-2)).toEqual([
+      { cmd: "workspace_create_folder", args: { path: "/scores", name: "Bach" } },
+      { cmd: "workspace_create_file", args: { path: "/scores/Bach", name: "fugue.mei", contents: "<mei/>" } },
+    ]);
+    const refusing: WorkspaceBridge = { invoke: async () => Promise.reject(new Error('"a.mei" already exists in this folder')), listen: async () => () => undefined };
+    await expect(new HostWorkspaceService(refusing).createFile("/scores", "a.mei", "")).rejects.toThrow(/already exists/);
+    await expect(new HostWorkspaceService(fakeBridge().bridge).createFolder("/scores", "x")).rejects.toThrow(/answered null/);
+  });
+
+  it("rename: an unchanged path follows nothing, a refusal rejects with the shell's reason, and no adapter is fine", async () => {
+    const same = fakeBridge({ workspace_rename: "/scores/a.mei" });
+    const ws = new HostWorkspaceService(same.bridge);
+    const followed: string[] = [];
+    ws.bind({ openDocument: async () => undefined, renamed: (from) => void followed.push(from) });
+    expect(await ws.rename("/scores/a.mei", "a.mei")).toBe("/scores/a.mei");
+    expect(followed).toEqual([]);
+    const refusing: WorkspaceBridge = { invoke: async () => Promise.reject(new Error('"b.mei" already exists in this folder')), listen: async () => () => undefined };
+    await expect(new HostWorkspaceService(refusing).rename("/scores/a.mei", "b.mei")).rejects.toThrow(/already exists/);
+    expect(await new HostWorkspaceService(fakeBridge({ workspace_rename: "/scores/c.mei" }).bridge).rename("/scores/a.mei", "c.mei")).toBe("/scores/c.mei");
   });
 });

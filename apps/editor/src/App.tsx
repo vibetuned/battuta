@@ -1319,6 +1319,26 @@ export default function App() {
         if (fmt !== null && fmt !== "mei" && host.formats.readAs(fmt) === "bytes") openFileRef.current(path, Uint8Array.from(atob(contents), (c) => c.charCodeAt(0)).buffer);
         else openFileRef.current(path, contents, path);
       },
+      // A rename in the workspace (the folder view's): a tab whose file —
+      // or whose folder — moved keeps saving to where the file now is, a
+      // renamed file's tab takes its new name, and the recorded mtimes
+      // move too, so the external-change guard compares the same file.
+      renamed: (from, to) => {
+        const moved = (p: string): string | null => (p === from ? to : p.startsWith(`${from}/`) || p.startsWith(`${from}\\`) ? to + p.slice(from.length) : null);
+        setDocs((ds) =>
+          ds.map((d) => {
+            const next = d.path ? moved(d.path) : null;
+            if (next === null) return d;
+            return { ...d, path: next, ...(d.path === from ? { name: docNameFromPath(next) } : {}) };
+          }),
+        );
+        for (const [p, m] of [...diskMtimes.current]) {
+          const next = moved(p);
+          if (next === null) continue;
+          diskMtimes.current.delete(p);
+          diskMtimes.current.set(next, m);
+        }
+      },
     });
     const changes = host.workspace.onChange((e) => {
       // A file that is OPEN here and reports created or modified has

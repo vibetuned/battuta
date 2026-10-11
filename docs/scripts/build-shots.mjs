@@ -382,7 +382,7 @@ try {
     {
       const panel = await boxOf('[data-panels="side"]', 0);
       const list = await boxOf("[data-folder-view]", 0);
-      await shot("folder-view", "The folder view on the left, the score pushed right to make room: the folder's name and the … button to pick another, sub-folders that open in place (Schumann expanded), and a row per .mei score — click one to open it.", {
+      await shot("folder-view", "The folder view on the left, the score pushed right to make room: the folder's name with + score, + folder and the … button to pick another; sub-folders that open in place — Schumann, expanded and last clicked, is marked with a blue bar as the folder new scores go into — and a row per .mei score, the one under the pointer offering its ✎ to rename.", {
         x: 0,
         y: panel.y,
         width: 640,

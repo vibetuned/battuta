@@ -1,6 +1,6 @@
 ---
 title: Folder view
-description: Working through a folder of scores — the side panel, what its marks mean, and live file watching.
+description: Working through a folder of scores — the side panel, what its marks mean, and live file watching, and renaming, new scores and new folders in place.
 sidebar:
   order: 10
 ---
@@ -17,7 +17,7 @@ dialog.
 Click the **📁** in the header to show or hide it; the panel's **×** does
 the same.
 
-<Shot name="folder-view" caption="The folder view on the left, the score pushed right: sub-folders open in place, a row per score." />
+<Shot name="folder-view" caption="The folder view on the left, the score pushed right: sub-folders open in place, a row per score — and the marked folder is where <strong>+ score</strong> and <strong>+ folder</strong> create." />
 
 <Aside type="caution" title="The desktop app only">
 A browser tab cannot be handed a folder to read, so in the web editor the
@@ -58,6 +58,48 @@ open those with **open file…** and they become MEI tabs, which the view
 then shows.
 </Aside>
 
+## Renaming
+
+Point at a score or a folder and a **✎** appears at the end of its row;
+click it — or select the row and press <kbd>F2</kbd> — and the name
+becomes a field. Type the new one and press <kbd>Enter</kbd>, or click
+away; <kbd>Esc</kbd> leaves it as it was.
+
+A score is renamed **without its extension**: the field shows the name the
+list shows, and `.mei` is kept for you. A folder is renamed as typed, and
+if it was open it stays open under its new name.
+
+If the score is open in a tab, the tab follows: it takes the new name and
+saves to the renamed file — nothing is written to the old name behind
+your back. A name that already exists in the folder, an empty one, one
+with a `/` in it or one starting with a dot (it would be hidden) is
+refused, and a notice says why.
+
+## New scores and folders
+
+**+ score** and **+ folder** in the panel's header create inside the
+**folder you last clicked** — or the folder of the score you last opened,
+or the top folder until you have done either. That folder is **marked** —
+a blue bar at the left of its row, or beside the folder's name at the top
+of the panel when it is the top folder — and hovering a button names it. A field appears first inside it: type a name and press
+<kbd>Enter</kbd>, or click away; <kbd>Esc</kbd> changes nothing.
+
+A new score is a blank one — a treble staff in 4/4, four empty measures,
+titled after its name — saved as `.mei` (added for you) and **opened at
+once in a new tab**, ready to write in. A new folder appears open and
+empty, and becomes where the next score goes, so a folder of new pieces
+is **+ folder**, a name, then **+ score** as many times as you need.
+
+A name that already exists is refused — nothing is ever overwritten — as
+are the names renaming refuses.
+
+<Aside type="note" title="New after 1.0.0">
+Renaming and creating are the folder view's only changes to your disk,
+and they stay inside the folder you opened: that folder itself cannot be
+renamed from here, nothing is overwritten, moved between folders or
+deleted.
+</Aside>
+
 ## Live file watching
 
 While the panel is up, battuta watches the folder. A score added,
@@ -77,4 +119,5 @@ still do something about it, rather than at the moment you save.
 
 battuta menu → **🌣 shortcuts** → **plugins** → *Folder view*. The 📁 and
 the panel go together, and battuta stops watching. Nothing about your
-scores changes — the folder view only ever reads.
+scores changes — apart from the names you gave and the scores and folders
+you made, the folder view only ever reads.

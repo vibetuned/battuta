@@ -3,7 +3,11 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2022"],
+    // DOM, as playback and the pitch reference have it: the rename field is
+    // an <input> whose value and select() are platform types this plugin
+    // NAMES. Naming a type is not touching the DOM — plugin-boundaries
+    // still fails the build on a window/document/navigator global.
+    "lib": ["ES2022", "DOM"],
     "types": [],
     "jsx": "react-jsx",
     "strict": true,

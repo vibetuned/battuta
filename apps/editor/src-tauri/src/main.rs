@@ -181,6 +181,103 @@ fn workspace_open_folder(ws: tauri::State<'_, Workspace>, path: String) -> bool 
     admit_root(&ws, std::path::Path::new(&path)).is_ok()
 }
 
+/// Rename a file or folder IN PLACE (same parent) under a picked root —
+/// the workspace's first write (2026-10-11, the folder view's rename).
+/// `new_name` is a name, never a path. Refused: an empty, `.`, `..` or
+/// dot-led name (hidden entries are not listed, so the entry would vanish),
+/// a separator or NUL in it, a picked root itself (its path is the scope),
+/// anything outside the roots, and an existing target — except the entry
+/// itself under another case, which is how a case-only rename looks on a
+/// case-insensitive disk. Returns the new path (the old one when the name
+/// did not change).
+fn rename_within(roots: &[std::path::PathBuf], path: &str, new_name: &str) -> Result<std::path::PathBuf, String> {
+    let name = valid_name(new_name)?;
+    let src = std::fs::canonicalize(path).map_err(|e| format!("{path}: {e}"))?;
+    if !roots.iter().any(|r| src.starts_with(r)) {
+        return Err(format!("{path} is outside the opened folders"));
+    }
+    if roots.iter().any(|r| r == &src) {
+        return Err("the opened folder itself cannot be renamed here".into());
+    }
+    let parent = src.parent().ok_or_else(|| format!("{path} has no parent folder"))?;
+    let dst = parent.join(name);
+    if src.file_name().map(|n| n == std::ffi::OsStr::new(name)).unwrap_or(false) {
+        return Ok(src);
+    }
+    if dst.exists() {
+        let same = std::fs::canonicalize(&dst).map(|d| d == src).unwrap_or(false);
+        if !same {
+            return Err(format!("\"{name}\" already exists in this folder"));
+        }
+    }
+    std::fs::rename(&src, &dst).map_err(|e| format!("could not rename: {e}"))?;
+    Ok(dst)
+}
+
+#[tauri::command]
+fn workspace_rename(ws: tauri::State<'_, Workspace>, path: String, new_name: String) -> Result<String, String> {
+    let roots = ws.roots.lock().map_err(|_| "workspace state poisoned".to_string())?.clone();
+    rename_within(&roots, &path, &new_name).map(|p| p.to_string_lossy().into_owned())
+}
+
+/// A name a workspace write may give an entry, trimmed: not empty, `.` or
+/// `..`, no separator or NUL (a name, never a path), not dot-led (hidden
+/// entries are not listed, so it would vanish). Shared by rename and create.
+fn valid_name(raw: &str) -> Result<&str, String> {
+    let name = raw.trim();
+    if name.is_empty() || name == "." || name == ".." {
+        return Err("a name is required".into());
+    }
+    if name.contains('/') || name.contains('\\') || name.contains('\0') {
+        return Err(format!("\"{name}\" is not a name: it contains a separator"));
+    }
+    if name.starts_with('.') {
+        return Err(format!("\"{name}\" starts with a dot: it would be hidden from the list"));
+    }
+    Ok(name)
+}
+
+/// Create a folder (`contents` None) or a file with `contents` IN a folder
+/// under a picked root — the root itself included. Create-only: an existing
+/// name is refused, and the file is opened `create_new`, so a race with
+/// another program cannot overwrite either (2026-10-11, the folder view's
+/// new score and new folder). Returns the new path.
+fn create_within(roots: &[std::path::PathBuf], dir: &str, raw_name: &str, contents: Option<&str>) -> Result<std::path::PathBuf, String> {
+    let name = valid_name(raw_name)?;
+    let d = std::fs::canonicalize(dir).map_err(|e| format!("{dir}: {e}"))?;
+    if !roots.iter().any(|r| d.starts_with(r)) {
+        return Err(format!("{dir} is outside the opened folders"));
+    }
+    if !d.is_dir() {
+        return Err(format!("{dir} is not a folder"));
+    }
+    let dst = d.join(name);
+    if dst.exists() {
+        return Err(format!("\"{name}\" already exists in this folder"));
+    }
+    match contents {
+        None => std::fs::create_dir(&dst).map_err(|e| format!("could not create the folder: {e}"))?,
+        Some(text) => {
+            use std::io::Write;
+            let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(&dst).map_err(|e| format!("could not create the file: {e}"))?;
+            f.write_all(text.as_bytes()).map_err(|e| format!("could not write the file: {e}"))?;
+        }
+    }
+    Ok(dst)
+}
+
+#[tauri::command]
+fn workspace_create_folder(ws: tauri::State<'_, Workspace>, path: String, name: String) -> Result<String, String> {
+    let roots = ws.roots.lock().map_err(|_| "workspace state poisoned".to_string())?.clone();
+    create_within(&roots, &path, &name, None).map(|p| p.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+fn workspace_create_file(ws: tauri::State<'_, Workspace>, path: String, name: String, contents: String) -> Result<String, String> {
+    let roots = ws.roots.lock().map_err(|_| "workspace state poisoned".to_string())?.clone();
+    create_within(&roots, &path, &name, Some(&contents)).map(|p| p.to_string_lossy().into_owned())
+}
+
 #[derive(serde::Serialize)]
 struct DirEntryOut {
     name: String,
@@ -524,7 +621,7 @@ fn main() {
             spawn_midi(app.app_handle().clone());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![bench_echo, bench_report, js_log, open_score, save_score, save_score_as, export_file, file_mtime, confirm_dialog, midi_open_outputs, midi_close_outputs, midi_send, initial_score, workspace_pick_folder, workspace_open_folder, workspace_read_dir, workspace_read_file, workspace_watch, workspace_unwatch])
+        .invoke_handler(tauri::generate_handler![bench_echo, bench_report, js_log, open_score, save_score, save_score_as, export_file, file_mtime, confirm_dialog, midi_open_outputs, midi_close_outputs, midi_send, initial_score, workspace_pick_folder, workspace_open_folder, workspace_read_dir, workspace_read_file, workspace_rename, workspace_create_folder, workspace_create_file, workspace_watch, workspace_unwatch])
         .on_page_load(|webview, payload| {
             // Fired at Started and at Finished; the probes below must be
             // scheduled once — twice, the second copy of probe3 found the
@@ -632,6 +729,53 @@ fn main() {
                        const fail = (why) => inv('js_log', {{ msg: 'probe5: folder view FAILED: ' + why }}); \
                        const t0 = Date.now(); \
                        let picked = false, clicked = false, entries = 0, ready = 0; \
+                       /* probe6: the rename's SHELL half, through the host's own service (the field, the pencil and F2 are \
+                          verify-folder-view.mjs's, which has a real pointer): two.mei, open in the active tab, becomes \
+                          renamed.mei on disk; the tab follows (its name, and the path it saves to, in ctx.documents) and \
+                          the list follows through the watch, as it would for a rename made in another app. */ \
+                       /* probe7: the creates' SHELL half, through the host's service (the buttons and the field are \
+                          verify-folder-view.mjs's): a folder 'made' in the test folder, a score 'fresh.mei' in it — the \
+                          active score's MEI, so it is a real one — opened through the host's open path as a tab, and the \
+                          list following through the watch. */ \
+                       const create = (root) => {{ \
+                         const ws = window.__HOST__.workspace; \
+                         ws.createFolder(root, 'made') \
+                           .then((dir) => ws.createFile(dir, 'fresh.mei', window.__SESSION__.saveDocument())) \
+                           .then((file) => ws.openDocument(file).then(() => file)) \
+                           .then((file) => {{ \
+                             const t2 = Date.now(); \
+                             const check = () => {{ \
+                               const docs = window.__HOST__.documents.get(); \
+                               const tab = document.querySelector('.tab.active'); \
+                               const opened = docs.some((d) => (d.path || '').endsWith('fresh.mei')); \
+                               const named = Boolean(tab && tab.textContent.indexOf('fresh') >= 0); \
+                               const listed = [...document.querySelectorAll('[data-folder-entry]')].some((r) => r.dataset.folderEntry === 'made'); \
+                               if (opened && named && listed) {{ inv('js_log', {{ msg: 'probe7: create ok (made/' + file.split(/[\\\\/]/).pop() + ', opened as a tab, list followed)' }}); return; }} \
+                               if (Date.now() - t2 > 5000) {{ inv('js_log', {{ msg: 'probe7: create FAILED (opened=' + opened + ' named=' + named + ' listed=' + listed + ')' }}); return; }} \
+                               setTimeout(check, 200); \
+                             }}; \
+                             check(); \
+                           }}) \
+                           .catch((e) => inv('js_log', {{ msg: 'probe7: create FAILED: ' + e }})); \
+                       }}; \
+                       const rename = (path) => {{ \
+                         const ws = window.__HOST__ && window.__HOST__.workspace; \
+                         if (!ws) {{ inv('js_log', {{ msg: 'probe6: rename FAILED: no host' }}); return; }} \
+                         ws.rename(path, 'renamed.mei').then((to) => {{ \
+                           const t1 = Date.now(); \
+                           const check = () => {{ \
+                             const docs = window.__HOST__.documents.get(); \
+                             const tab = document.querySelector('.tab.active'); \
+                             const followed = docs.some((d) => (d.path || '').endsWith('renamed.mei')) && !docs.some((d) => (d.path || '').endsWith('two.mei')); \
+                             const named = Boolean(tab && tab.textContent.indexOf('renamed') >= 0); \
+                             const listed = [...document.querySelectorAll('[data-folder-entry]')].some((r) => r.dataset.folderEntry === 'renamed.mei'); \
+                             if (followed && named && listed) {{ inv('js_log', {{ msg: 'probe6: rename ok (' + to.split(/[\\\\/]/).pop() + ', tab followed, list followed)' }}); create(to.replace(/[\\\\/][^\\\\/]*$/, '')); return; }} \
+                             if (Date.now() - t1 > 5000) {{ inv('js_log', {{ msg: 'probe6: rename FAILED (followed=' + followed + ' named=' + named + ' listed=' + listed + ')' }}); return; }} \
+                             setTimeout(check, 200); \
+                           }}; \
+                           check(); \
+                         }}).catch((e) => inv('js_log', {{ msg: 'probe6: rename FAILED: ' + e }})); \
+                       }}; \
                        const step = () => {{ \
                          const panel = document.querySelector('[data-folder-view]'); \
                          if (!panel) {{ \
@@ -648,7 +792,7 @@ fn main() {
                          const notice = document.querySelector('[data-notice]'); \
                          const guard = Boolean(notice && notice.textContent.indexOf('changed on disk') >= 0); \
                          if (marked && !ready) ready = Date.now(); \
-                         if (marked && (guard || Date.now() - ready > 8000)) {{ inv('js_log', {{ msg: 'probe5: folder view ok (' + entries + ' entries, opened two.mei, marked open, guard ' + (guard ? 'yes' : 'no (no notice within 8 s)') + ')' }}); return; }} \
+                         if (marked && (guard || Date.now() - ready > 8000)) {{ inv('js_log', {{ msg: 'probe5: folder view ok (' + entries + ' entries, opened two.mei, marked open, guard ' + (guard ? 'yes' : 'no (no notice within 8 s)') + ')' }}); rename(two.title); return; }} \
                          if (Date.now() - t0 > 14000) {{ fail('timeout (picked=' + picked + ' clicked=' + clicked + ' entries=' + entries + ' marked=' + marked + ')'); return; }} \
                          setTimeout(step, 250); \
                        }}; \
@@ -692,4 +836,88 @@ fn main() {
                 }
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{create_within, rename_within};
+    use std::path::PathBuf;
+
+    /// A fresh folder under the system temp dir, canonical (macOS puts /var behind /private/var).
+    fn scratch(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("battuta-rename-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::canonicalize(&dir).unwrap()
+    }
+
+    #[test]
+    fn renames_a_file_and_a_folder_in_place() {
+        let root = scratch("ok");
+        std::fs::write(root.join("one.mei"), "<mei/>").unwrap();
+        std::fs::create_dir(root.join("bach")).unwrap();
+        std::fs::write(root.join("bach").join("bwv1.mei"), "<mei/>").unwrap();
+        let roots = vec![root.clone()];
+        let to = rename_within(&roots, root.join("one.mei").to_str().unwrap(), "  first.mei ").unwrap();
+        assert_eq!(to, root.join("first.mei"));
+        assert!(to.exists() && !root.join("one.mei").exists());
+        let to = rename_within(&roots, root.join("bach").to_str().unwrap(), "Bach").unwrap();
+        assert!(to.join("bwv1.mei").exists());
+        // the same name is a no-op, not an error
+        assert_eq!(rename_within(&roots, to.to_str().unwrap(), "Bach").unwrap(), to);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn refuses_bad_names_existing_targets_roots_and_the_outside() {
+        let root = scratch("refuse");
+        let outside = scratch("outside");
+        std::fs::write(root.join("a.mei"), "").unwrap();
+        std::fs::write(root.join("b.mei"), "").unwrap();
+        std::fs::write(outside.join("x.mei"), "").unwrap();
+        let roots = vec![root.clone()];
+        let a = root.join("a.mei");
+        let a = a.to_str().unwrap();
+        for bad in ["", "  ", ".", "..", "x/y.mei", "x\\y.mei", ".hidden.mei"] {
+            assert!(rename_within(&roots, a, bad).is_err(), "{bad:?} should be refused");
+        }
+        assert!(rename_within(&roots, a, "b.mei").unwrap_err().contains("already exists"));
+        assert!(rename_within(&roots, root.to_str().unwrap(), "elsewhere").unwrap_err().contains("opened folder itself"));
+        assert!(rename_within(&roots, outside.join("x.mei").to_str().unwrap(), "y.mei").unwrap_err().contains("outside"));
+        assert!(std::path::Path::new(a).exists() && root.join("b.mei").exists() && outside.join("x.mei").exists());
+        std::fs::remove_dir_all(&root).unwrap();
+        std::fs::remove_dir_all(&outside).unwrap();
+    }
+
+    #[test]
+    fn creates_a_folder_and_a_file_in_the_root_or_below() {
+        let root = scratch("create");
+        let roots = vec![root.clone()];
+        let made = create_within(&roots, root.to_str().unwrap(), " Bach ", None).unwrap();
+        assert_eq!(made, root.join("Bach"));
+        assert!(made.is_dir());
+        let score = create_within(&roots, made.to_str().unwrap(), "fugue.mei", Some("<mei/>")).unwrap();
+        assert_eq!(std::fs::read_to_string(&score).unwrap(), "<mei/>");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn create_never_overwrites_and_stays_inside() {
+        let root = scratch("create-refuse");
+        let outside = scratch("create-outside");
+        std::fs::write(root.join("a.mei"), "keep").unwrap();
+        let roots = vec![root.clone()];
+        let r = root.to_str().unwrap();
+        assert!(create_within(&roots, r, "a.mei", Some("new")).unwrap_err().contains("already exists"));
+        assert_eq!(std::fs::read_to_string(root.join("a.mei")).unwrap(), "keep");
+        assert!(create_within(&roots, r, "a.mei", None).unwrap_err().contains("already exists"));
+        for bad in ["", "..", "x/y", ".hidden"] {
+            assert!(create_within(&roots, r, bad, None).is_err(), "{bad:?} should be refused");
+        }
+        assert!(create_within(&roots, outside.to_str().unwrap(), "x.mei", Some("")).unwrap_err().contains("outside"));
+        assert!(create_within(&roots, root.join("a.mei").to_str().unwrap(), "x.mei", Some("")).unwrap_err().contains("not a folder"));
+        assert!(!outside.join("x.mei").exists());
+        std::fs::remove_dir_all(&root).unwrap();
+        std::fs::remove_dir_all(&outside).unwrap();
+    }
 }

@@ -56,6 +56,10 @@ interface Fixture {
   change(path: string, kind?: "created" | "modified" | "removed"): Promise<void>;
   /** Paths the host was asked to open. */
   opened(): string[];
+  /** Renames the host followed (an open tab would take the new path). */
+  followed(): [string, string][];
+  /** Files the fake shell created, path → contents. */
+  created(): Map<string, string>;
 }
 
 function fixture(opts: { saved?: string; shell?: boolean; folder?: Record<string, DirEntry[]> } = {}): Fixture {
@@ -65,6 +69,9 @@ function fixture(opts: { saved?: string; shell?: boolean; folder?: Record<string
   const invoked: { cmd: string; args?: Record<string, unknown> }[] = [];
   const notices: string[] = [];
   const opened: string[] = [];
+  const followed: [string, string][] = [];
+  /** Files the fake shell created, path → contents. */
+  const created = new Map<string, string>();
   let emit: ((e: { payload: unknown }) => void) | null = null;
   let nextWatch = 1;
 
@@ -88,6 +95,37 @@ function fixture(opts: { saved?: string; shell?: boolean; folder?: Record<string
         return entries;
       }
       if (cmd === "workspace_watch") return nextWatch++;
+      if (cmd === "workspace_create_folder" || cmd === "workspace_create_file") {
+        // the shell's create-only rule and its listing order: folders first, then by name
+        const dir = String(args?.["path"]);
+        const name = String(args?.["name"]);
+        const at = folder[dir];
+        if (!at) throw new Error(`${dir} is outside the opened folders`);
+        if (at.some((e) => e.name === name)) throw new Error(`"${name}" already exists in this folder`);
+        const kind = cmd === "workspace_create_folder" ? "dir" : "file";
+        const path = `${dir}/${name}`;
+        folder[dir] = [...at, { name, path, kind }].sort((a, b) => Number(a.kind !== "dir") - Number(b.kind !== "dir") || a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+        if (kind === "dir") folder[path] = [];
+        else created.set(path, String(args?.["contents"]));
+        return path;
+      }
+      if (cmd === "workspace_rename") {
+        // what the shell does, on the in-memory folder: refuse an existing
+        // name, otherwise move the entry and (for a folder) its subtree
+        const from = String(args?.["path"]);
+        const name = String(args?.["newName"]);
+        const parent = from.slice(0, from.lastIndexOf("/"));
+        const to = `${parent}/${name}`;
+        if ((folder[parent] ?? []).some((e) => e.name === name)) throw new Error(`"${name}" already exists in this folder`);
+        folder[parent] = (folder[parent] ?? []).map((e) => (e.path === from ? { ...e, name, path: to } : e));
+        for (const key of Object.keys(folder)) {
+          if (key !== from && !key.startsWith(`${from}/`)) continue;
+          const moved = to + key.slice(from.length);
+          folder[moved] = folder[key]!.map((e) => ({ ...e, path: to + e.path.slice(from.length) }));
+          delete folder[key];
+        }
+        return to;
+      }
       return undefined;
     },
     listen: async (_event, cb) => {
@@ -116,6 +154,7 @@ function fixture(opts: { saved?: string; shell?: boolean; folder?: Record<string
     openDocument: async (path) => {
       opened.push(path);
     },
+    renamed: (from, to) => void followed.push([from, to]),
   });
   host.notices.subscribe((n) => n?.text && notices.push(n.text));
 
@@ -151,6 +190,8 @@ function fixture(opts: { saved?: string; shell?: boolean; folder?: Record<string
       await flush();
     },
     opened: () => opened,
+    followed: () => followed,
+    created: () => created,
   };
 }
 
@@ -253,6 +294,119 @@ describe("picking and listing", () => {
     f.panel().actions.toggleDir(`${ROOT}/bach`);
     await flush();
     expect(f.invoked().filter((i) => i.cmd === "workspace_watch")).toHaveLength(1);
+  });
+});
+
+describe("renaming in place", () => {
+  /** A private copy of the folder: a rename moves entries, and the shared FOLDER must not change under other tests. */
+  const copy = (): Record<string, DirEntry[]> => Object.fromEntries(Object.entries(FOLDER).map(([k, v]) => [k, v.map((e) => ({ ...e }))]));
+  const picked = async () => {
+    const f = fixture({ folder: copy() });
+    await f.host.registry.runCommand(COMMAND_TOGGLE);
+    f.panel().actions.pick();
+    await flush();
+    return f;
+  };
+
+  it("a score: the shell is asked with a NAME, the host follows, the list shows the new name at once", async () => {
+    const f = await picked();
+    f.panel().actions.rename(`${ROOT}/one.mei`, "first.mei");
+    await flush();
+    expect(f.invoked().find((i) => i.cmd === "workspace_rename")?.args).toEqual({ path: `${ROOT}/one.mei`, newName: "first.mei" });
+    expect(f.followed()).toEqual([[`${ROOT}/one.mei`, `${ROOT}/first.mei`]]);
+    expect(f.rows()).toEqual(["0:bach", "0:first.mei"]);
+    expect(f.notices()).toEqual([]);
+  });
+
+  it("an open folder stays open under its new name, its contents with it", async () => {
+    const f = await picked();
+    f.panel().actions.toggleDir(`${ROOT}/bach`);
+    await flush();
+    f.panel().actions.rename(`${ROOT}/bach`, "Bach");
+    await flush();
+    expect(f.rows()).toEqual(["0:Bach", "1:bwv1.mei", "0:one.mei"]);
+    expect(f.panel().state.get().expanded.has(`${ROOT}/Bach`)).toBe(true);
+    expect(f.panel().state.get().loaded.get(`${ROOT}/Bach`)?.[0]?.path).toBe(`${ROOT}/Bach/bwv1.mei`);
+    expect(f.followed()).toEqual([[`${ROOT}/bach`, `${ROOT}/Bach`]]);
+  });
+
+  it("a refusal is a notice with the shell's reason, and nothing moves", async () => {
+    const f = await picked();
+    f.panel().actions.rename(`${ROOT}/one.mei`, "bach");
+    await flush();
+    expect(f.notices().some((n) => /could not rename one\.mei: "bach" already exists/.test(n))).toBe(true);
+    expect(f.rows()).toEqual(["0:bach", "0:one.mei"]);
+    expect(f.followed()).toEqual([]);
+  });
+});
+
+describe("creating a score or a folder", () => {
+  const copy = (): Record<string, DirEntry[]> => Object.fromEntries(Object.entries(FOLDER).map(([k, v]) => [k, v.map((e) => ({ ...e }))]));
+  const picked = async () => {
+    const f = fixture({ folder: copy() });
+    await f.host.registry.runCommand(COMMAND_TOGGLE);
+    f.panel().actions.pick();
+    await flush();
+    return f;
+  };
+
+  it("the target is the root until a folder is clicked or a score opened", async () => {
+    const f = await picked();
+    expect(f.panel().state.get().target).toBe(ROOT);
+    f.panel().actions.toggleDir(`${ROOT}/bach`);
+    expect(f.panel().state.get().target).toBe(`${ROOT}/bach`);
+    f.panel().actions.open(`${ROOT}/one.mei`);
+    expect(f.panel().state.get().target).toBe(ROOT);
+    f.panel().actions.open(`${ROOT}/bach/bwv1.mei`);
+    expect(f.panel().state.get().target).toBe(`${ROOT}/bach`);
+  });
+
+  it("a score: .mei added, a blank score titled after it written, listed, and opened through the host", async () => {
+    const f = await picked();
+    f.panel().actions.create("file", ROOT, "Etude");
+    await flush();
+    const call = f.invoked().find((i) => i.cmd === "workspace_create_file");
+    expect(call?.args?.["path"]).toBe(ROOT);
+    expect(call?.args?.["name"]).toBe("Etude.mei");
+    expect(f.created().get(`${ROOT}/Etude.mei`)).toContain("<title>Etude</title>");
+    expect(f.rows()).toEqual(["0:bach", "0:Etude.mei", "0:one.mei"]);
+    expect(f.opened()).toEqual([`${ROOT}/Etude.mei`]);
+    expect(f.notices()).toEqual([]);
+  });
+
+  it("a folder: created in the target, shown open and empty, and the next score goes in it", async () => {
+    const f = await picked();
+    f.panel().actions.toggleDir(`${ROOT}/bach`);
+    await flush();
+    f.panel().actions.create("dir", `${ROOT}/bach`, "  Fugues ");
+    await flush();
+    expect(f.invoked().find((i) => i.cmd === "workspace_create_folder")?.args).toEqual({ path: `${ROOT}/bach`, name: "Fugues" });
+    expect(f.rows()).toEqual(["0:bach", "1:Fugues", "1:bwv1.mei", "0:one.mei"]);
+    expect(f.panel().state.get().target).toBe(`${ROOT}/bach/Fugues`);
+    f.panel().actions.create("file", f.panel().state.get().target!, "Fugue 1");
+    await flush();
+    expect(f.rows()).toEqual(["0:bach", "1:Fugues", "2:Fugue 1.mei", "1:bwv1.mei", "0:one.mei"]);
+  });
+
+  it("an existing name is refused with a notice and nothing opens; an empty one does nothing at all", async () => {
+    const f = await picked();
+    f.panel().actions.create("file", ROOT, "one");
+    await flush();
+    expect(f.notices().some((n) => /could not create one\.mei: "one\.mei" already exists/.test(n))).toBe(true);
+    expect(f.opened()).toEqual([]);
+    const before = f.invoked().length;
+    f.panel().actions.create("dir", ROOT, "   ");
+    await flush();
+    expect(f.invoked().length).toBe(before);
+  });
+
+  it("renaming the target folder moves the target with it", async () => {
+    const f = await picked();
+    f.panel().actions.toggleDir(`${ROOT}/bach`);
+    await flush();
+    f.panel().actions.rename(`${ROOT}/bach`, "Bach");
+    await flush();
+    expect(f.panel().state.get().target).toBe(`${ROOT}/Bach`);
   });
 });
 

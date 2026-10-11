@@ -100,3 +100,35 @@ export function foldersToRefresh(path: string, loaded: ReadonlySet<string>): str
   add(parentOf(path));
   return out;
 }
+
+/**
+ * The name a rename sends, from what the user typed in the row's editor.
+ * The row shows a score WITHOUT its extension, so that is what is edited:
+ * the extension is put back (typing it again does not double it). A
+ * folder's name is taken as typed. Null when there is nothing to do — an
+ * empty field, or the name unchanged.
+ */
+export function renamedName(entry: DirEntry, typed: string): string | null {
+  const t = typed.trim();
+  if (!t) return null;
+  let name = t;
+  if (entry.kind === "file") {
+    const ext = extOf(entry.name);
+    if (ext && extOf(t) !== ext) name = `${t}.${entry.name.slice(entry.name.length - ext.length)}`;
+  }
+  return name === entry.name ? null : name;
+}
+
+/** A path after a rename of `from` to `to`: the same path, or one under it, moves; anything else is untouched. */
+export function movedPath(p: string, from: string, to: string): string {
+  if (p === from) return to;
+  if (p.startsWith(`${from}/`) || p.startsWith(`${from}\\`)) return to + p.slice(from.length);
+  return p;
+}
+
+/** The file name "+ score" creates from what was typed: `.mei` added unless it is there already; null for an empty field. */
+export function newScoreName(typed: string): string | null {
+  const t = typed.trim();
+  if (!t) return null;
+  return isScore(t) ? t : `${t}.${SCORE_EXTS[0]}`;
+}

@@ -9,18 +9,21 @@
  * makes it the measurement the phase wanted: it cost the host nothing.
  *
  * Everything it can do is `ctx`: the folders the user picked
- * (`ctx.workspace`, scoped by the shell and read-only), what is open
- * (`ctx.documents`), a panel and a header button. It writes nothing —
- * not to the document, not to disk — and persists one string, the
- * folder's path.
+ * (`ctx.workspace`, scoped by the shell), what is open (`ctx.documents`),
+ * a panel and a header button. It writes nothing to the document, and to
+ * disk only what the user asks for, through the workspace service: a
+ * rename in place (which the host follows with any open tab), a new
+ * folder, a new blank score — create-only, never an existing file. It
+ * persists one string, the folder's path.
  *
  * Imports `@battuta/api`, `react` and this package's own files, and
  * nothing else.
  */
-import { definePlugin, toDisposable, type ActivationEvent, type Disposable, type PluginContext, type Store, type WatchEvent } from "@battuta/api";
+import { definePlugin, toDisposable, type ActivationEvent, type DirEntry, type Disposable, type PluginContext, type Store, type WatchEvent } from "@battuta/api";
 import { COMMAND_TOGGLE, PANEL_ID, SETTING_FOLDER } from "./manifest";
 import { FolderPanel, useStore, type FolderState } from "./Panel";
-import { baseOf, foldersToRefresh } from "./tree";
+import { blankScore } from "./blank";
+import { baseOf, foldersToRefresh, movedPath, newScoreName, parentOf, titleOf } from "./tree";
 
 /** A host-store-shaped holder for the state this plugin owns. */
 interface Signal<T> extends Store<T> {
@@ -67,7 +70,7 @@ const WOKEN_BY_THE_BUTTON: ActivationEvent = `onCommand:${COMMAND_TOGGLE}`;
 
 export default definePlugin({
   activate(ctx: PluginContext) {
-    const state = signal<FolderState>({ root: null, loaded: new Map(), expanded: new Set(), error: null, busy: false });
+    const state = signal<FolderState>({ root: null, loaded: new Map(), expanded: new Set(), error: null, busy: false, target: null });
     const open = signal(false);
     const patch = (fields: Partial<FolderState>) => state.set({ ...state.get(), ...fields });
     let panel: Disposable | null = null;
@@ -94,7 +97,7 @@ export default definePlugin({
         const expanded = new Set(state.get().expanded);
         loaded.delete(dir);
         expanded.delete(dir);
-        patch({ loaded, expanded, busy: false });
+        patch({ loaded, expanded, busy: false, ...(state.get().target === dir ? { target: state.get().root } : {}) });
       }
     };
 
@@ -107,7 +110,7 @@ export default definePlugin({
     const adopt = async (root: string, opts: { persist?: boolean } = {}): Promise<void> => {
       watching?.dispose();
       watching = null;
-      patch({ root, loaded: new Map(), expanded: new Set(), error: null, busy: true });
+      patch({ root, loaded: new Map(), expanded: new Set(), error: null, busy: true, target: root });
       if (opts.persist) ctx.settings.set(SETTING_FOLDER, root);
       await readInto(root);
       // The watch is recursive and the host coalesces per path, so one
@@ -124,22 +127,67 @@ export default definePlugin({
           })
           .catch((e) => ctx.notice(`could not open that folder: ${message(e)}`));
       },
+      // A click on a folder also makes it where "+ score" and "+ folder"
+      // create, as a file manager's selection does.
       toggleDir: (path: string) => {
         const expanded = new Set(state.get().expanded);
         if (expanded.has(path)) {
           expanded.delete(path);
-          patch({ expanded });
+          patch({ expanded, target: path });
           return;
         }
         expanded.add(path);
-        patch({ expanded });
+        patch({ expanded, target: path });
         if (!state.get().loaded.has(path)) void readInto(path);
       },
       // The host's ONE open path: an import converts, an already-open tab
       // is focused instead of opened twice, the mtime is recorded for the
       // external-change guard. None of that is this plugin's to reproduce.
       open: (path: string) => {
+        patch({ target: parentOf(path) }); // a score's folder is where the next "+" creates
         void ctx.workspace.openDocument(path).catch((e) => ctx.notice(`could not open ${baseOf(path)}: ${message(e)}`));
+      },
+      // In place, through the workspace service — the host follows with any
+      // open tab. What this plugin keeps by path (the folders read, the
+      // folders expanded) moves too, so a renamed folder stays open; then
+      // the parent is re-read at once rather than waiting for the watch.
+      rename: (path: string, newName: string) => {
+        void ctx.workspace
+          .rename(path, newName)
+          .then((to) => {
+            if (to === path) return;
+            const s = state.get();
+            const loaded = new Map<string, readonly DirEntry[]>();
+            for (const [dir, entries] of s.loaded) loaded.set(movedPath(dir, path, to), entries.map((e) => ({ ...e, path: movedPath(e.path, path, to) })));
+            patch({ loaded, expanded: new Set([...s.expanded].map((p) => movedPath(p, path, to))), target: s.target === null ? null : movedPath(s.target, path, to) });
+            return readInto(parentOf(to));
+          })
+          .catch((e) => ctx.notice(`could not rename ${baseOf(path)}: ${message(e)}`));
+      },
+      // Create-only, through the workspace service. A new score is a blank
+      // score titled after its name, and it opens at once through the
+      // host's one open path — the point of making it is to write in it.
+      // A new folder opens, empty, and becomes the target: the next
+      // "+ score" goes in it.
+      create: (kind: "file" | "dir", dir: string, typed: string) => {
+        const name = kind === "file" ? newScoreName(typed) : typed.trim();
+        if (!name) return;
+        const made = kind === "file" ? ctx.workspace.createFile(dir, name, blankScore(titleOf(name))) : ctx.workspace.createFolder(dir, name);
+        void made
+          .then(async (path) => {
+            await readInto(dir);
+            if (kind === "dir") {
+              const expanded = new Set(state.get().expanded);
+              const loaded = new Map(state.get().loaded);
+              expanded.add(path);
+              if (!loaded.has(path)) loaded.set(path, []);
+              patch({ expanded, loaded, target: path });
+              return;
+            }
+            patch({ target: dir });
+            await ctx.workspace.openDocument(path).catch((e) => ctx.notice(`created ${name}, but could not open it: ${message(e)}`));
+          })
+          .catch((e) => ctx.notice(`could not create ${name}: ${message(e)}`));
       },
       close: () => setOpen(false),
     };

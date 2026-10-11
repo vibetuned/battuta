@@ -81,10 +81,20 @@ it is running at startup:
 npm run build -w @battuta/editor
 cd apps/editor/src-tauri && cargo app     # alias: run --release --features custom-protocol
 
-# Against the dev server (hot reload while hacking):
+# Against the dev server (hot reload while hacking), from the repo root:
+npm run tauri dev       # starts Vite on :5173, builds the shell, opens it; Rust edits rebuild
+
+# …or by hand, two terminals:
 npm run dev -w @battuta/editor            # serves on :5173
 cd apps/editor/src-tauri && cargo run --release   # loads localhost:5173 — BLANK without the dev server
 ```
+
+`npm run tauri <command>` is the Tauri CLI run in `apps/editor` — the
+same as `cd apps/editor && npx tauri <command>`, so `npm run tauri build`
+packages exactly as below. `tauri dev` starts the dev server itself
+(`beforeDevCommand` in `tauri.conf.json`) on a PINNED port: if 5173 is
+taken it stops with an error instead of serving elsewhere while the shell
+loads 5173.
 
 The old WebKitGTK 2.52 blank-webview issue no longer reproduces;
 `sh spikes/verify-tauri.sh` smoke-tests the self-contained build
