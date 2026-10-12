@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from "vitest";
 import type { StaffContext } from "@battuta/api";
-import { OverlayStore, tileGeometry, type TileMeasurement } from "../src/host/overlays";
+import { OverlayStore, rowBandHeights, tileGeometry, type TileMeasurement } from "../src/host/overlays";
 
 const ctx = (n: number): StaffContext => ({ n, lines: 5, clef: n === 1 ? { shape: "G", line: 2 } : { shape: "F", line: 4 }, keysig: "0", meter: { count: "4", unit: "4" } });
 
@@ -70,5 +70,24 @@ describe("tileGeometry", () => {
 
   it("an empty tile has no boxes and no staves", () => {
     expect(tileGeometry({ origin: { left: 0, top: 0, width: 50, height: 40 }, events: [], staves: [] }, staffNOf, ctx)).toEqual({ width: 50, height: 40, boxes: {}, staves: [] });
+  });
+});
+
+describe("rowBandHeights (bands above the tiles, 1.2.0)", () => {
+  const cells = [
+    { measureIndex: 0, measureId: "m1", width: 200 },
+    { measureIndex: 1, measureId: "m2", width: 100 },
+  ];
+  it("each band spec gets its row's tallest cell, rounded up; a layer-only spec gets none", () => {
+    const facsimile = { id: "scan", band: { height: (c: { width: number }) => c.width * 0.62, render: () => null } };
+    const layerOnly = { id: "trace", render: () => null };
+    const fixed = { id: "strip", band: { height: () => 30, render: () => null } };
+    expect(rowBandHeights([facsimile, layerOnly, fixed], cells)).toEqual([124, 0, 30]);
+  });
+
+  it("a cell asking for nothing, a negative or a non-finite height counts as none", () => {
+    const odd = { id: "odd", band: { height: (c: { measureIndex: number }) => [NaN, -5][c.measureIndex]!, render: () => null } };
+    expect(rowBandHeights([odd], cells)).toEqual([0]);
+    expect(rowBandHeights([odd], [])).toEqual([0]);
   });
 });

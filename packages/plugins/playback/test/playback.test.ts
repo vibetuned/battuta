@@ -102,6 +102,7 @@ function fixture(saved: Record<string, unknown> = {}, opts: { outputs?: string[]
     timemap: async () => TIMEMAP,
     notation: () => ({ ties: {}, marks: {} }),
     eventIdAt: () => null,
+    measureIds: () => [],
     mei: () => "",
   };
   host.bindSession(adapter);

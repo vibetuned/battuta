@@ -404,10 +404,78 @@ export class AddChordNoteCommand implements Command {
   }
 }
 
-/** Toggle a tie between the event at id and the next event in its layer. */
+/** The notes an event ties with: the note itself, or a chord's notes. */
+function tieNotes(el: CoreElement): CoreElement[] {
+  if (el.tag === "note") return [el];
+  if (el.tag === "chord") return childElements(el).filter((c) => c.tag === "note");
+  return [];
+}
+
+/**
+ * The tie links between two neighbouring events: each note of `a` paired
+ * with the note of `b` at the same written pitch (pname + oct, as playback
+ * reads a tie; the same accidental is preferred when a chord holds both).
+ * A chord ties only the pitches it shares with its neighbour.
+ */
+function tiePairs(a: CoreElement, b: CoreElement): [CoreElement, CoreElement][] {
+  const free = tieNotes(b);
+  const pairs: [CoreElement, CoreElement][] = [];
+  for (const na of tieNotes(a)) {
+    const same = free.filter((nb) => nb.attrs["pname"] === na.attrs["pname"] && nb.attrs["oct"] === na.attrs["oct"]);
+    const nb = same.find((n) => n.attrs["accid"] === na.attrs["accid"]) ?? same[0];
+    if (!nb) continue;
+    free.splice(free.indexOf(nb), 1);
+    pairs.push([na, nb]);
+  }
+  return pairs;
+}
+
+type TieMemento = { el: CoreElement; attrs: Record<string, string> };
+
+/**
+ * Toggle tie links as one: all present → remove them, else add the missing
+ * ones. Chain-aware: a note can terminate one tie AND initiate the next
+ * (n_n_n) — that's @tie="m" — so whatever a note does with its other side,
+ * outside these links, stays. The link a→b exists iff a initiates (i|m) and
+ * b terminates (m|t).
+ */
+function toggleTieLinks(pairs: [CoreElement, CoreElement][]): TieMemento[] {
+  const tiedIn = (v: string | undefined) => v === "t" || v === "m";
+  const tiedOut = (v: string | undefined) => v === "i" || v === "m";
+  const linked = pairs.every(([a, b]) => tiedOut(a.attrs["tie"]) && tiedIn(b.attrs["tie"]));
+  const sides = new Map<CoreElement, { in: boolean; out: boolean }>();
+  for (const [a, b] of pairs) {
+    sides.set(a, { in: sides.get(a)?.in ?? false, out: true });
+    sides.set(b, { in: true, out: sides.get(b)?.out ?? false });
+  }
+  const mementos: TieMemento[] = [];
+  for (const [el, side] of sides) {
+    const before = el.attrs["tie"];
+    mementos.push({ el, attrs: { ...el.attrs } });
+    const into = linked ? tiedIn(before) && !side.in : tiedIn(before) || side.in;
+    const out = linked ? tiedOut(before) && !side.out : tiedOut(before) || side.out;
+    const tie = into && out ? "m" : into ? "t" : out ? "i" : undefined;
+    if (tie) el.attrs["tie"] = tie;
+    else delete el.attrs["tie"];
+  }
+  return mementos;
+}
+
+/** Undo toggleTieLinks byte-identically (attribute order included). */
+function revertTieLinks(mementos: TieMemento[]): void {
+  for (const m of [...mementos].reverse()) {
+    for (const k of Object.keys(m.el.attrs)) delete m.el.attrs[k];
+    Object.assign(m.el.attrs, m.attrs);
+  }
+}
+
+/**
+ * Toggle a tie between the event at id and the next event in its layer. A
+ * chord ties each pitch it shares with its neighbour (chord or note).
+ */
 export class ToggleTieCommand implements Command {
   readonly label = "toggle tie";
-  private memento: { el: CoreElement; next: CoreElement; before: [string | undefined, string | undefined] } | null = null;
+  private mementos: TieMemento[] = [];
 
   constructor(private readonly targetId: string) {}
 
@@ -431,27 +499,12 @@ export class ToggleTieCommand implements Command {
     const el = findEl(ref, this.targetId);
     const next = findEl(nextRef, nextRef.id);
     if (!el || !next) throw new Error("tie endpoints not found");
-    if (el.tag !== "note" || next.tag !== "note") throw new Error("ties connect single notes");
-    if (el.attrs["pname"] !== next.attrs["pname"] || el.attrs["oct"] !== next.attrs["oct"]) {
-      throw new Error("tie requires the same pitch on both notes");
+    if (!tieNotes(el).length || !tieNotes(next).length) throw new Error("ties connect notes and chords");
+    const pairs = tiePairs(el, next);
+    if (!pairs.length) {
+      throw new Error(el.tag === "note" && next.tag === "note" ? "tie requires the same pitch on both notes" : "tie requires the same pitch on both sides (the chords share none)");
     }
-    this.memento = { el, next, before: [el.attrs["tie"], next.attrs["tie"]] };
-    // Chain-aware toggling: a note can terminate one tie AND initiate the
-    // next (n_n_n) — that's @tie="m". The link el→next exists iff el
-    // initiates (i|m) and next terminates (m|t).
-    const a = el.attrs["tie"];
-    const b = next.attrs["tie"];
-    if ((a === "i" || a === "m") && (b === "m" || b === "t")) {
-      // remove THIS link; whatever each note does with its other side stays
-      if (a === "m") el.attrs["tie"] = "t";
-      else delete el.attrs["tie"];
-      if (b === "m") next.attrs["tie"] = "i";
-      else delete next.attrs["tie"];
-    } else {
-      // create the link; a note already tied on its other side becomes "m"
-      el.attrs["tie"] = a === "t" || a === "m" ? "m" : "i";
-      next.attrs["tie"] = b === "i" || b === "m" ? "m" : "t";
-    }
+    this.mementos = toggleTieLinks(pairs);
     return [
       { measureIndex: ref.measureIndex, staffN: ref.staffN },
       { measureIndex: nextRef.measureIndex, staffN: nextRef.staffN },
@@ -459,12 +512,7 @@ export class ToggleTieCommand implements Command {
   }
 
   revert(_ctx: CommandContext): DirtyRegion[] {
-    if (!this.memento) return [];
-    const { el, next, before } = this.memento;
-    if (before[0] === undefined) delete el.attrs["tie"];
-    else el.attrs["tie"] = before[0];
-    if (before[1] === undefined) delete next.attrs["tie"];
-    else next.attrs["tie"] = before[1];
+    revertTieLinks(this.mementos);
     return [];
   }
 }
@@ -474,11 +522,12 @@ export class ToggleTieCommand implements Command {
  * apart (a note held across measures is a chain of ties, never one curve
  * skipping content). Uses proper MEI @tie values: i (initial), m (medial),
  * t (terminal) — and merges with ties continuing beyond the run's edges.
- * One command = one undo step for the whole chain.
+ * A run of chords ties each pitch every pair of neighbours shares. One
+ * command = one undo step for the whole chain.
  */
 export class ChainTieCommand implements Command {
   readonly label = "toggle tie chain";
-  private mementos: { el: CoreElement; before: string | undefined }[] = [];
+  private mementos: TieMemento[] = [];
   private region: DirtyRegion[] = [];
 
   constructor(private readonly ids: string[]) {}
@@ -494,9 +543,10 @@ export class ChainTieCommand implements Command {
       const m = ctx.score.measures[r.measureIndex];
       const el = m && locateWithParent(m, this.ids[i]!)?.el;
       if (!el) throw new Error("tie target not found");
-      if (el.tag !== "note") throw new Error("ties connect single notes");
+      if (!tieNotes(el).length) throw new Error("ties connect notes and chords");
       return el;
     });
+    const pairs: [CoreElement, CoreElement][] = [];
     for (let i = 1; i < refs.length; i++) {
       const a = refs[i - 1]!, b = refs[i]!;
       if (a.staffN !== b.staffN || a.layerN !== b.layerN) throw new Error("a tie chain stays in one staff and layer");
@@ -504,37 +554,18 @@ export class ChainTieCommand implements Command {
         (b.measureIndex === a.measureIndex && b.eventIndex === a.eventIndex + 1) ||
         (b.measureIndex === a.measureIndex + 1 && b.eventIndex === 0 && a.eventIndex === ctx.index.eventsAt(a.measureIndex, a.staffN, a.layerN).length - 1);
       if (!consecutive) throw new Error(`tie chain must be consecutive notes (gap after note ${i})`);
-      if (els[i - 1]!.attrs["pname"] !== els[i]!.attrs["pname"] || els[i - 1]!.attrs["oct"] !== els[i]!.attrs["oct"]) {
-        throw new Error(`tie requires the same pitch along the chain (note ${i + 1} differs)`);
-      }
+      const link = tiePairs(els[i - 1]!, els[i]!);
+      if (!link.length) throw new Error(`tie requires the same pitch along the chain (${els[i]!.tag} ${i + 1} differs)`);
+      pairs.push(...link);
     }
-    this.mementos = els.map((el) => ({ el, before: el.attrs["tie"] }));
     this.region = refs.map((r) => ({ measureIndex: r.measureIndex, staffN: r.staffN }));
-    const tiedIn = (v: string | undefined) => v === "t" || v === "m";
-    const tiedOut = (v: string | undefined) => v === "i" || v === "m";
-    const fullyTied = els.every((el, i) => (i === 0 || tiedIn(el.attrs["tie"])) && (i === els.length - 1 || tiedOut(el.attrs["tie"])));
-    els.forEach((el, i) => {
-      const before = el.attrs["tie"];
-      const first = i === 0, last = i === els.length - 1;
-      if (fullyTied) {
-        // Untie the run, preserving ties that continue past its edges.
-        if (first && tiedIn(before)) el.attrs["tie"] = "t";
-        else if (last && before === "m") el.attrs["tie"] = "i";
-        else delete el.attrs["tie"];
-      } else {
-        if (first) el.attrs["tie"] = tiedIn(before) ? "m" : "i";
-        else if (last) el.attrs["tie"] = before === "m" || before === "i" ? "m" : "t";
-        else el.attrs["tie"] = "m";
-      }
-    });
+    // Same run again unties it, preserving ties that continue past its edges.
+    this.mementos = toggleTieLinks(pairs);
     return this.region;
   }
 
   revert(_ctx: CommandContext): DirtyRegion[] {
-    for (const m of [...this.mementos].reverse()) {
-      if (m.before === undefined) delete m.el.attrs["tie"];
-      else m.el.attrs["tie"] = m.before;
-    }
+    revertTieLinks(this.mementos);
     return this.region;
   }
 }

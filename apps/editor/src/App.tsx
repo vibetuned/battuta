@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
 import { RenderPool, type TileResult } from "./render/renderPool";
 import { keyMatches, type Keymap, type Layout } from "./keymap";
-import { host, useStore, Slot, Panels, SIDE_PANEL_WIDTH, LaneInput, laneFace, TileOverlays, confirmDialog, tauriInvoke, blockOfEvents, rule, gate, modal, isMod, type ActionStep, type KeyEvent, type Outcome, type OverlayStore } from "./host";
+import { host, useStore, Slot, Panels, SIDE_PANEL_WIDTH, LaneInput, laneFace, TileOverlays, TileBands, rowBandHeights, confirmDialog, tauriInvoke, blockOfEvents, rule, gate, modal, isMod, type ActionStep, type KeyEvent, type Outcome, type OverlayStore } from "./host";
 import { ShortcutEditor } from "./ShortcutEditor";
 import { loadSettings, saveSettings, detectLayout } from "./settings";
 import { DocumentSession } from "./session";
@@ -206,9 +206,13 @@ function TileGrid({ session, version, pool, zoom, overlays, onRendered, onSettle
   // Any commit that can move tiles (fresh renders, the forced spacing pass,
   // header cells, zoom, container resize) must re-project overlays like the
   // caret — the parent recomputes them from the DOM after this fires.
+  // The overlays point's bands (1.2.0): specs that reserve room above the
+  // tiles. Re-added specs (a plugin's data changed) re-measure the rows.
+  const allOverlays = useStore(overlays.specs);
+  const bandSpecs = useMemo(() => allOverlays.filter((s) => s.band), [allOverlays]);
   useEffect(() => {
     onLayout();
-  }, [tiles, headers, measureTick, zoom, containerW, onLayout]);
+  }, [tiles, headers, measureTick, zoom, containerW, onLayout, bandSpecs]);
   const estimateW = useMemo(() => {
     const ws = rendered.map((t) => t.w).sort((a, b) => a - b);
     return ws[Math.floor(ws.length / 2)] ?? 150;
@@ -393,13 +397,24 @@ function TileGrid({ session, version, pool, zoom, overlays, onRendered, onSettle
         const rowTop = members.reduce((m, t) => Math.max(m, intrinsicTop.current.get(t.baseKey) ?? t.staffTop), 60);
         const rowBottom = withHeader.reduce((m, t) => Math.max(m, t.h - t.staffTop), 140);
         const rowBoxH = (rowTop + rowBottom) * zoom;
+        // Band cells for this row: a placeholder's width is the estimate, so
+        // the row does not jump when its tiles arrive.
+        const cells = row.indices.map((i) => ({ measureIndex: i, measureId: session.score.measures[i]?.attrs["xml:id"] ?? null, width: (tiles.get(i)?.w ?? estimateW) * zoom }));
+        const bandHeights = bandSpecs.length ? rowBandHeights(bandSpecs, cells) : [];
+        const bandTotal = bandHeights.reduce((a, b) => a + b, 0);
         return (
           <div className="score-row" key={row.indices[0]}>
-            {header && <div className="rowhdr">{aligned(header, rowTop, rowBoxH)}</div>}
-            {row.indices.map((index) => {
+            {header && (
+              <div className="rowhdr">
+                {bandTotal > 0 && <div data-band-spacer style={{ height: bandTotal }} />}
+                {aligned(header, rowTop, rowBoxH)}
+              </div>
+            )}
+            {row.indices.map((index, k) => {
               const tile = tiles.get(index);
               return (
                 <div className="tile" data-index={index} key={index}>
+                  {bandTotal > 0 && <TileBands specs={bandSpecs} heights={bandHeights} cell={cells[k]!} />}
                   {tile ? (
                     <>
                       <span className="ms">
@@ -1379,6 +1394,7 @@ export default function App() {
       lyricAt: (id) => session.sylAt(id),
       harmAt: (id, kind) => session.harmAt(id, kind),
       eventIdAt: (caret) => session.index.eventIdAt(caret) ?? null,
+      measureIds: () => session.score.measures.map((m) => m.attrs["xml:id"] ?? null),
       timemap: async () => {
         if (!pool) throw new Error("the renderer is not ready");
         const { xml, expand } = session.serializeForPlayback();
@@ -1756,9 +1772,10 @@ export default function App() {
           }
           return "handled";
         }
-        // Tie the note back to its predecessor — ACROSS the barline when it
-        // opens the measure (same gesture everywhere); only with no previous
-        // note at all (piece start, rest before) does it tie forward.
+        // Tie the note (or chord) back to its predecessor — ACROSS the
+        // barline when it opens the measure (same gesture everywhere); only
+        // with no previous note or chord at all (piece start, rest before)
+        // does it tie forward. A chord ties every pitch the two share.
         const applyTo = targetOf();
         if (!applyTo) return "declined";
         const ref = session.index.byId.get(applyTo);
@@ -1768,7 +1785,8 @@ export default function App() {
             : session.index.eventsAt(ref.measureIndex - 1, ref.staffN, ref.layerN).at(-1)
           : undefined;
         try {
-          session.toggleTie(prevId && session.index.byId.get(prevId)?.tag === "note" ? prevId : applyTo);
+          const prevTag = prevId ? session.index.byId.get(prevId)?.tag : undefined;
+          session.toggleTie(prevId && (prevTag === "note" || prevTag === "chord") ? prevId : applyTo);
           afterCommand(session);
         } catch (err) {
           refused("tie", err);

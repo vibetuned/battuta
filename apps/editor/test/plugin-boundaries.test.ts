@@ -42,7 +42,12 @@ const REPO = resolve(here, "../../..");
 const PLUGINS = join(REPO, "packages/plugins");
 const HOST_DIR = join(REPO, "apps/editor/src/host");
 
-const ALLOWED_RUNTIME = new Set(["@battuta/api", "react", "react/jsx-runtime", "react/jsx-dev-runtime", "tone", "verovio/wasm-hum", "verovio/esm"]);
+// pdfjs-dist and its worker module joined 2026-10-11 for the PDF reference
+// (the user's go-ahead: "don't hesitate", for the plugin that starts the
+// facsimile): rasterizing a PDF to crop its measures has no host service,
+// and like Tone and the Humdrum Verovio it is reached only from the
+// plugin's own lazy chunk.
+const ALLOWED_RUNTIME = new Set(["@battuta/api", "react", "react/jsx-runtime", "react/jsx-dev-runtime", "tone", "verovio/wasm-hum", "verovio/esm", "pdfjs-dist", "pdfjs-dist/build/pdf.worker.mjs"]);
 const FORBIDDEN_DEPS = ["@battuta/core", "@battuta/editor", "react-dom"];
 /** Rule 1b: Verovio's engraving and layout surface — the host's render service, never a plugin's. */
 const VEROVIO_RENDER = /\.(renderToSVG|renderToTimemap|renderToExpansionMap|renderData|redoLayout|redoPagePitchPosLayout|getPageCount|getPageWithElement|getElementsAtTime|getElementAttr|getTimeForElement|getTimesForElement)\s*\(/g;

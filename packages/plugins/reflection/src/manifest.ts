@@ -15,7 +15,7 @@ export const COMMAND_CYCLE = "battuta.reflection.cycle";
 export const manifest: PluginManifest = {
   id: "battuta.reflection",
   name: "Reflection cycle",
-  version: "1.0.0",
+  version: "1.2.0",
   description: "shift+R cycles a block of music through its serial forms: prime → inversion → retrograde → retrograde inversion → prime.",
   // ^1.0.0 — the contract as released with battuta 0.1.0 (2026-09-18). The
   // notes above name what of it this plugin needs and the 0.1.x number

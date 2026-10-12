@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // DOM, as playback and the pitch reference have it: OffscreenCanvas,
+    // Worker and the PDF library's canvas types are platform types this
+    // plugin NAMES. Naming a type is not touching the DOM — plugin-boundaries
+    // still fails the build on a window/document/navigator global.
+    "lib": ["ES2022", "DOM"],
+    "types": [],
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}

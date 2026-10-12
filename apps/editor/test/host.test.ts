@@ -79,6 +79,7 @@ const fakeAdapter = (execute = vi.fn()): SessionAdapter & { execute: ReturnType<
   timemap: async () => ({ events: [{ tstamp: 0, on: ["n1"] }, { tstamp: 500, off: ["n1"] }], notes: { n1: { pitch: 60, duration: 500 } }, idMap: {} }),
   notation: () => ({ ties: { n1: "n2" }, marks: { n1: ["slur"] } }),
   eventIdAt: () => null,
+  measureIds: () => [],
   mei: () => '<mei meiversion="5.0"><music/></mei>',
   execute,
   pitchEventsIn: (block) => [[{ eventId: `e-${block.measureFrom}`, pitches: [{ pname: "c", oct: 4 }] }]],

@@ -7,6 +7,14 @@ MEI scores the tests, spikes and e2e scripts open.
   (`cc-m2n1` = measure 2, note 1), so its shape is part of the tests; the
   header comment inside the file lists what they rely on. Never resave it
   from the app — battuta regenerates ids.
+- **`pdf-reference/`** — **committed**. The PDF reference's example: a
+  Verovio engraving of Chopin's Polonaise in G minor (2 pages, 38
+  measures) and its OMR annotation files, one per page
+  (`…_page1.json`, `…_page2.json`: a box per element in the pixels of the
+  page at 254 dpi, keyed by MEI id). The names are the dataset's own
+  content ids. `spikes/verify-pdf-reference.mjs` and `verify-tauri.sh`
+  (probe8) load it; its source MEI is not included, so the e2e builds a
+  score carrying its measure ids.
 - **Everything else is the public-domain corpus** from
   [music-encoding/sample-encodings](https://github.com/music-encoding/sample-encodings),
   gitignored (13 MB) and fetched on demand:

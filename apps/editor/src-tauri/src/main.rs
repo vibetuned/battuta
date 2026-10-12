@@ -737,6 +737,51 @@ fn main() {
                           verify-folder-view.mjs's): a folder 'made' in the test folder, a score 'fresh.mei' in it — the \
                           active score's MEI, so it is a real one — opened through the host's open path as a tab, and the \
                           list following through the watch. */ \
+                       /* probe8: the PDF reference in the SHELL — pdf.js, its worker and an OffscreenCanvas inside the \
+                          webview over tauri:// — when the smoke copied an example into <test folder>/pdfref: the files are \
+                          read through the workspace, handed to the panel's file input, and the probe waits for the pages \
+                          and for scans above the tiles. The panel's own UI is verify-pdf-reference.mjs's. */ \
+                       const pdfProbe = (root) => {{ \
+                         const ws = window.__HOST__.workspace; \
+                         const dir = root + '/pdfref'; \
+                         ws.readDir(dir).then((entries) => Promise.all(entries.filter((e) => e.kind === 'file').map((e) => \
+                           inv('workspace_read_file', {{ path: e.path, binaryExts: ['pdf'] }}).then((data) => {{ \
+                             const pdf = /\\.pdf$/i.test(e.name); \
+                             const bytes = pdf ? Uint8Array.from(atob(data), (c) => c.charCodeAt(0)) : new TextEncoder().encode(data); \
+                             return new File([bytes], e.name, {{ type: pdf ? 'application/pdf' : 'application/json' }}); \
+                           }})))) \
+                         .then((files) => {{ \
+                           if (!files.length) {{ inv('js_log', {{ msg: 'probe8: pdf skipped (no example copied)' }}); return; }} \
+                           const t = document.querySelector('[data-slot-command=\"battuta.pdf-reference.toggle\"], [data-pdf-toggle]'); \
+                           if (!t) {{ inv('js_log', {{ msg: 'probe8: pdf FAILED: no 📄 in the header' }}); return; }} \
+                           /* probe3 left the app in page view to play; the scans stand above the tiles of EDIT view */ \
+                           const back = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'edit view'); \
+                           if (back) back.click(); \
+                           t.click(); \
+                           const t0 = Date.now(); \
+                           const feed = () => {{ \
+                             const input = document.querySelector('[data-pdf-file]'); \
+                             if (!input) {{ if (Date.now() - t0 > 5000) {{ inv('js_log', {{ msg: 'probe8: pdf FAILED: no panel' }}); return; }} setTimeout(feed, 100); return; }} \
+                             const dt = new DataTransfer(); \
+                             files.forEach((f) => dt.items.add(f)); \
+                             input.files = dt.files; \
+                             input.dispatchEvent(new Event('change', {{ bubbles: true }})); \
+                             const t1 = Date.now(); \
+                             const wait = () => {{ \
+                               const ref = document.querySelector('[data-pdf-ref]'); \
+                               const state = ref && ref.getAttribute('data-pdf-state'); \
+                               const scans = document.querySelectorAll('[data-pdf-scan]').length; \
+                               if (state === 'ready' && scans > 0) {{ inv('js_log', {{ msg: 'probe8: pdf ok (' + ref.getAttribute('data-pdf-pages') + ' pages, ' + ref.getAttribute('data-pdf-matched') + ' placed ' + ref.getAttribute('data-pdf-mode') + ', ' + scans + ' scans, ' + (Date.now() - t1) + ' ms)' }}); return; }} \
+                               if (state === 'error') {{ inv('js_log', {{ msg: 'probe8: pdf FAILED: ' + ((document.querySelector('[data-pdf-status]') || {{}}).textContent || 'error') }}); return; }} \
+                               if (Date.now() - t1 > 9000) {{ inv('js_log', {{ msg: 'probe8: pdf FAILED: timeout (state=' + state + ', scans=' + scans + ')' }}); return; }} \
+                               setTimeout(wait, 200); \
+                             }}; \
+                             wait(); \
+                           }}; \
+                           feed(); \
+                         }}) \
+                         .catch((e) => inv('js_log', {{ msg: 'probe8: pdf FAILED: ' + e }})); \
+                       }}; \
                        const create = (root) => {{ \
                          const ws = window.__HOST__.workspace; \
                          ws.createFolder(root, 'made') \
@@ -750,7 +795,7 @@ fn main() {
                                const opened = docs.some((d) => (d.path || '').endsWith('fresh.mei')); \
                                const named = Boolean(tab && tab.textContent.indexOf('fresh') >= 0); \
                                const listed = [...document.querySelectorAll('[data-folder-entry]')].some((r) => r.dataset.folderEntry === 'made'); \
-                               if (opened && named && listed) {{ inv('js_log', {{ msg: 'probe7: create ok (made/' + file.split(/[\\\\/]/).pop() + ', opened as a tab, list followed)' }}); return; }} \
+                               if (opened && named && listed) {{ inv('js_log', {{ msg: 'probe7: create ok (made/' + file.split(/[\\\\/]/).pop() + ', opened as a tab, list followed)' }}); pdfProbe(root); return; }} \
                                if (Date.now() - t2 > 5000) {{ inv('js_log', {{ msg: 'probe7: create FAILED (opened=' + opened + ' named=' + named + ' listed=' + listed + ')' }}); return; }} \
                                setTimeout(check, 200); \
                              }}; \

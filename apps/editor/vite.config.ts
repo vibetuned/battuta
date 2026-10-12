@@ -13,7 +13,16 @@ export default defineConfig(({ command }) => ({
   },
   // Never prebundle the workspace packages: a running dev server must pick
   // up `npm run build -w @battuta/core` (or the api) without a restart.
-  optimizeDeps: { exclude: ["@battuta/core", "@battuta/api"] },
+  optimizeDeps: {
+    exclude: ["@battuta/core", "@battuta/api"],
+    // Pre-bundled at server start: pdf.js is reached only through the PDF
+    // reference's dynamic import, so Vite would otherwise discover it on the
+    // first PDF loaded — and reload the page to bundle it, losing the panel
+    // and its files (the e2e found it, 2026-10-11; `tauri dev` would too).
+    // Both entries: the library, and the worker module the plugin's own
+    // worker file imports (found the same way, on a fresh cache).
+    include: ["pdfjs-dist", "pdfjs-dist/build/pdf.worker.mjs"],
+  },
   build: {
     // .vite/manifest.json is what scripts/check-budget.mjs reads: the
     // initial chunk (the HTML entry's static closure) must stay under

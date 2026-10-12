@@ -1,6 +1,6 @@
 {
   "name": "@battuta/editor",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "license": "AGPL-3.0-only",
   "private": true,
   "type": "module",
@@ -21,6 +21,7 @@
     "@battuta/plugin-harmony": "*",
     "@battuta/plugin-lyrics": "*",
     "@battuta/plugin-onscreen-keyboard": "*",
+    "@battuta/plugin-pdf-reference": "*",
     "@battuta/plugin-pitch-reference": "*",
     "@battuta/plugin-playback": "*",
     "@battuta/plugin-reflection": "*",

@@ -122,6 +122,7 @@ function fixture(opts: { audio?: boolean; outputs?: string[] | null } = {}): Fix
     timemap: async () => TIMEMAP,
     notation: () => ({ ties: {}, marks: {} }),
     eventIdAt: (caret) => (caret.measureIndex === 0 ? "n1" : caret.measureIndex === 1 ? "n2" : null),
+    measureIds: () => [],
     mei: () => "",
   };
   host.bindSession(adapter);

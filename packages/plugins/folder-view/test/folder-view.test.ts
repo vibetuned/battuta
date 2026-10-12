@@ -147,6 +147,7 @@ function fixture(opts: { saved?: string; shell?: boolean; folder?: Record<string
     timemap: async () => ({ events: [], notes: {}, idMap: {} }),
     notation: () => ({ ties: {}, marks: {} }),
     eventIdAt: () => null,
+    measureIds: () => [],
     mei: () => "",
   };
   host.bindSession(adapter);

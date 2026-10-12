@@ -1,0 +1,27 @@
+{
+  "name": "@battuta/plugin-pdf-reference",
+  "version": "1.2.0",
+  "license": "AGPL-3.0-only",
+  "description": "A score's PDF beside its MEI: each measure's scan above its tile and the system in a panel, placed by OMR annotation files — the start of the facsimile.",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./manifest": "./src/manifest.ts",
+    "./annotations": "./src/annotations.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@battuta/api": "*",
+    "pdfjs-dist": "^6.4.299",
+    "react": "^18.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

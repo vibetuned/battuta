@@ -627,6 +627,35 @@ for (let i = 0; i < 3; i++) await page.keyboard.press("Control+z");
 await page.waitForFunction((d) => window.__SESSION__.stack.undoDepth === d, tieDepth0, { timeout: 10000 });
 check("back-tie round unwinds cleanly", true);
 
+// chords tie too: t after a second e-f-g chord ties it back to the first,
+// one curve per shared pitch (was refused: "ties connect single notes").
+// A cluster inside a third keeps entry's nearest-octave choice the same
+// for both chords, whatever the neighbouring notes are.
+const chordTieBase = await tieCount(2);
+await page.locator('.tile[data-index="2"] g[class~="note"] use').first().click({ force: true });
+await page.keyboard.press("i");
+for (const k of ["e", "Shift+F", "Shift+G", "e", "Shift+F", "Shift+G"]) await page.keyboard.press(k);
+await page.keyboard.press("t");
+const chordTie = await page.evaluate(() => {
+  const [first, second] = window.__SESSION__.index.eventsAt(2, 1, 1);
+  const walk = (el, id) => {
+    if (el.attrs && el.attrs["xml:id"] === id) return el;
+    for (const c of el.children ?? []) { if (typeof c !== "string") { const r = walk(c, id); if (r) return r; } }
+    return null;
+  };
+  const m3 = window.__SESSION__.score.measures[2];
+  const ties = (id) => (walk(m3, id)?.children ?? []).filter((c) => typeof c !== "string" && c.tag === "note").map((n) => n.attrs.tie ?? "-").join("");
+  const pitches = (id) => (walk(m3, id)?.children ?? []).filter((c) => typeof c !== "string" && c.tag === "note").map((n) => n.attrs.pname + n.attrs.oct).join(" ");
+  return { first: ties(first), second: ties(second), pitches: `${pitches(first)} | ${pitches(second)}` };
+});
+check(`t on a chord ties every shared pitch back to the chord before (${chordTie.pitches}: ${chordTie.first}/${chordTie.second})`, chordTie.first === "iii" && chordTie.second === "ttt");
+await page.waitForFunction((base) => document.querySelectorAll('.tile[data-index="2"] g[class~="tie"]').length >= base + 3, chordTieBase, { timeout: 15000 });
+check("the tile draws one tie curve per chord note", true);
+await page.keyboard.press("Escape");
+for (let i = 0; i < 7; i++) await page.keyboard.press("Control+z");
+await page.waitForFunction((d) => window.__SESSION__.stack.undoDepth === d, tieDepth0, { timeout: 10000 });
+check("chord-tie round unwinds cleanly", true);
+
 // --- 8. chord accidentals: per-note picker (s/v/n on a chord) ---
 await page.locator('.tile[data-index="0"] g[class~="note"] use').first().click({ force: true });
 await page.waitForFunction(() => document.querySelector("main").dataset.caret !== "", null, { timeout: 5000 });

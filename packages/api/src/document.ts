@@ -111,4 +111,12 @@ export interface DocumentQueries {
    * to the same moment of the recording.
    */
   eventIdAt(caret: CaretPosition): string | null;
+  /**
+   * The document's measures in order, by their `xml:id` (null for a measure
+   * that has none) — index i is the measure a caret's `measureIndex` i and a
+   * tile's `measureIndex` i name. Empty without a document. Added 2026-10-11
+   * (1.2.0) for the PDF reference, which matches annotated measures to the
+   * score by id when it can and in order when it cannot.
+   */
+  measureIds(): (string | null)[];
 }

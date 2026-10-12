@@ -14,6 +14,10 @@
  *     the caret
  *  6. a zoom re-measures: the boxes grow with the tile
  *  7. disposing removes every layer
+ *  8. a BAND above every tile (1.2.0): a cell per tile as wide as it, the
+ *     row's tallest request for every cell, an empty band over the header
+ *     cell, the staves level, the caret still on its note, and the rows'
+ *     heights back when the band is disposed
  *
  * Run: BATTUTA_ROOT=$PWD CHROME=bundled node spikes/verify-overlays.mjs
  */
@@ -58,6 +62,8 @@ try {
             const seen = [];
             window.__REHEARSAL__ = {
               seen,
+              // §8: a BAND above every tile, through ctx only — half the tile's width tall, its cell printing what it was handed
+              band: () => ctx.overlays.add({ id: "scan", band: { height: (c) => Math.round(c.width * 0.5), render: (c) => JSON.stringify(c) } }),
               disposable: ctx.overlays.add({
                 id: "trace",
                 render: (tile) => {
@@ -115,6 +121,48 @@ try {
   await page.evaluate(() => window.__REHEARSAL__.disposable.dispose());
   await page.waitForFunction(() => document.querySelectorAll("[data-overlays]").length === 0, null, { timeout: 5000 }).catch(() => undefined);
   check("disposing removes every layer", await page.evaluate(() => document.querySelectorAll("[data-overlays]").length === 0 && document.querySelectorAll("[data-overlay]").length === 0));
+  // --- 8. a band above every tile (1.2.0) -----------------------------------
+  const rowsBefore = await page.evaluate(() => [...document.querySelectorAll(".score-row")].map((r) => Math.round(r.getBoundingClientRect().height)));
+  await page.evaluate(() => {
+    window.__BAND__ = window.__REHEARSAL__.band();
+  });
+  await page.waitForFunction(() => document.querySelectorAll('[data-band="scan"]').length >= 10, null, { timeout: 10000 }).catch(() => undefined);
+  const bands = await page.evaluate(() =>
+    [...document.querySelectorAll(".score-row")].map((row) => {
+      const cells = [...row.querySelectorAll('[data-band="scan"]')].map((el) => {
+        const tile = el.closest(".tile");
+        // the tile's own aligned box: its direct child that is not a band cell
+        const box = [...tile.children].find((c) => c.tagName === "DIV" && !c.hasAttribute("data-band"));
+        const cell = JSON.parse(el.textContent);
+        return { h: Math.round(el.getBoundingClientRect().height), w: Math.round(el.getBoundingClientRect().width), tileW: Math.round(box.getBoundingClientRect().width), asked: Math.round(cell.width * 0.5), told: cell.height, boxTop: Math.round(box.getBoundingClientRect().top), cellBottom: Math.round(el.getBoundingClientRect().bottom) };
+      });
+      const spacer = row.querySelector("[data-band-spacer]");
+      return { cells, spacer: spacer ? Math.round(spacer.getBoundingClientRect().height) : null };
+    }),
+  );
+  const allCells = bands.flatMap((r) => r.cells);
+  check(`every tile has a band cell (${allCells.length})`, allCells.length >= 10);
+  check("each cell is as wide as its tile", allCells.every((c) => Math.abs(c.w - c.tileW) <= 1));
+  check("a row's cells share its tallest request, and each cell is told that height", bands.every((r) => r.cells.every((c) => c.h === Math.max(...r.cells.map((x) => x.asked)) && c.told === c.h)));
+  check("the row's header cell gets an empty band of the same height", bands.every((r) => r.spacer === null || r.spacer === r.cells[0]?.h));
+  check("the band sits directly above the tile, and the row's staves stay level", allCells.every((c) => Math.abs(c.cellBottom - c.boxTop) <= 1) && bands.every((r) => new Set(r.cells.map((c) => c.boxTop)).size === 1));
+  await page.locator('.tile[data-index="1"] g[class~="note"] use').first().click({ force: true });
+  await page.waitForFunction(() => (document.querySelector("main").dataset.caret ?? "") !== "", null, { timeout: 5000 }).catch(() => undefined);
+  const caretOk = await page.evaluate(() => {
+    const id = document.querySelector("main").dataset.caret;
+    const g = document.querySelector(`g[id="${CSS.escape(id)}"]`);
+    const caret = document.querySelector(".caret");
+    if (!g || !caret) return false;
+    const a = g.getBoundingClientRect();
+    const b = caret.getBoundingClientRect();
+    return Math.abs(a.left - 4 - b.left) <= 2 && b.top <= a.top && b.bottom >= a.bottom;
+  });
+  check("the caret still lands on the note clicked, below the band", caretOk);
+  await page.evaluate(() => window.__BAND__.dispose());
+  await page.waitForFunction(() => document.querySelectorAll("[data-band]").length === 0, null, { timeout: 5000 }).catch(() => undefined);
+  const rowsAfter = await page.evaluate(() => [...document.querySelectorAll(".score-row")].map((r) => Math.round(r.getBoundingClientRect().height)));
+  check(`disposing the band gives every row its height back (${rowsBefore.slice(0, 3)} → ${rowsAfter.slice(0, 3)})`, JSON.stringify(rowsAfter) === JSON.stringify(rowsBefore) && (await page.evaluate(() => document.querySelectorAll("[data-band-spacer]").length === 0)));
+
   check("it contributes no keybinding", await page.evaluate(() => !window.__HOST__.keymapView.get().some((e) => e.plugin === "test.overlay-rehearsal")));
   check("…and nothing was written to the document", await page.evaluate(() => window.__SESSION__.stack.undoDepth === 0));
 } catch (e) {

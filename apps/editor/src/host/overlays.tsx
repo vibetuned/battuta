@@ -13,7 +13,7 @@
  * takes no pointer events; the host's hit-testing underneath is untouched.
  */
 import { useLayoutEffect, useRef, useState } from "react";
-import { toDisposable, type Disposable, type OverlayBox, type OverlaySpec, type OverlayStaff, type StaffContext, type TileOverlayProps } from "@battuta/api";
+import { toDisposable, type BandCell, type Disposable, type OverlayBox, type OverlaySpec, type OverlayStaff, type StaffContext, type TileOverlayProps } from "@battuta/api";
 import { createStore, useStore } from "./store";
 
 export interface RegisteredOverlay extends OverlaySpec {
@@ -97,7 +97,7 @@ const FILL: React.CSSProperties = { position: "absolute", inset: 0 };
  * the layer re-measures when it changes and not on every grid render.
  */
 export function TileOverlays({ store, measureIndex, measureId, layoutKey, staffNOf, contextOf }: { store: OverlayStore; measureIndex: number; measureId: string | null; layoutKey: string; staffNOf: (staffId: string) => number | undefined; contextOf: (measureIndex: number, n: number) => StaffContext | undefined }) {
-  const specs = useStore(store.specs);
+  const specs = useStore(store.specs).filter((s) => s.render);
   const ref = useRef<HTMLDivElement>(null);
   const [geo, setGeo] = useState<Pick<TileOverlayProps, "width" | "height" | "boxes" | "staves"> | null>(null);
   const active = specs.length > 0;
@@ -112,9 +112,47 @@ export function TileOverlays({ store, measureIndex, measureId, layoutKey, staffN
       {tile &&
         specs.map((s) => (
           <div key={`${s.pluginId}:${s.id}`} data-overlay={s.id} data-plugin={s.pluginId} style={FILL}>
-            {s.render(tile)}
+            {s.render?.(tile)}
           </div>
         ))}
     </div>
+  );
+}
+
+/**
+ * Bands (1.2.0): room ABOVE every tile. Per band spec, the row's height is
+ * the tallest any of its cells asks for — so the tiles of a row stay level
+ * — and specs stack in the order they were added. Pure: the grid calls it
+ * with the row's cells (a placeholder's width is the estimate), no DOM.
+ * A height that is not a finite positive number counts as none.
+ */
+export function rowBandHeights(specs: readonly OverlaySpec[], cells: readonly BandCell[]): number[] {
+  return specs.map((s) => {
+    if (!s.band) return 0;
+    let max = 0;
+    for (const c of cells) {
+      const h = s.band.height(c);
+      if (Number.isFinite(h) && h > max) max = h;
+    }
+    return Math.ceil(max);
+  });
+}
+
+const BAND: React.CSSProperties = { position: "relative", pointerEvents: "none", overflow: "hidden" };
+
+/** One tile's band cells, stacked, each the row's height for its spec. Nothing for a spec whose row asked for none. */
+export function TileBands({ specs, heights, cell }: { specs: readonly RegisteredOverlay[]; heights: readonly number[]; cell: BandCell }) {
+  return (
+    <>
+      {specs.map((s, k) => {
+        const height = heights[k] ?? 0;
+        if (!s.band || height <= 0) return null;
+        return (
+          <div key={`${s.pluginId}:${s.id}`} data-band={s.id} data-plugin={s.pluginId} data-band-measure={cell.measureIndex} style={{ ...BAND, width: cell.width, height }}>
+            {s.band.render({ ...cell, height })}
+          </div>
+        );
+      })}
+    </>
   );
 }

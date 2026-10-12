@@ -11,6 +11,115 @@ below, and changes since the last tag gather under *Unreleased*.
 
 ## Unreleased
 
+- **Ties between chords (2026-10-12).** User-reported: `t` could
+  not tie chords — both tie commands refused anything but two single notes
+  ("ties connect single notes"), and the caret's rule only tied back to a
+  predecessor that was a note. A chord now ties **pitch by pitch**: each
+  of its notes to the note of the same written pitch (pname + oct, as
+  playback reads a tie; the same accidental preferred when a chord holds
+  both) in the neighbouring chord or note, the unpaired notes left alone;
+  refused only when the two share no pitch. One toggle for the pair (all
+  linked → untie, else tie), still chain-aware per note (a chord between
+  two tied chords gets `m` on the pitches held through), and a selected
+  run of chords is a chain the same way — one undo step either way, the
+  revert restoring each note's attributes exactly. `ToggleTieCommand` and
+  `ChainTieCommand` share one link toggle now; core only, no api change.
+  Tests: core 229 (+4 in `entry.test.ts`: chord → chord and back
+  byte-identically, chord → note across the barline chaining with the tie
+  before it, no shared pitch refused, a chord chain over three measures;
+  +1 in `playback.test.ts`: tied chord notes link pitch by pitch); the
+  phase 4 e2e 70 (+3: two e-f-g chords entered, `t` ties all
+  three pitches back, three curves drawn, the round undone).
+- **Zoom, staves, and pages as images (2026-10-11).** Three more for the
+  PDF reference's drawing, at the user's request. **Zoom**: − and + in the
+  drawing bar, from the panel's width to four times, the spot in the
+  middle kept in the middle and the page scrolling both ways. **Staves**:
+  a third tool, ≡ staves — a click between two staves splits the system
+  there, a click on a split takes it away, staves numbered down the
+  system's left; staves export as the OMR files' own classes (a
+  `system-staff` per staff, a `staff` per measure and staff), are read
+  from files that carry `system-staff` boxes, and let the strip highlight
+  the caret's STAFF inside its measure. **Images**: PNG, JPEG, WebP… in
+  place of a PDF, one image a page, ordered by a `_pageN` in their names
+  else by name, at their own resolution — the OMR files' own coordinate
+  space; their drawing is kept by their names and sizes, their export
+  named after them, and a PDF chosen with images is the PDF (said). No
+  api growth. Old drawings without staff splits still read. Tests: plugin
+  43 (+10: `images.test.ts`, staves in `drawing` and `annotations`, the
+  lifecycle); the e2e 37 (+7: zoomed to 200%, a split clicked exactly
+  between the example's two staves, the caret's staff highlighted, the
+  example's pages as PNGs with its annotation files).
+- **Systems and measures drawn by hand on any PDF; the example becomes a
+  fixture (2026-10-11).** The user's next request, before the source MEIs:
+  create the systems and the measures in any random PDF. Load a PDF
+  without annotation files and **draw systems and measures**: the page
+  opens in the panel with two tools — a box dragged across a system, then
+  a click at each barline (two gestures a line rather than a box a
+  measure; the measures come out as the stretches between barlines at the
+  system's full height, which is what an OMR measure box is) — a × per
+  system, ◀ ▶ through the pages, and the scans following the pen. A
+  drawing is kept per PDF (`drawing:<name>:<bytes>` in the plugin's
+  storage — it belongs to the PDF, not to the score) and comes back when
+  the same file is loaded; **export PDF annotations**, a declared export
+  that wakes the plugin without opening its panel, writes it — or
+  annotations read from files — as the OMR page files. No api growth.
+  Tests: plugin 33 (+11: `drawing.test.ts`, the lifecycle), the e2e 30
+  (+9: a system drawn with a real mouse on the example's own boxes, three
+  barlines, one taken away, the system removed by its ×, the export, the
+  drawing back on reload). The Chopin example (PDF and its two page files,
+  650 kB) moved to `fixtures/pdf-reference/`, un-ignored with a `!` line
+  in `.gitignore`; the e2e and the shell probe read it there.
+
+Everything below is to ship as **1.2.0**: every package — application,
+shell, core, docs, `@battuta/api` and the nine plugins — was aligned at
+1.2.0 on 2026-10-11 (the user: "don't hesitate to make a new version"),
+each plugin's `engines` range staying at the api it needs.
+
+- **The PDF reference — the start of the facsimile (2026-10-11).**
+  `packages/plugins/pdf-reference`: load a score's PDF with the OMR
+  pipeline's annotation files — one JSON per page, a box per element keyed
+  by its MEI id, in the pixels of the page at 254 dpi (the user's three
+  examples in `examples/`: a Handel aria, a violin nocturne, a Chopin
+  polonaise, Verovio engravings without their source MEI) — and each
+  measure's SCAN stands above its tile in edit view, scan on top,
+  rendering below; a bottom panel shows the caret's system, every measure
+  outlined and the caret's highlighted, following it, with ◀ ▶ through
+  the systems. Measures are matched BY ID when the score carries the
+  annotated ids (an OMR output) and IN READING ORDER otherwise — page,
+  system top to bottom, left to right — the panel saying which and both
+  counts when they differ. Every page is rasterized once by pdf.js into a
+  PNG at 254 dpi (2100 × 2970 for A4) that the scans and the strip crop.
+  What it needed, all decided the same day: **a band on the overlays
+  point** — room ABOVE every tile, the plugin asking per tile at the tile's
+  width and the host reserving each row's tallest (and an empty band over
+  the row's header cell), rehearsed in `verify-overlays.mjs` §8 from a
+  plugin holding only `ctx`; **`ctx.query.measureIds()`**; `@battuta/api`
+  1.1.0 → **1.2.0** (both additive; `OverlaySpec.render` became optional so
+  a spec may be a band only). **A rule change, under the user's go-ahead:**
+  `pdfjs-dist` and its worker module joined the plugin allowlist — no host
+  service rasterizes a PDF, and like Tone and the Humdrum Verovio it is
+  reached only from the plugin's lazy chunk (pdf.js 472 kB, its worker
+  1.2 MB, fetched on the first PDF, never at startup). The worker is the
+  plugin's own file, and both pdf.js entries are in Vite's
+  `optimizeDeps.include` — found by the e2e: discovered on first use, they
+  made the dev server reload the page and lose the panel, as `tauri dev`
+  would have. **The budget raised deliberately** to 392,000 bytes for the
+  band and the query in the host (measured 385,744). Dead ends, in the
+  plugin's BUILDING §7: an SVG view box does not clip (the first
+  screenshot showed the title over the first measures); `Math.ceil` made
+  the raster 2101 px; the measure ids read on the document's own event
+  were empty on a tab switch. Tests: plugin 22 (annotations, matching,
+  geometry, the lifecycle with the renderer mocked), editor 152 (+3),
+  `verify-overlays.mjs` 21 (+7, the band), `verify-pdf-reference.mjs` 21
+  with the REAL pdf.js (a score carrying the Chopin example's ids, 38
+  matched by id, each tile's scan its own measure, the strip following a
+  click, the dev fixture matched in order), `verify-tauri.sh` probe8 (the
+  PDF rendered in the shell's WebKit, scans above the tiles, 15 checks).
+  The guide gained *PDF reference*; DESIGN's facsimile section names the
+  first step. Not done, and said so: no zones written to the MEI, no
+  click from a scan to the caret, and the shots for the guide wait on the
+  examples becoming a committed fixture — `examples/` is untracked, and
+  the e2e and the shell probe read it (the probe skips without it).
 - **The target folder is marked, and `npm run tauri dev` works from the
   root (2026-10-11).** Two requests together. The folder "+ score" and
   "+ folder" create in now shows: a 3 px blue bar at the left of its row

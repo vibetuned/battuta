@@ -41,11 +41,14 @@ WSDIR=$(mktemp -d)
 cp fixtures/Bach-JS_Ein_feste_Burg.mei "$WSDIR/one.mei"
 cp fixtures/synthetic-context-changes.mei "$WSDIR/two.mei"
 ( sleep 13; echo "<!-- touched by verify-tauri.sh -->" >> "$WSDIR/two.mei" ) &
+# probe8's PDF reference example (Chopin: a PDF and its two annotation pages), when the repo has it
+PDFEX=fixtures/pdf-reference
+if [ -d "$PDFEX" ]; then mkdir -p "$WSDIR/pdfref" && cp "$PDFEX"/*.pdf "$PDFEX"/*_page*.json "$WSDIR/pdfref/"; fi
 # On an empty store the app starts with a blank untitled score (rests only),
 # so the launch gets a real score as its argument for the playback probe.
 SCORE=$(mktemp -d)/score.mei
 cp fixtures/Bach-JS_Ein_feste_Burg.mei "$SCORE"
-LOG=$(BATTUTA_SHELL_TEST_FILE="$OUT" BATTUTA_MIDI_TEST=1 BATTUTA_WORKSPACE_TEST_DIR="$WSDIR" run_for 22 ./apps/editor/src-tauri/target/debug/battuta-editor "$SCORE" 2>&1 || true)
+LOG=$(BATTUTA_SHELL_TEST_FILE="$OUT" BATTUTA_MIDI_TEST=1 BATTUTA_WORKSPACE_TEST_DIR="$WSDIR" run_for 30 ./apps/editor/src-tauri/target/debug/battuta-editor "$SCORE" 2>&1 || true)
 echo "$LOG" | grep -q "page loaded: tauri://localhost" && echo "PASS  embedded assets load over tauri://" || { echo "FAIL  page never loaded"; exit 1; }
 echo "$LOG" | grep -q "storage: ephemeral" && echo "PASS  the shell runs on an in-memory data store" || { echo "FAIL  the shell ignored BATTUTA_EPHEMERAL_STORAGE"; exit 1; }
 echo "$LOG" | grep -qE "probe: __TAURI__=present tiles=[1-9]" && echo "PASS  the score renders (tiles > 0)" || { echo "FAIL  no tiles rendered"; exit 1; }
@@ -58,7 +61,8 @@ echo "$LOG" | grep -q "probe3: playback ok" && echo "PASS  the playback plugin p
 # probe4: the workspace service — pick (test dir), list, a read outside the
 # roots refused, a watch placed, and the change this script made observed.
 # (macOS FSEvents reports an append to a file created seconds earlier as "created"; Linux says "modified" — either is the change.)
-echo "$LOG" | grep -qE "probe4: workspace ok \(2 entries, scoped, change (modified|created) two.mei\)" && echo "PASS  the workspace service lists, scopes and watches the picked folder" || { echo "FAIL  workspace: $(echo "$LOG" | grep -o 'probe4: .*' | head -2 | tr '\n' ' ')"; exit 1; }
+WSN=$([ -d "$WSDIR/pdfref" ] && echo 3 || echo 2) # one.mei, two.mei, and the example's folder when copied
+echo "$LOG" | grep -qE "probe4: workspace ok \($WSN entries, scoped, change (modified|created) two.mei\)" && echo "PASS  the workspace service lists, scopes and watches the picked folder" || { echo "FAIL  workspace: $(echo "$LOG" | grep -o 'probe4: .*' | head -2 | tr '\n' ' ')"; exit 1; }
 # probe5 drives the folder-view plugin's real UI: the declared 📁, the side
 # panel, the folder picked without a dialog, a score opened by clicking its
 # row, and the row marked open from ctx.documents. The browser half is
@@ -70,6 +74,12 @@ echo "$LOG" | grep -q "probe5: folder view ok" && echo "PASS  the folder view li
 # probe6: the workspace's one write — two.mei, open in the active tab, renamed in place through the host's
 # service; on disk the file moved, and in the app the tab and the folder list followed.
 echo "$LOG" | grep -q "probe6: rename ok" && [ -f "$WSDIR/renamed.mei" ] && [ ! -e "$WSDIR/two.mei" ] && echo "PASS  a rename moves the file on disk, and the open tab and the list follow" || { echo "FAIL  rename: $(echo "$LOG" | grep -o 'probe6: .*' | head -1) (renamed.mei on disk: $([ -f "$WSDIR/renamed.mei" ] && echo yes || echo no))"; exit 1; }
+# probe8: the PDF reference in the webview — pdf.js, its worker and OffscreenCanvas over tauri:// — scans above the tiles.
+if [ -d "$WSDIR/pdfref" ]; then
+  echo "$LOG" | grep -q "probe8: pdf ok" && echo "PASS  the PDF reference renders a PDF in the shell and puts scans above the tiles ($(echo "$LOG" | grep -o 'probe8: pdf ok (.*)' | head -1 | sed 's/probe8: pdf ok //'))" || { echo "FAIL  PDF reference: $(echo "$LOG" | grep -o 'probe8: .*' | head -1)"; exit 1; }
+else
+  echo "SKIP  the PDF reference in the shell: fixtures/pdf-reference is not in this checkout"
+fi
 # probe7: create-only — a folder and a score in it, on disk; the score opened as a tab, the list followed.
 echo "$LOG" | grep -q "probe7: create ok" && [ -d "$WSDIR/made" ] && grep -q "<mei" "$WSDIR/made/fresh.mei" 2>/dev/null && echo "PASS  a new folder and a new score land on disk, the score opens as a tab and the list follows" || { echo "FAIL  create: $(echo "$LOG" | grep -o 'probe7: .*' | head -1) (made/fresh.mei on disk: $([ -f "$WSDIR/made/fresh.mei" ] && echo yes || echo no))"; exit 1; }
 

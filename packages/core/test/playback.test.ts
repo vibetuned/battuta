@@ -28,6 +28,21 @@ describe("notationFacts: ties", () => {
     expect(f.ties["d"]).toBeUndefined(); // e is another pitch: not a continuation
   });
 
+  it("links tied chord notes pitch by pitch, into a following note too", () => {
+    const f = setup(`
+      <measure n="1" xml:id="m1"><staff n="1"><layer n="1">
+        <chord xml:id="x" dur="2"><note xml:id="x1" pname="c" oct="4" tie="i"/><note xml:id="x2" pname="g" oct="4" tie="i"/></chord>
+        <chord xml:id="y" dur="2"><note xml:id="y1" pname="c" oct="4" tie="t"/><note xml:id="y2" pname="g" oct="4" tie="m"/></chord>
+      </layer></staff></measure>
+      <measure n="2" xml:id="m2"><staff n="1"><layer n="1">
+        <note xml:id="z" pname="g" oct="4" dur="1" tie="t"/>
+      </layer></staff></measure>`);
+    expect(f.ties["x1"]).toBe("y1");
+    expect(f.ties["x2"]).toBe("y2");
+    expect(f.ties["y2"]).toBe("z");
+    expect(f.ties["y1"]).toBeUndefined();
+  });
+
   it("reads <tie> control events too", () => {
     const f = setup(`
       <measure n="1" xml:id="m1"><staff n="1"><layer n="1">

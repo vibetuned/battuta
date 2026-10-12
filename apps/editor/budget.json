@@ -1,4 +1,4 @@
 {
-  "initialBytes": 384000,
-  "//": "Ceiling for the initial chunk (the HTML entry's static JS + CSS closure; workers and dynamic imports excluded). Set 2026-09-12 from the measured 607,010 bytes with ~2% headroom; lowered to 377,000 by slice 7b when Tone.js and the piano left (measured 369,473); raised to 384,000 by slice 9a for the workspace host service (measured 376,730 \u2014 a platform capability lives in the host by design, the way the MIDI service does). Lower it when a slice moves code out; raise it only deliberately, with the reason in CHANGELOG.md."
+  "initialBytes": 392000,
+  "//": "Ceiling for the initial chunk (the HTML entry's static JS + CSS closure; workers and dynamic imports excluded). Set 2026-09-12 from the measured 607,010 bytes with ~2% headroom; lowered to 377,000 by slice 7b when Tone.js and the piano left (measured 369,473); raised to 384,000 by slice 9a for the workspace host service (measured 376,730 — a platform capability lives in the host by design, the way the MIDI service does). Raised to 392,000 on 2026-10-11 for api 1.2.0's overlays BAND and measureIds query (measured 385,744 — the room above the tiles is laid out by the host's tile grid by design; pdf.js itself stays lazy, 472 kB, only on the first PDF). Lower it when a slice moves code out; raise it only deliberately, with the reason in CHANGELOG.md."
 }

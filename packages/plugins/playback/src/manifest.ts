@@ -29,7 +29,7 @@ export const TEMPO_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 export const manifest: PluginManifest = {
   id: "battuta.playback",
   name: "Playback",
-  version: "1.0.0",
+  version: "1.2.0",
   description: "The page-view player: play/pause, stop, speed, MIDI out and transpose, a progress bar that seeks, a sampled piano on the host's AudioContext — and the playback-MIDI export, the same performance written to a file.",
   // ^0.1.11 is the version that carries everything this plugin plays on:
   // `ctx.audio` (unlock/context/timeAt), `ctx.query.timemap()` and

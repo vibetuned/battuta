@@ -81,6 +81,7 @@ function fixture(opts: { entryMode?: boolean } = {}): Fixture {
     timemap: async () => ({ events: [], notes: {}, idMap: {} }),
     notation: () => ({ ties: {}, marks: {} }),
     eventIdAt: () => null,
+    measureIds: () => [],
     mei: () => "",
   };
   host.bindSession(session);

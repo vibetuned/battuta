@@ -1,0 +1,96 @@
+---
+title: PDF reference
+description: A score's PDF beside its MEI — each measure's scan above its tile, the system in a panel that follows the caret, and systems and measures drawn by hand on any PDF.
+sidebar:
+  order: 12
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+You are correcting a score against its source — an OMR transcription
+against the scan it was read from, or your own transcription against an
+edition. The PDF reference puts the source **above every measure** in
+edit view: the scan on top, battuta's rendering below, so a wrong note,
+a missing tie or a measure out of place shows at the measure, not three
+windows away.
+
+Click the **📄** in the header. A panel opens at the bottom.
+
+## Loading a PDF
+
+**load a PDF or images…** takes the PDF — or its pages as **images**
+(PNG, JPEG, WebP…: one image a page, in the order a `_page1`, `_page2`… in
+their names gives, else by name) — and its **annotation files**,
+together: select them all at once. The annotation files are what
+an OMR pipeline writes beside a PDF: one JSON per page, named
+`…_page1.json`, `…_page2.json`…, boxing every measure and system on that
+page. They are what tells battuta where each measure is. A piece's
+`….graph.json` is used when no page file is given.
+
+Every page is rendered once, in the editor — nothing is uploaded — and
+the panel says how many of the score's measures it placed.
+
+<Aside type="note" title="Which measure is which">
+When your score carries the ids the annotations were made with — an OMR
+output and its annotation files came out of the same pipeline — measures
+are matched **by id**, exactly, whatever the order. Otherwise they are
+matched **in order**: the score's first measure is the PDF's first, and
+so on; if the two counts differ, the panel says both.
+</Aside>
+
+## Drawing systems and measures
+
+A PDF without annotation files — a scan, an edition, any PDF — can be
+placed by hand. Load the PDF alone and choose **draw systems and
+measures**: the page opens in the panel, as wide as the window, and two
+tools mark it.
+
+- **▭ systems** — drag a box across a system, from its first clef to its
+  last barline, top staff to bottom.
+- **| barlines** — click in a system where a barline is: the system splits
+  there. Click a barline again to take it away.
+- **≡ staves** — click in a system between two staves to split it there;
+  the staves are numbered down its left. Click a split again to take it
+  away. With staves, the strip highlights the caret's staff inside its
+  measure.
+
+**−** and **+** zoom the page from the panel's width up to four times; what
+was in the middle stays in the middle, and the page scrolls both ways.
+
+Each system's measures are the stretches between its barlines, numbered as
+the score's measures will be matched to them; the **×** at a system's
+corner removes it. **◀ ▶** turn the pages, and the line beside them counts
+what is drawn against the score's measures. The scans appear above the
+tiles as you draw. **done** returns to the strip.
+
+The drawing is kept for that PDF — load the same file again and it is
+back — and it can be saved as annotation files: battuta menu → **export
+PDF annotations**, one `…_pageN.json` per page, the same format the OMR
+files come in.
+
+## Above the measures
+
+With **on the score** checked, every measure in edit view carries its scan
+above it: the measure's width by the whole system's height, so every staff
+is there, fitted to the tile so the barlines stand over each other. A
+row's band is as tall as its tallest scan; uncheck the box and the room
+goes with the scans.
+
+## The panel
+
+The strip at the bottom shows **the system the caret is in**, every
+measure outlined and the caret's highlighted in amber — and, when the
+system's staves are known (drawn, or `system-staff` boxes in the files),
+the caret's staff in green; move the caret and the strip follows. **◀** and **▶** step through the systems, across pages.
+
+## What it does not do yet
+
+Nothing goes into your MEI: no `<facsimile>` or `<zone>` yet, and clicking
+a scan does not move the caret. A drawing's measures are matched in
+order — drawn by hand, they carry no ids. It is the first step of the facsimile, and those are the next ones.
+
+## Turning it off
+
+battuta menu → **🌣 shortcuts** → **plugins** → *PDF reference*. The 📄,
+the panel and the scans go together, with the room above the measures.
+Nothing about your score changes — the plugin only ever reads it.

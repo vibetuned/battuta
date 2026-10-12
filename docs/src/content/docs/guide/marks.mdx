@@ -29,6 +29,12 @@ match; battuta refuses rather than write a tie between different notes.
 With a run selected, <kbd>t</kbd> ties **every consecutive pair** in it, which is
 how you notate a note held over several measures. The same selection unties it.
 
+Chords tie the same way, **pitch by pitch**: each note of the chord is tied to
+the note of the same pitch in its neighbour — another chord or a single note —
+and the notes with no partner are left alone, so a chord moving to the next one
+holds only the notes the two have in common. A chord that shares no pitch with
+its neighbour is refused.
+
 <Figure name="tie-chain" caption="One pitch held over three notes and a barline." />
 
 Tie chains are handled as chains, not as isolated pairs: the shared note in the

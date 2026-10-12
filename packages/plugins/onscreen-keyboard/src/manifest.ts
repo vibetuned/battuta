@@ -38,7 +38,7 @@ export const SETTING_OPEN = "open";
 export const manifest: PluginManifest = {
   id: "battuta.onscreen-keyboard",
   name: "On-screen keyboard",
-  version: "1.0.0",
+  version: "1.2.0",
   description: "A touch panel that projects the keymap: one button per action, sticky ctrl-free modifier latches, a digit pad, and a two-octave piano that enters notes through the MIDI service.",
   // ^0.1.4 rather than ^0.1.0: this plugin needs `ctx.actions` (0.1.1),
   // manifest-declared slot items (0.1.2), `ctx.activatedBy`,

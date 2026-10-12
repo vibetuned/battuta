@@ -12,6 +12,14 @@
  * draw translucently. A plugin wanting a control puts it in a slot or a
  * panel. Time is not in here: the timemap (`ctx.query.timemap()`) names
  * each measure by the same engraved id, and its notes carry the pitches.
+ *
+ * A BAND (1.2.0, 2026-10-11, the PDF reference's facsimile): room ABOVE
+ * each tile — "scan on top, rendering below". A plugin says how tall a
+ * tile's band wants to be for the tile's width; the host reserves the
+ * tallest of the row above every tile of that row (and an empty band
+ * above the row's header cell), so a row's tiles stay level. Draw-only,
+ * like the layer. Re-add the spec (same id) when what decides the heights
+ * changes: the host re-measures bands when the specs change.
  */
 import type { ReactNode } from "react";
 import type { Disposable } from "./disposable.js";
@@ -47,11 +55,31 @@ export interface TileOverlayProps {
   staves: readonly OverlayStaff[];
 }
 
+/** One tile's band cell, before the row's height is known. */
+export interface BandCell {
+  /** 0-based index of the measure the tile shows. */
+  measureIndex: number;
+  /** The measure's engraved id, or null when the measure carries none. */
+  measureId: string | null;
+  /** The tile's width in CSS px, zoom applied — the cell is exactly this wide. */
+  width: number;
+}
+
+/** Room above every tile, for what belongs over a measure rather than on it. */
+export interface OverlayBand {
+  /** CSS px (zoom applied) this tile's band wants for its width; 0 for none. The host reserves the row's tallest. Called often — keep it arithmetic. */
+  height: (cell: BandCell) => number;
+  /** Draw one cell. `height` is the ROW's band height, at least this cell's own: align to the bottom to sit on the tile. */
+  render: (cell: BandCell & { height: number }) => ReactNode;
+}
+
 export interface OverlaySpec {
-  /** Unique within the plugin. Adding the same id again replaces the earlier overlay. */
+  /** Unique within the plugin. Adding the same id again replaces the earlier overlay — and makes the host re-measure its band. */
   id: string;
-  /** Render over one tile. Called for every rendered tile in edit view while the disposable lives; return null to draw nothing there. */
-  render: (tile: TileOverlayProps) => ReactNode;
+  /** Render over one tile. Called for every rendered tile in edit view while the disposable lives; return null to draw nothing there. Optional since 1.2.0: a spec may be a band only. */
+  render?: (tile: TileOverlayProps) => ReactNode;
+  /** A band above every tile (1.2.0). */
+  band?: OverlayBand;
 }
 
 export interface OverlaysService {

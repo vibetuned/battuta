@@ -5,6 +5,8 @@ dist/
 /fixtures/*
 !/fixtures/README.md
 !/fixtures/synthetic-context-changes.mei
+# the PDF reference's example: a Verovio engraving and its OMR page annotations
+!/fixtures/pdf-reference/
 spikes/out/
 spikes/native-bench/bench
 apps/editor/src-tauri/target
@@ -18,3 +20,5 @@ docs/public/favicon-*.png
 docs/public/og.png
 docs/src/data/keymap.json
 docs/src/assets/logo.svg
+
+examples/

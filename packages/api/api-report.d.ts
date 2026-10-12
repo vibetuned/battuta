@@ -1,4 +1,4 @@
-// @battuta/api 1.1.0 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
+// @battuta/api 1.2.0 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
 
 // ---- ../dist/.tsbuildinfo
 {"version":"5.9.3"}
@@ -364,6 +364,14 @@ export interface DocumentQueries {
      * to the same moment of the recording.
      */
     eventIdAt(caret: CaretPosition): string | null;
+    /**
+     * The document's measures in order, by their `xml:id` (null for a measure
+     * that has none) — index i is the measure a caret's `measureIndex` i and a
+     * tile's `measureIndex` i name. Empty without a document. Added 2026-10-11
+     * (1.2.0) for the PDF reference, which matches annotated measures to the
+     * score by id when it can and in order when it cannot.
+     */
+    measureIds(): (string | null)[];
 }
 
 // ---- formats.d.ts
@@ -457,7 +465,7 @@ export interface FormatsService {
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export declare const API_VERSION = "1.1.0";
+export declare const API_VERSION = "1.2.0";
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";
 export type { Disposable } from "./disposable.js";
@@ -468,7 +476,7 @@ export type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKi
 export type { Timemap, TimemapEvent, TimemapNote } from "./render.js";
 export type { AudioService } from "./audio.js";
 export type { HighlightCue, ViewService } from "./view.js";
-export type { OverlayBox, OverlayStaff, TileOverlayProps, OverlaySpec, OverlaysService } from "./overlays.js";
+export type { OverlayBox, OverlayStaff, TileOverlayProps, OverlaySpec, OverlaysService, BandCell, OverlayBand } from "./overlays.js";
 export type { ExportContribution, ExportFile, ExportPayload, ImportContribution, ImportFile, FormatsService } from "./formats.js";
 export type { DirEntry, WatchEvent, WatchEventKind, WorkspaceService } from "./workspace.js";
 export type { SetPitchesMessage, SetSylMessage, SetHarmMessage, CommandMessage, CommandMessageType } from "./messages.js";
@@ -836,6 +844,14 @@ export interface MidiService {
  * draw translucently. A plugin wanting a control puts it in a slot or a
  * panel. Time is not in here: the timemap (`ctx.query.timemap()`) names
  * each measure by the same engraved id, and its notes carry the pitches.
+ *
+ * A BAND (1.2.0, 2026-10-11, the PDF reference's facsimile): room ABOVE
+ * each tile — "scan on top, rendering below". A plugin says how tall a
+ * tile's band wants to be for the tile's width; the host reserves the
+ * tallest of the row above every tile of that row (and an empty band
+ * above the row's header cell), so a row's tiles stay level. Draw-only,
+ * like the layer. Re-add the spec (same id) when what decides the heights
+ * changes: the host re-measures bands when the specs change.
  */
 import type { ReactNode } from "react";
 import type { Disposable } from "./disposable.js";
@@ -867,11 +883,31 @@ export interface TileOverlayProps {
     /** The tile's staves in staff order. */
     staves: readonly OverlayStaff[];
 }
+/** One tile's band cell, before the row's height is known. */
+export interface BandCell {
+    /** 0-based index of the measure the tile shows. */
+    measureIndex: number;
+    /** The measure's engraved id, or null when the measure carries none. */
+    measureId: string | null;
+    /** The tile's width in CSS px, zoom applied — the cell is exactly this wide. */
+    width: number;
+}
+/** Room above every tile, for what belongs over a measure rather than on it. */
+export interface OverlayBand {
+    /** CSS px (zoom applied) this tile's band wants for its width; 0 for none. The host reserves the row's tallest. Called often — keep it arithmetic. */
+    height: (cell: BandCell) => number;
+    /** Draw one cell. `height` is the ROW's band height, at least this cell's own: align to the bottom to sit on the tile. */
+    render: (cell: BandCell & {
+        height: number;
+    }) => ReactNode;
+}
 export interface OverlaySpec {
-    /** Unique within the plugin. Adding the same id again replaces the earlier overlay. */
+    /** Unique within the plugin. Adding the same id again replaces the earlier overlay — and makes the host re-measure its band. */
     id: string;
-    /** Render over one tile. Called for every rendered tile in edit view while the disposable lives; return null to draw nothing there. */
-    render: (tile: TileOverlayProps) => ReactNode;
+    /** Render over one tile. Called for every rendered tile in edit view while the disposable lives; return null to draw nothing there. Optional since 1.2.0: a spec may be a band only. */
+    render?: (tile: TileOverlayProps) => ReactNode;
+    /** A band above every tile (1.2.0). */
+    band?: OverlayBand;
 }
 export interface OverlaysService {
     /** Mount an overlay on every tile until disposed (or the plugin deactivates). */

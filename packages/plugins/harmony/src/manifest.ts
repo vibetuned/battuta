@@ -35,7 +35,7 @@ export const LANES: Record<string, LaneContribution> = {
 export const manifest: PluginManifest = {
   id: "battuta.harmony",
   name: "Harmony lanes",
-  version: "1.0.0",
+  version: "1.2.0",
   description: "Chord symbols above the staff and Roman numeral analysis below: type at the caret, tab completes, enter commits and advances. Both are startid-anchored <harm> elements in the MEI.",
   // ^0.1.8 carries what harmony needs beyond the lanes point itself: the
   // `core.setHarm` message, `HarmKind` and `ctx.query.harmAt`. Two numbers

@@ -65,7 +65,7 @@ const FORMAT_IDS = [...new Set([...IMPORT_FORMATS, ...EXPORT_FORMATS].map((f) =>
 export const manifest: PluginManifest = {
   id: ID,
   name: "Format converters",
-  version: "1.0.0",
+  version: "1.2.0",
   description: "MusicXML (plain and zipped), ABC, Plaine & Easie and Humdrum convert to MEI on open; MIDI (written score), Humdrum and Plaine & Easie are written back out. Verovio's Humdrum-enabled build, in this plugin's own worker, loaded on the first conversion.",
   // ^0.1.14 is the version that carries both halves of `formats` as a
   // plugin needs them: `contributes.imports` (extensions, text-or-bytes,

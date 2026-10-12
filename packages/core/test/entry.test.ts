@@ -196,6 +196,49 @@ describe("ToggleTieCommand", () => {
     expect(find("c").attrs["tie"]).toBe("i");
     expect(find("d").attrs["tie"]).toBe("t");
   });
+
+  const chords = `
+    <measure n="1" xml:id="m1"><staff n="1"><layer n="1">
+      <chord dur="2" xml:id="x"><note pname="c" oct="4" xml:id="x1"/><note pname="e" oct="4" xml:id="x2"/><note pname="g" oct="4" xml:id="x3"/></chord>
+      <chord dur="2" xml:id="y"><note pname="c" oct="4" xml:id="y1"/><note pname="f" oct="4" xml:id="y2"/><note pname="g" oct="4" xml:id="y3"/></chord>
+    </layer></staff></measure>
+    <measure n="2" xml:id="m2"><staff n="1"><layer n="1">
+      <note pname="g" oct="4" dur="2" xml:id="z"/><chord dur="2" xml:id="w"><note pname="a" oct="4" xml:id="w1"/><note pname="b" oct="4" xml:id="w2"/></chord>
+    </layer></staff></measure>`;
+  const tieOf = (score: ReturnType<typeof scoreFrom>["score"]) => (id: string) =>
+    findAll(score.scoreEl, "note").find((n) => n.attrs["xml:id"] === id)!.attrs["tie"];
+
+  it("ties a chord to the next chord on every pitch they share", () => {
+    const { score } = scoreFrom(mei(chords));
+    const before = serialize(score.scoreEl);
+    const tie = tieOf(score);
+    const cmd = new ToggleTieCommand("x");
+    cmd.apply(ctxFor(score));
+    expect([tie("x1"), tie("x2"), tie("x3")]).toEqual(["i", undefined, "i"]);
+    expect([tie("y1"), tie("y2"), tie("y3")]).toEqual(["t", undefined, "t"]);
+    cmd.revert(ctxFor(score));
+    expect(serialize(score.scoreEl)).toBe(before);
+    // applied twice it toggles off, byte-identically
+    new ToggleTieCommand("x").apply(ctxFor(score));
+    new ToggleTieCommand("x").apply(ctxFor(score));
+    expect(serialize(score.scoreEl)).toBe(before);
+  });
+
+  it("ties a chord to a note across the barline, chaining with the tie before it", () => {
+    const { score } = scoreFrom(mei(chords));
+    const tie = tieOf(score);
+    new ToggleTieCommand("x").apply(ctxFor(score));
+    new ToggleTieCommand("y").apply(ctxFor(score)); // y -> z: only g is shared
+    expect([tie("y1"), tie("y2"), tie("y3"), tie("z")]).toEqual(["t", undefined, "m", "t"]);
+    // untying x -> y removes both its links; y's g stays tied on to z
+    new ToggleTieCommand("x").apply(ctxFor(score));
+    expect([tie("x1"), tie("x3"), tie("y1"), tie("y3"), tie("z")]).toEqual([undefined, undefined, undefined, "i", "t"]);
+  });
+
+  it("refuses a chord that shares no pitch with its neighbour", () => {
+    const { score } = scoreFrom(mei(chords));
+    expect(() => new ToggleTieCommand("z").apply(ctxFor(score))).toThrow(/same pitch/);
+  });
 });
 
 describe("CycleDynamCommand intensity cycle", () => {
@@ -557,6 +600,29 @@ describe("ChainTieCommand", () => {
     cmd.apply(ctxFor(score));
     cmd.revert(ctxFor(score));
     expect(serialize(score.scoreEl)).toBe(snap);
+  });
+
+  it("chains chords pitch by pitch, and the same run unties them", () => {
+    const body = `
+      <measure n="1" xml:id="m1"><staff n="1"><layer n="1">
+        <chord dur="1" xml:id="p"><note pname="c" oct="4" xml:id="p1"/><note pname="e" oct="4" xml:id="p2"/></chord>
+      </layer></staff></measure>
+      <measure n="2" xml:id="m2"><staff n="1"><layer n="1">
+        <chord dur="1" xml:id="q"><note pname="c" oct="4" xml:id="q1"/><note pname="e" oct="4" xml:id="q2"/><note pname="g" oct="4" xml:id="q3"/></chord>
+      </layer></staff></measure>
+      <measure n="3" xml:id="m3"><staff n="1"><layer n="1">
+        <chord dur="2" xml:id="r"><note pname="c" oct="4" xml:id="r1"/><note pname="g" oct="4" xml:id="r2"/></chord><note pname="d" oct="4" dur="2" xml:id="s"/>
+      </layer></staff></measure>`;
+    const { score } = scoreFrom(mei(body));
+    const before = serialize(score.scoreEl);
+    const tie = (id: string) => findAll(score.scoreEl, "note").find((n) => n.attrs["xml:id"] === id)!.attrs["tie"];
+    new ChainTieCommand(["p", "q", "r"]).apply(ctxFor(score));
+    expect([tie("p1"), tie("p2")]).toEqual(["i", "i"]);
+    expect([tie("q1"), tie("q2"), tie("q3")]).toEqual(["m", "t", "i"]);
+    expect([tie("r1"), tie("r2")]).toEqual(["t", "t"]);
+    new ChainTieCommand(["p", "q", "r"]).apply(ctxFor(score));
+    expect(serialize(score.scoreEl)).toBe(before);
+    expect(() => new ChainTieCommand(["r", "s"]).apply(ctxFor(score))).toThrow(/same pitch/);
   });
 });
 

@@ -49,6 +49,8 @@ export interface SessionAdapter {
   harmAt(eventId: string, kind: HarmKind): string;
   /** The id of the event at a caret position, or null. */
   eventIdAt(caret: CaretPosition): string | null;
+  /** The measures in order, by xml:id (null when a measure has none). */
+  measureIds(): (string | null)[];
   /** Verovio's timemap of the expanded form — a render service; rejects with the render error. */
   timemap(): Promise<Timemap>;
   /** The notation facts a performance interprets. */
@@ -203,6 +205,7 @@ export function createHost(options: HostOptions = {}): Host {
     notation: () => adapter?.notation() ?? { ties: {}, marks: {} },
     mei: () => adapter?.mei() ?? null,
     eventIdAt: (caret) => adapter?.eventIdAt(caret) ?? null,
+    measureIds: () => adapter?.measureIds() ?? [],
   };
   let viewAdapter: ViewAdapter | null = null;
   const view: ViewService = {
@@ -398,7 +401,7 @@ export { useStore } from "./store";
 export { Slot, Panels, SIDE_PANEL_WIDTH } from "./slots";
 export { LaneStore, LaneInput, laneFace } from "./lanes";
 export type { LaneAdapter, LaneState, LaneOption, DeclaredLane } from "./lanes";
-export { OverlayStore, TileOverlays, tileGeometry, measureTile } from "./overlays";
+export { OverlayStore, TileOverlays, TileBands, tileGeometry, measureTile, rowBandHeights } from "./overlays";
 export type { RegisteredOverlay, TileMeasurement, Rect } from "./overlays";
 export { HostAudioService } from "./audio";
 export type { AudioContextFactory } from "./audio";

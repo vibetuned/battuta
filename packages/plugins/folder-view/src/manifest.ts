@@ -29,7 +29,7 @@ export const SETTING_FOLDER = "folder";
 export const manifest: PluginManifest = {
   id: "battuta.folder-view",
   name: "Folder view",
-  version: "1.1.0",
+  version: "1.2.0",
   description: "A side panel listing the scores in a folder you opened: click one to open it, rename it or its folder in place, make new scores and folders, see which are already open and which have unsaved changes, and watch the list follow the folder as files are added, changed or removed.",
   // ^0.1.15 is the version that carries what a folder view needs and
   // cannot make itself, all of it from slice 9a: `ctx.workspace`
