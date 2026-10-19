@@ -12,6 +12,7 @@ import { CoreElement, childElements } from "./xml.js";
 import { CoreScore } from "./score.js";
 import { EventIndex } from "./events.js";
 import { newId } from "./ids.js";
+import { writtenAccid, setAccid, accidMemento, restoreAccidMemento, type AccidMemento } from "./accidentals.js";
 
 export interface DirtyRegion {
   measureIndex: number;
@@ -75,7 +76,7 @@ const PNAMES = ["c", "d", "e", "f", "g", "a", "b"] as const;
 /** Snapshot-and-set attribute editing shared by the pitch commands. */
 abstract class AttrCommand implements Command {
   abstract readonly label: string;
-  protected mementos: { noteEl: CoreElement; before: Record<string, string> }[] = [];
+  protected mementos: AccidMemento[] = [];
   constructor(protected readonly ids: string[]) {}
 
   protected abstract mutate(note: CoreElement): void;
@@ -84,7 +85,7 @@ abstract class AttrCommand implements Command {
     this.mementos = [];
     for (const id of this.ids) {
       for (const note of targetNotes(ctx, id)) {
-        this.mementos.push({ noteEl: note, before: { ...note.attrs } });
+        this.mementos.push(accidMemento(note));
         this.mutate(note);
       }
     }
@@ -92,7 +93,7 @@ abstract class AttrCommand implements Command {
   }
 
   revert(ctx: CommandContext): DirtyRegion[] {
-    for (const m of this.mementos) m.noteEl.attrs = { ...m.before };
+    for (const m of this.mementos) restoreAccidMemento(m);
     return dirtyFor(ctx, this.ids);
   }
 }
@@ -115,8 +116,8 @@ export class TransposeStepCommand extends AttrCommand {
     note.attrs["oct"] = String(Math.floor(absolute / 7));
     // A step move invalidates any explicit accidental; the key signature
     // governs the new pitch until the user sets one again.
-    delete note.attrs["accid"];
-    delete note.attrs["accid.ges"];
+    setAccid(note, "accid", undefined);
+    setAccid(note, "accid.ges", undefined);
   }
 }
 
@@ -141,9 +142,10 @@ export class ToggleAccidentalCommand extends AttrCommand {
     this.label = `toggle accidental ${accid}`;
   }
   protected mutate(note: CoreElement): void {
-    if (note.attrs["accid"] === this.accid) delete note.attrs["accid"];
-    else note.attrs["accid"] = this.accid;
-    delete note.attrs["accid.ges"]; // an explicit accidental overrides imports' gestural one
+    setAccid(note, "accid", writtenAccid(note) === this.accid ? undefined : this.accid);
+    // the written one now says what it sounds; the session's sync writes
+    // the gestural one back if taking the accidental away leaves one due
+    setAccid(note, "accid.ges", undefined);
   }
 }
 
@@ -157,7 +159,7 @@ export function chordNotes(score: CoreScore, index: EventIndex, chordId: string)
   if (!chord) return [];
   return childElements(chord)
     .filter((c) => c.tag === "note")
-    .map((n) => ({ id: n.attrs["xml:id"] ?? "", pname: n.attrs["pname"] ?? "", oct: n.attrs["oct"] ?? "", ...(n.attrs["accid"] ? { accid: n.attrs["accid"] } : {}) }));
+    .map((n) => ({ id: n.attrs["xml:id"] ?? "", pname: n.attrs["pname"] ?? "", oct: n.attrs["oct"] ?? "", ...(writtenAccid(n) ? { accid: writtenAccid(n)! } : {}) }));
 }
 
 /**
@@ -167,7 +169,7 @@ export function chordNotes(score: CoreScore, index: EventIndex, chordId: string)
  */
 export class ChordNoteAccidentalCommand implements Command {
   readonly label: string;
-  private memento: { el: CoreElement; before: Record<string, string> } | null = null;
+  private memento: AccidMemento | null = null;
   private region: DirtyRegion[] = [];
 
   constructor(
@@ -185,16 +187,15 @@ export class ChordNoteAccidentalCommand implements Command {
     if (!ref || !chord || chord.tag !== "chord") throw new Error("chord not found");
     const note = childElements(chord).find((c) => c.tag === "note" && c.attrs["xml:id"] === this.noteId);
     if (!note) throw new Error("note not found in the chord");
-    this.memento = { el: note, before: { ...note.attrs } };
-    if (note.attrs["accid"] === this.accid) delete note.attrs["accid"];
-    else note.attrs["accid"] = this.accid;
-    delete note.attrs["accid.ges"];
+    this.memento = accidMemento(note);
+    setAccid(note, "accid", writtenAccid(note) === this.accid ? undefined : this.accid);
+    setAccid(note, "accid.ges", undefined);
     this.region = [{ measureIndex: ref.measureIndex, staffN: ref.staffN }];
     return this.region;
   }
 
   revert(_ctx: CommandContext): DirtyRegion[] {
-    if (this.memento) this.memento.el.attrs = { ...this.memento.before };
+    if (this.memento) restoreAccidMemento(this.memento);
     return this.region;
   }
 }

@@ -237,7 +237,10 @@ await page.waitForFunction((before) => {
   return JSON.stringify(walk(staff, [])) !== before;
 }, JSON.stringify(preMidi), { timeout: 5000 }).catch(() => undefined);
 const postMidi = await staffContent(2, 1);
-check(`MIDI note-on enters f#4 (${postMidi.join(" ")})`, postMidi.some((x) => x.startsWith("f4:") && x.includes("s")));
+// The fixture turns to four sharps at m3 (synthetic-context-changes.mei): F♯ is in the key, so it
+// enters as a plain F — the key carries the sharp (2026-10-19; was "fs").
+const keyHere = await page.evaluate(() => window.__SESSION__.contexts[2].get(1).keysig);
+check(`MIDI note-on enters F♯4 as the key spells it (${keyHere}: ${postMidi.join(" ")})`, keyHere === "4s" && postMidi.includes("f4:4"));
 check("still no duration problems", (await durationProblems()) === 0);
 
 // --- 3a. MIDI chords: keys held together stack into a chord ---
@@ -281,6 +284,44 @@ await page.evaluate(() => { window.__MIDI_NOTE__(62); window.__MIDI_NOTE__(62, f
 await page.waitForTimeout(400);
 check(`a note after release starts fresh, chord untouched (${await chordNotes()} notes)`, (await chordNotes()) === 3);
 check("no duration problems after MIDI chord", (await durationProblems()) === 0);
+
+// --- 3a1. MIDI under a key signature (user-reported 2026-10-19): under one
+// flat, B♭ enters as a plain B (the key carries the flat) and B as B♮; and
+// the FILE says what each sounds — @accid.ges, kept in step by every edit —
+// so Verovio (which reads only a note's own accidentals), and any other MEI
+// reader, hears B♭ where battuta does.
+const keyDepth0 = await page.evaluate(() => window.__SESSION__.stack.undoDepth);
+const keyCaret = await page.evaluate(() => window.__SESSION__.index.eventsAt(1, 1, 1)[0]);
+await clickEvent(keyCaret);
+await page.locator('[data-statusbar] select[title^="key signature"]').selectOption("1f");
+await page.waitForFunction((d) => window.__SESSION__.stack.undoDepth === d + 1, keyDepth0, { timeout: 5000 });
+await clickEvent(await page.evaluate(() => window.__SESSION__.index.eventsAt(1, 1, 1)[0]));
+for (const n of [70, 71]) {
+  const depth = await page.evaluate(() => window.__SESSION__.stack.undoDepth);
+  await page.evaluate((n) => { window.__MIDI_NOTE__(n); window.__MIDI_NOTE__(n, false); }, n);
+  await page.waitForFunction((d) => window.__SESSION__.stack.undoDepth === d + 1, depth, { timeout: 5000 });
+}
+const keyed = await page.evaluate(() => {
+  const ids = window.__SESSION__.index.eventsAt(1, 1, 1).slice(0, 2);
+  const walk = (el, id) => {
+    if (el.attrs && el.attrs["xml:id"] === id) return el;
+    for (const c of el.children ?? []) { if (typeof c !== "string") { const r = walk(c, id); if (r) return r; } }
+    return null;
+  };
+  return ids.map((id) => { const a = walk(window.__SESSION__.score.measures[1], id).attrs; return { id, written: `${a.pname}${a.oct}${a.accid ?? ""}`, ges: a["accid.ges"] ?? null }; });
+});
+check(`under one flat, MIDI B♭ enters a plain B and B a B♮ (${keyed.map((k) => k.written).join(" ")})`, keyed[0].written === "b4" && keyed[1].written === "b4n");
+const keyedPitches = await page.evaluate(async (ids) => {
+  const tm = await window.__HOST__.query.timemap();
+  return ids.map((id) => tm.notes[id]?.pitch ?? null);
+}, keyed.map((k) => k.id));
+check(`playback sounds them as the key reads them (${keyedPitches.join(" ")})`, keyedPitches[0] === 70 && keyedPitches[1] === 71);
+const saved = await page.evaluate((ids) => { const xml = window.__SESSION__.saveDocument(); return ids.map((id) => xml.match(new RegExp(`<note [^>]*xml:id="${id}"[^>]*>`))?.[0] ?? ""); }, keyed.map((k) => k.id));
+check(`the saved file carries the sounding accidental: accid.ges="f" on the plain B, none on the B♮ (${saved.map((t) => t.replace(/ xml:id="[^"]*"/, "")).join(" ")})`, /accid\.ges="f"/.test(saved[0]) && !/accid=/.test(saved[0]) && /accid="n"/.test(saved[1]) && !/accid\.ges/.test(saved[1]));
+check("…and the score opened with the key's sharps written out as accid.ges (the fixture has none of its own)", await page.evaluate(() => /accid\.ges="s"/.test(window.__SESSION__.saveDocument())));
+for (let i = 0; i < 3; i++) await page.keyboard.press("Control+z");
+await page.waitForFunction((d) => window.__SESSION__.stack.undoDepth === d, keyDepth0, { timeout: 10000 });
+check("key-signature MIDI round unwinds cleanly", true);
 
 // --- 3a2. dot the chord itself (chords were refused before) ---
 // Build a fresh chord with room after it: quarter b + chord note, rest follows.

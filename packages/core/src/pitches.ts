@@ -17,6 +17,7 @@ import { CoreElement } from "./xml.js";
 import { Command, CommandContext, DirtyRegion, targetNotes } from "./commands.js";
 import { CoreScore } from "./score.js";
 import { EventIndex } from "./events.js";
+import { writtenAccid, gesturalAccid, setAccid, accidMemento, restoreAccidMemento, type AccidMemento } from "./accidentals.js";
 
 export interface Pitch {
   pname: string;
@@ -48,8 +49,8 @@ export function collectPitchEvents(score: CoreScore, index: EventIndex, measureF
           const pitches: Pitch[] = notes.map((n) => ({
             pname: n.attrs["pname"] ?? "c",
             oct: Number(n.attrs["oct"] ?? "4"),
-            ...(n.attrs["accid"] !== undefined ? { accid: n.attrs["accid"] } : {}),
-            ...(n.attrs["accid.ges"] !== undefined ? { accidGes: n.attrs["accid.ges"] } : {}),
+            ...(writtenAccid(n) !== undefined ? { accid: writtenAccid(n)! } : {}),
+            ...(gesturalAccid(n) !== undefined ? { accidGes: gesturalAccid(n)! } : {}),
           }));
           if (pitches.length === 0) continue;
           const key = `${s}/${l}`;
@@ -75,7 +76,7 @@ export function collectPitchEvents(score: CoreScore, index: EventIndex, measureF
  */
 export class SetPitchesCommand implements Command {
   readonly label: string;
-  private mementos: { el: CoreElement; before: Record<string, string> }[] = [];
+  private mementos: AccidMemento[] = [];
   private region: DirtyRegion[] = [];
 
   constructor(
@@ -95,13 +96,11 @@ export class SetPitchesCommand implements Command {
       if (ref) regions.set(`${ref.measureIndex}/${ref.staffN}`, { measureIndex: ref.measureIndex, staffN: ref.staffN });
       notes.forEach((el, k) => {
         const p = t.pitches[k]!;
-        this.mementos.push({ el, before: { ...el.attrs } });
+        this.mementos.push(accidMemento(el));
         el.attrs["pname"] = p.pname;
         el.attrs["oct"] = String(p.oct);
-        if (p.accid === undefined) delete el.attrs["accid"];
-        else el.attrs["accid"] = p.accid;
-        if (p.accidGes === undefined) delete el.attrs["accid.ges"];
-        else el.attrs["accid.ges"] = p.accidGes;
+        setAccid(el, "accid", p.accid);
+        setAccid(el, "accid.ges", p.accidGes);
       });
     }
     this.region = [...regions.values()];
@@ -109,7 +108,7 @@ export class SetPitchesCommand implements Command {
   }
 
   revert(_ctx: CommandContext): DirtyRegion[] {
-    for (const m of [...this.mementos].reverse()) m.el.attrs = { ...m.before };
+    for (const m of [...this.mementos].reverse()) restoreAccidMemento(m);
     return this.region;
   }
 }

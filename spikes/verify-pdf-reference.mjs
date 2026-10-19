@@ -278,6 +278,37 @@ try {
   await page.waitForFunction(() => document.querySelectorAll("[data-pdf-scan]").length >= 8, null, { timeout: 10000 }).catch(() => undefined);
   check("…and the scans stand above the tiles, the page images at their own size", (await page.evaluate(() => document.querySelectorAll("[data-pdf-scan]").length)) >= 8 && (await page.evaluate(() => document.querySelector('[data-pdf-scan][data-pdf-page="1"] image')?.getAttribute("width"))) === "2100");
 
+  // --- 7b. the panel beside a side panel, and under the status bar's popovers ----------
+  // User-reported 2026-10-19: the folder view hid the strip's left side (the
+  // bottom area ran under it from the window's edge), and the zoom popover
+  // opened behind the bottom panel.
+  const rects = () => page.evaluate(() => {
+    const r = (sel) => document.querySelector(sel)?.getBoundingClientRect() ?? null;
+    return { bottom: r('[data-panels="bottom"]'), side: r('[data-panels="side"]'), width: document.documentElement.clientWidth };
+  });
+  // the header face until the plugin runs, then the plugin's own button
+  const folderToggle = () => page.locator('[data-slot-command="battuta.folder-view.toggle"], [data-folder-toggle]').first();
+  await folderToggle().click();
+  await page.waitForFunction(() => document.querySelector('[data-panels="side"]'), null, { timeout: 10000 });
+  const beside = await rects();
+  check(`with the folder view up, the bottom panel starts where it ends (${beside.side.right} → ${beside.bottom.left}…${beside.bottom.right} of ${beside.width})`, Math.abs(beside.bottom.left - beside.side.right) <= 1 && Math.abs(beside.bottom.right - beside.width) <= 1);
+  await folderToggle().click();
+  await page.waitForFunction(() => !document.querySelector('[data-panels="side"]'), null, { timeout: 10000 });
+  check("…and takes the full width back when it closes", (await rects()).bottom.left === 0);
+  await page.locator("[data-zoom-toggle]").click();
+  const zoomOnTop = await page.evaluate(() => {
+    const b = document.querySelector("[data-zoom-in]");
+    const r = b.getBoundingClientRect();
+    const panel = document.querySelector('[data-panels="bottom"]').getBoundingClientRect();
+    return { over: r.top < panel.bottom && r.bottom > panel.top, hit: document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === b };
+  });
+  check(`the zoom popover opens over the bottom panel, its buttons reachable (${JSON.stringify(zoomOnTop)})`, zoomOnTop.over && zoomOnTop.hit);
+  const zoom0 = await page.locator("[data-zoom-toggle]").getAttribute("data-zoom");
+  await page.locator("[data-zoom-in]").click();
+  check("…and + zooms the score", (await page.locator("[data-zoom-toggle]").getAttribute("data-zoom")) !== zoom0);
+  await page.locator("[data-zoom-reset]").click();
+  await page.locator("[data-zoom-toggle]").click();
+
   // --- 8. close, and nothing else ----------------------------------------------------
   await page.locator("[data-pdf-close]").click();
   await page.waitForFunction(() => !document.querySelector("[data-pdf-ref]"), null, { timeout: 5000 });

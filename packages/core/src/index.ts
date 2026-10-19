@@ -56,6 +56,7 @@ export type { CaretPosition, EventRef } from "./events.js";
 export { SetPitchesCommand, collectPitchEvents } from "./pitches.js";
 export type { PitchEvent, Pitch } from "./pitches.js";
 export { buildExpansion } from "./expansion.js";
+export { keyFifths, writtenAccid, gesturalAccid, syncGesturalAccidentals, WithGesturalAccidentals, alterationsBefore, spellMidi } from "./accidentals.js";
 export type { ExpansionPlan } from "./expansion.js";
 export { CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand, RegenerateIdsCommand, SetTitleCommand, SetTempoCommand } from "./commands.js";
 export type { Command, CommandContext, DirtyRegion } from "./commands.js";

@@ -90,6 +90,23 @@ One compatibility adjustment: comments sitting *before* the root element are mov
 just inside `<mei>`, because Verovio rejects a document with them outside.
 Processing instructions such as `<?xml-model?>` are left where they are.
 
+### Sounding accidentals
+
+MEI keeps two accidentals on a note: `@accid`, the one printed, and `@accid.ges`,
+the one it **sounds** with. A B under one flat is printed plain but sounds B♭, and
+many readers — Verovio's MIDI, and the tools built on it — take a note without
+`@accid.ges` at its bare letter, B♮. So battuta writes `@accid.ges` wherever a
+note without a printed accidental sounds altered: by the key signature, by an
+accidental earlier in the measure (same staff, same line or space), or through a
+tie from the measure before. A note that sounds natural carries none — the
+convention MEI converters follow.
+
+It does this on every edit, as part of the edit — so it undoes with it — and when
+a file is opened, so a file saved without them (by hand, by another tool, by an
+older battuta) gets them on its next save. A note that keeps its accidentals in
+an `<accid>` child element keeps them there: battuta writes both accidentals into
+the child rather than adding a second one beside it.
+
 ### Repairing ids
 
 Some tools emit MEI with duplicate `xml:id`s. Because battuta addresses everything

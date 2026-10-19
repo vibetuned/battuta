@@ -9,6 +9,7 @@ import {
   CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand, RegenerateIdsCommand,
   copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, AddVoiceCommand, RemoveVoiceCommand, ToggleRepeatCommand, ToggleEndRepeatCommand, ToggleVoltaCommand,
   harmTextAt, SetSylCommand, sylAt, type SylValue, CycleStaffGroupCommand, type StaffGroupState, SetTitleCommand, SetTempoCommand, fingTextsAt, buildExpansion, SetPitchesCommand, collectPitchEvents, notationFacts, ReplaceEntryCommand,
+  WithGesturalAccidentals, syncGesturalAccidentals, alterationsBefore, spellMidi, keyFifths,
   type PitchEvent, type NotationFacts, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand, MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, TupletCommand, AutoBeamCommand, UnbeamThen, measuresOf, ChangeContextCommand, planContextChange,
   type CoreScore, type MeasureContext, type EventIndex, type Command, type DirtyRegion, type DomLikeElement, type DomLikeNode,
   type BlockSelection, type ClipboardFragment, type PastePlan, type EntrySpec, type MarkKind, type HarmKind, type CoreElement, type CaretPosition, type ContextChangeSpec,
@@ -55,6 +56,10 @@ export class DocumentSession {
     ensureIds(this.score.scoreDef);
     for (const m of this.score.measures) ensureIds(m);
     this.contexts = resolveContexts(this.score);
+    // Sounding accidentals into the document, as ids are: silently, on
+    // open — a file saved without them (by an older battuta, by hand)
+    // gets them with its next save, and plays right meanwhile.
+    syncGesturalAccidentals(this.score, this.contexts);
     this.index = buildEventIndex(this.score);
     this.reindexStaves();
   }
@@ -94,7 +99,8 @@ export class DocumentSession {
 
   execute(cmd: Command): DirtyRegion[] {
     this.lastEditStart = performance.now();
-    return this.afterMutation(this.stack.execute({ score: this.score, index: this.index }, cmd));
+    // Every edit keeps @accid.ges in step, inside the same undo step.
+    return this.afterMutation(this.stack.execute({ score: this.score, index: this.index }, new WithGesturalAccidentals(cmd)));
   }
 
   undo(): DirtyRegion[] {
@@ -451,7 +457,8 @@ export class DocumentSession {
    * (voltas, plain repeats, one D.S./D.C. jump), the measures are wrapped
    * in segment sections under a synthesized <expansion> so Verovio's
    * timemap follows the true form (`expand` option). Pure — the document
-   * tree is only read.
+   * tree is only read; it already carries every sounding accidental
+   * (@accid.ges, kept in step by every edit), which is what Verovio sounds.
    */
   serializeForPlayback(): { xml: string; expand: string | null } {
     const plan = buildExpansion(this.score);
@@ -466,5 +473,17 @@ export class DocumentSession {
       `</mei>`,
     ].join("\n");
     return { xml, expand: plan.expandId };
+  }
+
+  /**
+   * Spell a MIDI note for entry at an event (or onto a chord): the letter
+   * the key reads, with an accidental only where the page needs one — the
+   * key signature and the measure's accidentals before the event decide.
+   */
+  spellMidi(midi: number, atId: string): { pname: string; oct: number; accid?: string } {
+    const ref = this.index.byId.get(atId);
+    if (!ref) return spellMidi(midi, 0, () => 0);
+    const fifths = keyFifths(this.contexts[ref.measureIndex]?.get(ref.staffN)?.keysig ?? "0");
+    return spellMidi(midi, fifths, alterationsBefore(this.score, this.contexts, ref.measureIndex, ref.staffN, atId));
   }
 }

@@ -11,6 +11,80 @@ below, and changes since the last tag gather under *Unreleased*.
 
 ## Unreleased
 
+- **Sounding accidentals in the file: `@accid.ges`, and `<accid>`
+  children read and written (2026-10-19).** The user, on the entry below:
+  patching the accidentals in for playback only "hides the issue" — the
+  MEI has to say what it sounds, with `@accid`, `@accid.ges` and even
+  `<accid/>`, or only battuta reads it right and every other application
+  reads a natural. Verovio sounds only what a note itself carries (probed
+  with 6.2.0: a B under one flat sounds B♮, a C after a written C♯ sounds
+  C♮, under `keysig` and `<keySig>` alike), so every note typed or
+  entered without an accidental under a key signature has been PLAYING
+  wrong since playback began, and saved that way; imported files carried
+  `accid.ges` and were right (the playback guide and the worker's comment
+  claimed Verovio resolves keys; both corrected). Now the document carries
+  them: core's `accidentals.ts` derives each note's `@accid.ges` — key
+  signature, the measure's earlier written accidentals (same staff, letter
+  and octave, layers merged in time order), ties carried over the barline
+  by `@tie` chains and `<tie>` control elements — for every note without a
+  written accidental, and writes it where it sounds altered, none where it
+  sounds natural: the convention of Verovio's own imports, checked against
+  the Brandenburg fixture's 971 encoded ones (all re-derived, none added).
+  It runs on OPEN, silently as `ensureIds` does (a file saved without them
+  gets them with its next save; a file battuta saved reopens unchanged, so
+  serialisation stays a fixpoint), and after EVERY edit, inside the edit's
+  undo step: the session wraps each command in `WithGesturalAccidentals`
+  (inner command, then the sync; reverted sync first). Notes with a
+  written accidental are left as they are. **`<accid>` children**: a note
+  that keeps its accidentals in the element form keeps them there — the
+  sync, the accidental toggles (single notes and the chord picker), step
+  transposition and `SetPitchesCommand` write into the child, never a
+  second `@accid` beside it (which the toggles did before: an `s` on a
+  note with `<accid accid="n"/>` left both), and every reader (merge, tie
+  pairing, the chord picker, pitch collection) reads it; snapshots cover
+  the child, so reverts stay exact. The playback serialization no longer
+  patches anything — the document is what Verovio sounds — and the
+  formats plugin's written-score exports (MIDI, Humdrum, PAE), which
+  convert the document, sound right with it. New core exports
+  `writtenAccid`, `gesturalAccid`, `syncGesturalAccidentals`,
+  `WithGesturalAccidentals` (`gesturalAccidentals` and
+  `withGesturalAccidentals` from the entry below are gone); no api change.
+  Tests: core 246 (`accidentals.test.ts` 17: the sync — key, measure
+  accidentals across layers, `@tie` and `<tie>` carries, key changes,
+  chords, tuplets, a wrong one taken away, the `<accid>` child written and
+  a second pass changing nothing; the wrapper — a written natural lifting
+  the flat from the notes after it and reverting byte-identically, an
+  entry getting its flat, a step transposition into the key's flat inside
+  the child, a toggle inside the child; the Brandenburg's 971); the phase
+  4 e2e 75 (+1, and its document check reversed: the saved file has
+  `accid.ges="f"` on the plain B and none on the B♮, and the fixture,
+  which has none of its own, opens with its key's sharps written out).
+- **MIDI spelled by the key, playback sounding the key; the bottom panel
+  beside the folder view, the zoom popover over it (2026-10-19).** Three
+  user-reported bugs. **MIDI under a key signature** (the big one): every
+  black key entered as a sharp with `accid="s"` written and the key never
+  read — under one flat, B♭ came in as A♯ and B as a plain B (which the
+  page reads as B♭). Now a key is spelled where it lands, by a new core
+  `accidentals.ts`: a spelling that needs no accidental there wins (B♭
+  under one flat is a plain B; after a written B♮ in the measure, B is
+  plain and B♭ gets its flat back); otherwise a white key is its own
+  letter with ♮ written (under four sharps C is C♮, never B♯), and a black
+  key the spelling nearest the key on the line of fifths (in C: C♯ E♭ F♯
+  G♯ B♭; under one flat, C♯ — D minor's leading tone). Chord notes from
+  held keys are spelled the same way. A B♭ written as the key spells it
+  only sounds B♭ to a reader that knows the key — see the next entry, which
+  is what makes it sound so outside battuta too. **The folder view over
+  the bottom panel**: the bottom area was fixed from the window's left
+  edge, under the side area, its first 280 px hidden; it now starts where
+  a side panel ends, as the score does. **The zoom popover behind the
+  bottom panel**: the status bar sat at z-index 30 under the panels' 32,
+  its upward popovers (zoom, MIDI devices) with it; it is at 34 now, under
+  the header's 35. Core only for the spelling (`keyFifths`,
+  `alterationsBefore`, `spellMidi`); no api change. Tests: the PDF
+  reference e2e 41 (+4: the bottom panel from the folder view's edge to
+  the window's, full width back when it closes, the zoom popover over the
+  panel and hit-testable, + zooming); the phase 4 e2e's F♯4 check now
+  expects the plain F the fixture's four sharps give.
 - **Ties between chords (2026-10-12).** User-reported: `t` could
   not tie chords — both tie commands refused anything but two single notes
   ("ties connect single notes"), and the caret's rule only tied back to a

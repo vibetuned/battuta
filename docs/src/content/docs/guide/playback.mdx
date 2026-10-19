@@ -85,7 +85,12 @@ Playback reads the document, not just the pitches:
 - **Unmarked notes detach slightly** (about 90 % of their value), so legato is
   audible by contrast rather than being the default everywhere.
 - **Accidentals, key signatures and measure accidentals** resolve to real sounding
-  pitch, because Verovio resolves them before the note reaches the sampler.
+  pitch, as a reader of the page hears them: a note without an accidental takes
+  its key signature, unless an accidental written earlier in the measure — same
+  staff, same line or space — changed it, and a note tied over the barline keeps
+  the pitch it was tied from. battuta writes that sounding accidental into the
+  file (`@accid.ges` — see [sounding accidentals](../files/#sounding-accidentals)),
+  so other MEI readers hear what you hear.
 
 ## Repeats, voltas and jumps
 

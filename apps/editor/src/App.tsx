@@ -2185,12 +2185,6 @@ export default function App() {
   const entryDotsRef = useRef(entryDots);
   entryDotsRef.current = entryDots;
 
-  const midiPitch = (midiNote: number) => {
-    const PC = ["c", "c", "d", "d", "e", "f", "f", "g", "g", "a", "a", "b"] as const;
-    const SHARP = new Set([1, 3, 6, 8, 10]);
-    const pc = midiNote % 12;
-    return { pname: PC[pc]!, oct: Math.floor(midiNote / 12) - 1, accid: SHARP.has(pc) ? "s" : undefined };
-  };
 
   const midiNoteOn = useCallback(
     (midiNote: number) => {
@@ -2202,11 +2196,12 @@ export default function App() {
       }
       const wasHeld = heldNotes.current.size > 0;
       heldNotes.current.add(midiNote);
-      const { pname, oct, accid } = midiPitch(midiNote);
+      // Spelled where it lands: under one flat, B♭ is a plain B and B is B♮.
       if (wasHeld && lastEntered.current && s.index.byId.has(lastEntered.current)) {
         // Another key is still down: stack onto the held note as a chord.
         // Promotion assigns the chord a NEW id — retarget through it, or the
         // third pitch would fall back to a fresh entry at the caret.
+        const { pname, oct, accid } = s.spellMidi(midiNote, lastEntered.current);
         try {
           const chordId = s.addChordNote(lastEntered.current, pname, oct, accid);
           if (chordId) lastEntered.current = chordId;
@@ -2224,6 +2219,7 @@ export default function App() {
           setNotice("nothing at the caret to enter into");
           return;
         }
+        const { pname, oct, accid } = s.spellMidi(midiNote, targetId);
         try {
           const entered = s.enterEvent(targetId, {
             kind: "note",
@@ -2848,7 +2844,9 @@ export default function App() {
       </main>
       <Panels store={host.panels} side="bottom" />
       <Panels store={host.panels} side="side" />
-      <footer data-statusbar onKeyDown={onBarKey} style={{ position: "fixed", left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", gap: 12, background: "#1f2733", color: "#aab", fontSize: 12, lineHeight: "20px", padding: "2px 10px", zIndex: 30 }}>
+      {/* Above the panels (32): the zoom and MIDI popovers open upward,
+          over the bottom panel — under it they were hidden (2026-10-19). */}
+      <footer data-statusbar onKeyDown={onBarKey} style={{ position: "fixed", left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", gap: 12, background: "#1f2733", color: "#aab", fontSize: 12, lineHeight: "20px", padding: "2px 10px", zIndex: 34 }}>
         <button
           data-input-indicator
           title="note input mode (i)"

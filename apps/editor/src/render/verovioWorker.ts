@@ -102,9 +102,11 @@ self.onmessage = async (e: MessageEvent) => {
     self.postMessage({ type: "pagesDone", id: msg.id, pageCount });
   } else if (msg.type === "timemap") {
     // Playback data for the page view: the timemap (one authoritative
-    // timeline for audio AND highlight) plus per-note MIDI values — Verovio
-    // resolves sounding pitch (key signature, measure accidentals, ties),
-    // which the raw MEI attributes alone do not give. With an <expansion>
+    // timeline for audio AND highlight) plus per-note MIDI values. Verovio
+    // sounds only what a note itself carries (@accid / @accid.ges — not the
+    // key signature or the measure's earlier accidentals, probed with
+    // 6.2.0); the document carries every @accid.ges (core's
+    // accidentals.ts keeps them in step with each edit). With an <expansion>
     // (repeats/voltas/jumps), repeated passes play as `<id>-rendN` clones:
     // idMap sends every clone back to its notated id for the highlight.
     try {

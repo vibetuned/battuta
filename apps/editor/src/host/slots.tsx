@@ -151,7 +151,13 @@ export const SIDE_PANEL_WIDTH = 280;
 const SIDE: React.CSSProperties = { position: "fixed", left: 0, top: "var(--battuta-header-h, 83px)", bottom: 24, width: SIDE_PANEL_WIDTH, zIndex: 32, background: "#fff", borderRight: "1px solid #e3e7ec", overflow: "auto" };
 
 export function Panels({ store, side }: { store: PanelStore; side: PanelSide }) {
-  const panels = useStore(store.panels).filter((p) => p.side === side);
+  const all = useStore(store.panels);
+  const panels = all.filter((p) => p.side === side);
+  // The bottom area starts where a side panel ends, as the score does —
+  // it was laid under the side panel from the window's left edge, its
+  // first 280 px hidden (2026-10-19: the folder view over the PDF
+  // reference's strip).
+  const sideUp = all.some((p) => p.side === "side");
   const ref = useRef<HTMLElement>(null);
   // The bottom area is fixed over the window's foot, so it PUBLISHES its
   // height as `--battuta-bottom-h`: the App pads the score by it, so the
@@ -178,7 +184,7 @@ export function Panels({ store, side }: { store: PanelStore; side: PanelSide }) 
   }, [side, panels.length]);
   if (!panels.length) return null;
   return (
-    <aside ref={ref} data-panels={side} style={side === "bottom" ? BOTTOM : SIDE}>
+    <aside ref={ref} data-panels={side} style={side === "bottom" ? { ...BOTTOM, left: sideUp ? SIDE_PANEL_WIDTH : 0 } : SIDE}>
       {panels.map((p) => (
         <section key={p.id} data-panel={p.id} aria-label={p.title}>
           {p.render()}

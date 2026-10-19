@@ -14,6 +14,7 @@ import { Command, CommandContext, DirtyRegion } from "./commands.js";
 import { EVENT_TAGS } from "./events.js";
 import { Fraction, fAdd, fCmp, fMul, frac, eventDuration, decomposeDuration } from "./durations.js";
 import { newId } from "./ids.js";
+import { writtenAccid } from "./accidentals.js";
 
 export interface EntrySpec {
   kind: "note" | "rest";
@@ -200,11 +201,11 @@ export class ChangeDurationCommand implements Command {
 /** Written pitch identity used by merge (chords compare pitch multisets). */
 function pitchKey(el: CoreElement): string | null {
   if (el.tag === "rest") return "rest";
-  if (el.tag === "note") return `${el.attrs["pname"]}/${el.attrs["oct"]}/${el.attrs["accid"] ?? ""}`;
+  if (el.tag === "note") return `${el.attrs["pname"]}/${el.attrs["oct"]}/${writtenAccid(el) ?? ""}`;
   if (el.tag === "chord") {
     return childElements(el)
       .filter((c) => c.tag === "note")
-      .map((n) => `${n.attrs["pname"]}/${n.attrs["oct"]}/${n.attrs["accid"] ?? ""}`)
+      .map((n) => `${n.attrs["pname"]}/${n.attrs["oct"]}/${writtenAccid(n) ?? ""}`)
       .sort()
       .join("+");
   }
@@ -422,7 +423,7 @@ function tiePairs(a: CoreElement, b: CoreElement): [CoreElement, CoreElement][] 
   const pairs: [CoreElement, CoreElement][] = [];
   for (const na of tieNotes(a)) {
     const same = free.filter((nb) => nb.attrs["pname"] === na.attrs["pname"] && nb.attrs["oct"] === na.attrs["oct"]);
-    const nb = same.find((n) => n.attrs["accid"] === na.attrs["accid"]) ?? same[0];
+    const nb = same.find((n) => writtenAccid(n) === writtenAccid(na)) ?? same[0];
     if (!nb) continue;
     free.splice(free.indexOf(nb), 1);
     pairs.push([na, nb]);
