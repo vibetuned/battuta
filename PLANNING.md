@@ -59,7 +59,9 @@ document trees under path-shaped addresses the shell resolves; the api's
 `workspace.home()` (1.2.0) tells the folder view which folder is battuta's.
 
 **M2 — touch and the tablet layout.**
-- The virtual keyboard made perfectly usable on a tablet.
+- The virtual keyboard made perfectly usable on a tablet. Begun
+  2026-10-20 with the user's first two: a backspace (⌫) pinned under
+  the ×, and two lines in portrait (the playing line over the groups).
 - Taps are far less precise than a cursor: instead of binding
   pointerdown to the tiny `<g class="note">`, hit-test with
   `document.elementsFromPoint(x, y)` or the nearest notehead box within a

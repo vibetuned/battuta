@@ -25,7 +25,7 @@ import type { KeymapEntry } from "@battuta/api";
 import { createHost, memorySettings, type Host } from "../../../../apps/editor/src/host";
 import { memoryStorage } from "../../../../apps/editor/src/host/services";
 import { BUILTIN_PLUGINS } from "../../../../apps/editor/src/host/plugins";
-import { actionFor, actionIds, coveredIds, digitAction, displayLabel, DIGIT_PAD_COVERS, DIGIT_PAD_ID, EXTRA_IDS, generatedKeys, MOD_VARIANTS, NO_MODS, panelKeys, physicalKeys, PIANO_COVERS, variantFor } from "../src/keys";
+import { actionFor, actionIds, BACKSPACE, coveredIds, digitAction, displayLabel, DIGIT_PAD_COVERS, DIGIT_PAD_ID, EXTRA_IDS, generatedKeys, MOD_VARIANTS, NO_MODS, panelKeys, physicalKeys, PIANO_COVERS, variantFor } from "../src/keys";
 
 type Layout = "qwerty" | "azerty";
 const LAYOUTS: Layout[] = ["qwerty", "azerty"];
@@ -107,6 +107,12 @@ describe("the actions the panel can run", () => {
     expect(by("pg↓").action).toBe("nav.pageDown");
     expect(by("del").action).toBe("edit.delete");
     expect(by("esc").action).toBe("edit.escape");
+  });
+
+  it("backspace erases backward, pinned under the × rather than in a scrolling group", () => {
+    expect(BACKSPACE.action).toBe("edit.backspace");
+    expect(EXTRA_IDS).toContain(BACKSPACE.id);
+    expect(panelKeys(keymap).some((s) => s.action === "edit.backspace" || s.id === BACKSPACE.id)).toBe(false);
   });
 
   it("every id belongs to a family packages/api/src/actions.ts documents", () => {

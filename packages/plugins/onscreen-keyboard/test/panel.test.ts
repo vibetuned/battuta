@@ -7,7 +7,7 @@
  * on react-dom, and the host owns the React root. What a unit test can do
  * is call the panel spec's `render()` and read the element's props, which
  * is enough to drive the × (its `onClose`). The pixels are the browser
- * script's job (`spikes/verify-onscreen-keyboard.mjs`, 24 checks by
+ * script's job (`spikes/verify-onscreen-keyboard.mjs`, 34 checks by
  * tapping); the key model is `test/keys.test.ts`.
  */
 import { describe, it, expect } from "vitest";

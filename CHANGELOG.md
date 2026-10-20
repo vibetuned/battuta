@@ -11,6 +11,56 @@ below, and changes since the last tag gather under *Unreleased*.
 
 ## Unreleased
 
+- **Phase 10, M2 — the context bar folds when it would not fit
+  (2026-10-20).** User-reported: in portrait the status bar "gets too fat
+  and hides part of the keyboard". Its controls did not fit one line at a
+  tablet's upright width, so the flex items shrank and their text wrapped
+  — the bar grew, while the bottom panel was still placed as if it were
+  24 px. Now: the bar never wraps (`white-space: nowrap`), and when its
+  contents overflow one line it **folds its context controls** — the
+  plugin items, the lanes, staves, voices, clef, key, meter — **behind
+  ⋯**, a popover above the bar; the input box, the caret readout, zoom
+  and MIDI stay. **Measured, not a breakpoint**: the bar folds when its
+  `scrollWidth` exceeds its width and unfolds when the width it needed
+  returns, so plugin items count. The controls are one element
+  (`contextControls`), placed inline or in the popover. And the bar
+  **publishes its height** (`--battuta-bar-h`, as the header and the
+  bottom panel already did) — the bottom and side panels, the notices and
+  the page's foot stand on the bar as it is, not on an assumed 24 px.
+  F6 opens a folded bar's ⋯ and focuses its first control. Tests:
+  `verify-onscreen-keyboard.mjs` 34 (+5: at 820 px the bar folds and
+  stays one line, 28 px; the keyboard's bottom edge meets the bar's top
+  (1152/1152); ⋯ opens the six controls above the bar and on screen; F6
+  on a folded bar; at 1500 px it unfolds, its selects inline); app 18,
+  phase 3 21, phase 5 221, lyrics 25, PDF reference 41, folder view 40
+  unchanged; initial chunk 385.0 kB of 390.6.
+- **Phase 10, M2 begins — the on-screen keyboard on a tablet; the budget
+  raised (2026-10-20).** The user: "ok for adding the bytes, and you can
+  start the m2", with two things for the keyboard. **⌫:** the panel had
+  no backspace though a hardware keyboard's erased backward all along
+  (the App's `edit.backspace`: the previous note becomes a rest, the
+  caret steps onto it); it is now a key of its own (`BACKSPACE` in
+  `keys.ts`, an EXTRA_ID like `del` and `esc`), **pinned under the ×** in
+  a column outside the scrolling groups, where the user asked for it.
+  **Two lines in portrait:** octaves, piano, latches, × and ⌫ on the
+  first, the scrolling groups on the second, the piano taking the line's
+  width (660 px at an upright iPad Air's 820, 460 beside the groups in
+  landscape). By CSS alone — a media query in the panel's own `<style>`,
+  scoped to its data attributes, rearranging the same elements — because
+  a plugin never reads the window (`matchMedia` was the first draft; the
+  boundary test's "no DOM" rule says why not), and because the same
+  elements keep the octave rail and the latches when the tablet turns.
+  **Budget:** raised to 400,000 bytes (measured 392,517) by the user's
+  decision — the tablets' startup-time branches (safe-area insets, the
+  shell marker, the tablet confirm, **save a copy…** and **share…**, the
+  first save) while the tablet code proper stays lazy; recorded in
+  `budget.json`. **Notices** name an Android tree file by its name, not
+  its `content://` address (`shownPath`). Tests: keyboard 48 (+1: ⌫'s
+  action, an EXTRA_ID, in no group); `verify-onscreen-keyboard.mjs` 29
+  (+5: ⌫ under the × in its column; a tap erases backward onto a rest;
+  one line in landscape; two in portrait with the piano wider; turning
+  keeps the octave rail — no remount); plugin boundaries 18; both
+  tablets rebuilt, the Android device check 15.
 - **Phase 10, M1 continued — any folder and a share sheet on the tablets;
   the black iPad; the Android icon (2026-10-20).** User-reported: the iPad
   showed the app black, the Android icon looked "horrible", and once

@@ -83,7 +83,17 @@ export const DIGIT_PAD_ID = "digitPad";
 export const DIGIT_PAD_COVERS: readonly string[] = ["durations", "voltas", "fingering", "fingerChange"];
 
 /** Buttons for actions the App handles outside the keymap. */
-export const EXTRA_IDS: readonly string[] = ["delete", "escape"];
+export const EXTRA_IDS: readonly string[] = ["delete", "escape", "backspace"];
+
+/**
+ * Backspace — erase backward, like a text editor: the previous note becomes
+ * a rest and the caret steps onto it (the App's `edit.backspace`). Pinned
+ * under the ×, outside the scrolling groups, so it is always in reach: it
+ * is the key a tablet user presses most after the piano (2026-10-20 — the
+ * panel had none, though a hardware keyboard's Backspace did this all
+ * along).
+ */
+export const BACKSPACE: PanelKey = { id: "backspace", label: "⌫", key: "Backspace", action: "edit.backspace", group: "pinned", title: "erase backward — the previous note becomes a rest" };
 
 /** alt+6–0 substitutes to this new finger (the App's own mapping). */
 const FINGER_CHANGE: Record<string, string> = { "6": "1", "7": "2", "8": "3", "9": "4", "0": "5" };

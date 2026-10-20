@@ -15,7 +15,7 @@
  */
 import { useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import type { KeymapEntry } from "@battuta/api";
-import { actionFor, displayLabel, groupKeys, NO_MODS, type LatchedMods } from "./keys";
+import { actionFor, BACKSPACE, displayLabel, groupKeys, NO_MODS, type LatchedMods } from "./keys";
 
 const WHITE_SEMIS = [0, 2, 4, 5, 7, 9, 11]; // C D E F G A B
 const BLACKS: [number, number][] = [
@@ -54,6 +54,27 @@ const KEY_BTN: CSSProperties = {
 };
 
 const LATCHED: CSSProperties = { background: "#4a7dbd", color: "#fff", borderColor: "#4a7dbd" };
+
+/**
+ * One panel, two arrangements, by CSS alone (a plugin never reads the
+ * window): in landscape a single line — octaves, piano, latches, the
+ * scrolling action groups, × and ⌫; in portrait two — the playing line
+ * (octaves, piano, latches, × and ⌫) over the groups, which take a line of
+ * their own — because one line squeezes the piano to a sliver at a
+ * tablet's portrait width (2026-10-20, M2). Same elements either way, so
+ * turning the tablet keeps the octave rail and the latches as they were.
+ */
+const LAYOUT_CSS = `
+[data-vkeys] { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: stretch; padding: 8px 10px; background: #1a222d; user-select: none; }
+[data-vkeys] > [data-vk-piano] { flex: 0 0 clamp(240px, 34vw, 460px); }
+[data-vkeys] > [data-vk-groups] { flex: 1 1 0; min-width: 0; order: 4; }
+[data-vkeys] > [data-vk-pinned] { order: 5; }
+@media (orientation: portrait) {
+  [data-vkeys] > [data-vk-piano] { flex: 1 1 auto; }
+  [data-vkeys] > [data-vk-pinned] { order: 4; }
+  [data-vkeys] > [data-vk-groups] { order: 5; flex: 1 0 100%; }
+}
+`;
 
 export interface KeyboardPanelProps {
   /** The UNION keymap as data: core ∪ every enabled plugin's contributions. */
@@ -132,92 +153,126 @@ export function KeyboardPanel({ keymap, entryMode, runnable, onAction, onNoteOn,
     </button>
   );
 
-  return (
-    <div data-vkeys style={{ display: "flex", gap: 10, alignItems: "stretch", padding: "8px 10px", background: "#1a222d", userSelect: "none" }}>
-      {/* --- piano: octave rail + two octaves of keys ------------------- */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, width: 34 }}>
-        <button data-vk-oct-up style={{ ...KEY_BTN, minWidth: 30, flex: 1 }} title="octaves up" onClick={() => stepOctave(1)}>
-          ▲
-        </button>
-        <span data-vk-oct style={{ color: "#8b99a9", fontSize: 11, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
-          C{oct}
-        </span>
-        <button data-vk-oct-down style={{ ...KEY_BTN, minWidth: 30, flex: 1 }} title="octaves down" onClick={() => stepOctave(-1)}>
-          ▼
-        </button>
-      </div>
-      <div
-        data-vk-piano
-        style={{ position: "relative", flex: "0 0 clamp(240px, 34vw, 460px)", minHeight: ROW_HEIGHT, touchAction: "none", opacity: entryMode ? 1 : 0.55 }}
-        title={entryMode ? "tap to enter notes — hold several for a chord; wheel/swipe the rail for octaves" : "press input (i) first — the piano enters notes in input mode"}
-        onWheel={(e) => stepOctave(e.deltaY > 0 ? -1 : 1)}
-      >
-        <div style={{ display: "flex", height: "100%" }}>
-          {whites.map((w) => (
-            <div
-              key={w.midi}
-              data-vk-note={w.midi}
-              {...keyEvents(w.midi)}
-              style={{ flex: 1, background: held.has(w.midi) ? "#9fc3ea" : "#f3f5f7", border: "1px solid #556", borderRadius: "0 0 4px 4px", display: "flex", alignItems: "flex-end", justifyContent: "center", color: "#667", fontSize: 10, paddingBottom: 2 }}
-            >
-              {w.label}
-            </div>
-          ))}
-        </div>
-        {blacks.map((b) => (
+  const rail = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, width: 34 }}>
+      <button data-vk-oct-up style={{ ...KEY_BTN, minWidth: 30, flex: 1 }} title="octaves up" onClick={() => stepOctave(1)}>
+        ▲
+      </button>
+      <span data-vk-oct style={{ color: "#8b99a9", fontSize: 11, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
+        C{oct}
+      </span>
+      <button data-vk-oct-down style={{ ...KEY_BTN, minWidth: 30, flex: 1 }} title="octaves down" onClick={() => stepOctave(-1)}>
+        ▼
+      </button>
+    </div>
+  );
+
+  const piano = (
+    <div
+      data-vk-piano
+      // Its width is LAYOUT_CSS's: a third of the screen beside the groups
+      // in landscape, the line's width in portrait.
+      style={{ position: "relative", minHeight: ROW_HEIGHT, touchAction: "none", opacity: entryMode ? 1 : 0.55 }}
+      title={entryMode ? "tap to enter notes — hold several for a chord; wheel/swipe the rail for octaves" : "press input (i) first — the piano enters notes in input mode"}
+      onWheel={(e) => stepOctave(e.deltaY > 0 ? -1 : 1)}
+    >
+      <div style={{ display: "flex", height: "100%" }}>
+        {whites.map((w) => (
           <div
-            key={b.midi}
-            data-vk-note={b.midi}
-            {...keyEvents(b.midi)}
-            style={{ position: "absolute", top: 0, left: `${b.left}%`, width: `${blackW}%`, height: "60%", background: held.has(b.midi) ? "#4a7dbd" : "#222a34", border: "1px solid #111", borderRadius: "0 0 3px 3px", zIndex: 1 }}
-          />
-        ))}
-      </div>
-      {/* --- modifier latches ------------------------------------------- */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, justifyContent: "center" }}>{(["alt", "shift"] as const).map(modBtn)}</div>
-      {/* --- action groups, horizontally scrollable ---------------------- */}
-      {/* The groups scroll sideways and never vertically: a horizontal
-          scrollbar eats into this box's height, and with overflowY left to
-          "auto" the shortfall becomes a second, vertical scrollbar inside
-          the panel. ROW_HEIGHT is what keeps the buttons clear of it. */}
-      <div style={{ display: "flex", gap: 12, overflowX: "auto", overflowY: "hidden", flex: 1, alignItems: "stretch" }}>
-        {groups.map((g) => (
-          <div key={g.name} data-vk-group={g.name} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            <span style={{ color: "#6b7a8b", fontSize: 10, textTransform: "uppercase", letterSpacing: 1 }}>{g.name}</span>
-            <div style={{ display: "grid", gridTemplateRows: "repeat(2, auto)", gridAutoFlow: "column", gap: 4 }}>
-              {g.specs.map((s, i) => {
-                // Live relabel: the caption shows what the button does
-                // UNDER the active latches, and a re-mapped button is
-                // tinted to match. A latch that reaches nothing leaves the
-                // caption alone, so the panel never advertises a dead key.
-                const label = displayLabel(s, mods, keymap, runnable);
-                const action = actionFor(s, mods, keymap, runnable);
-                return (
-                  <button
-                    key={`${s.id}:${s.key ?? s.label}:${i}`}
-                    data-vk-key={s.id}
-                    data-vk-action={action ?? ""}
-                    title={s.title}
-                    onClick={() => {
-                      if (action !== null) onAction(action);
-                      // One-shot latch — cleared even by a button the latch
-                      // reaches nothing on. NOT `disabled`: a disabled
-                      // button fires no click, so the latch would stick.
-                      if (mods.shift || mods.alt) setMods(NO_MODS);
-                    }}
-                    style={{ ...KEY_BTN, ...(label !== s.label ? { color: "#9fc3ea", borderColor: "#4a7dbd" } : {}), ...(action === null ? { opacity: 0.4 } : {}) }}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
+            key={w.midi}
+            data-vk-note={w.midi}
+            {...keyEvents(w.midi)}
+            style={{ flex: 1, background: held.has(w.midi) ? "#9fc3ea" : "#f3f5f7", border: "1px solid #556", borderRadius: "0 0 4px 4px", display: "flex", alignItems: "flex-end", justifyContent: "center", color: "#667", fontSize: 10, paddingBottom: 2 }}
+          >
+            {w.label}
           </div>
         ))}
       </div>
-      <button data-vk-close title="hide the on-screen keyboard" onClick={onClose} style={{ ...KEY_BTN, minWidth: 30, alignSelf: "flex-start" }}>
+      {blacks.map((b) => (
+        <div
+          key={b.midi}
+          data-vk-note={b.midi}
+          {...keyEvents(b.midi)}
+          style={{ position: "absolute", top: 0, left: `${b.left}%`, width: `${blackW}%`, height: "60%", background: held.has(b.midi) ? "#4a7dbd" : "#222a34", border: "1px solid #111", borderRadius: "0 0 3px 3px", zIndex: 1 }}
+        />
+      ))}
+    </div>
+  );
+
+  const latches = <div style={{ display: "flex", flexDirection: "column", gap: 4, justifyContent: "center" }}>{(["alt", "shift"] as const).map(modBtn)}</div>;
+
+  // The groups scroll sideways and never vertically: a horizontal
+  // scrollbar eats into this box's height, and with overflowY left to
+  // "auto" the shortfall becomes a second, vertical scrollbar inside the
+  // panel. ROW_HEIGHT is what keeps the buttons clear of it.
+  const actions = (
+    <div data-vk-groups style={{ display: "flex", gap: 12, overflowX: "auto", overflowY: "hidden", alignItems: "stretch" }}>
+      {groups.map((g) => (
+        <div key={g.name} data-vk-group={g.name} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          <span style={{ color: "#6b7a8b", fontSize: 10, textTransform: "uppercase", letterSpacing: 1 }}>{g.name}</span>
+          <div style={{ display: "grid", gridTemplateRows: "repeat(2, auto)", gridAutoFlow: "column", gap: 4 }}>
+            {g.specs.map((s, i) => {
+              // Live relabel: the caption shows what the button does
+              // UNDER the active latches, and a re-mapped button is
+              // tinted to match. A latch that reaches nothing leaves the
+              // caption alone, so the panel never advertises a dead key.
+              const label = displayLabel(s, mods, keymap, runnable);
+              const action = actionFor(s, mods, keymap, runnable);
+              return (
+                <button
+                  key={`${s.id}:${s.key ?? s.label}:${i}`}
+                  data-vk-key={s.id}
+                  data-vk-action={action ?? ""}
+                  title={s.title}
+                  onClick={() => {
+                    if (action !== null) onAction(action);
+                    // One-shot latch — cleared even by a button the latch
+                    // reaches nothing on. NOT `disabled`: a disabled
+                    // button fires no click, so the latch would stick.
+                    if (mods.shift || mods.alt) setMods(NO_MODS);
+                  }}
+                  style={{ ...KEY_BTN, ...(label !== s.label ? { color: "#9fc3ea", borderColor: "#4a7dbd" } : {}), ...(action === null ? { opacity: 0.4 } : {}) }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  // × and ⌫, pinned: always in reach, never scrolled away with the groups.
+  const backspaceRuns = runnable(BACKSPACE.action);
+  const pinned = (
+    <div data-vk-pinned style={{ display: "flex", flexDirection: "column", gap: 4, alignSelf: "flex-start" }}>
+      <button data-vk-close title="hide the on-screen keyboard" onClick={onClose} style={{ ...KEY_BTN, minWidth: 30 }}>
         ×
       </button>
+      <button
+        data-vk-key={BACKSPACE.id}
+        data-vk-action={backspaceRuns ? BACKSPACE.action : ""}
+        title={BACKSPACE.title}
+        onClick={() => {
+          if (backspaceRuns) onAction(BACKSPACE.action);
+          if (mods.shift || mods.alt) setMods(NO_MODS);
+        }}
+        style={{ ...KEY_BTN, minWidth: 30, fontSize: 15, ...(backspaceRuns ? {} : { opacity: 0.4 }) }}
+      >
+        {BACKSPACE.label}
+      </button>
+    </div>
+  );
+
+  return (
+    <div data-vkeys>
+      <style>{LAYOUT_CSS}</style>
+      {rail}
+      {piano}
+      {latches}
+      {actions}
+      {pinned}
     </div>
   );
 }

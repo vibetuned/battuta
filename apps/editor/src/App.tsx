@@ -35,6 +35,8 @@ interface OpenDoc {
 /** Tab name from a native path: both separators (Windows), any case. */
 /** The tab's name: the file's base name without its extension. */
 const docNameFromPath = (path: string): string => path.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") || "score";
+/** A path as a notice shows it: an Android document tree's (`content://…`, phase 10) by its file name — the address means nothing to a reader. */
+const shownPath = (path: string): string => (path.startsWith("content://") ? path.slice(path.lastIndexOf("/") + 1) : path);
 /** The tablets' document picker, save sheet and folder saves (phase 10, M1) — loaded on first use. */
 const tabletFiles = () => import("./tabletFiles");
 
@@ -1176,7 +1178,7 @@ export default function App() {
             .then(() => {
               markSaved();
               recordMtime(path);
-              setNotice(`saved ${path}`);
+              setNotice(`saved ${shownPath(path)}`);
             })
             .catch((e) => setNotice(`save failed: ${e}`));
         // External-change guard: the file may have been edited by another
@@ -1185,7 +1187,7 @@ export default function App() {
           .then((m) => {
             const known = diskMtimes.current.get(path);
             if (typeof m === "number" && known !== undefined && m !== known) {
-              void confirmDialog(`"${path}" changed on disk since it was opened here.\n\nOverwrite the external changes?`).then((ok) => {
+              void confirmDialog(`"${shownPath(path)}" changed on disk since it was opened here.\n\nOverwrite the external changes?`).then((ok) => {
                 if (ok) void write();
                 else setNotice("save cancelled — the file changed on disk (save-as keeps both)");
               });
@@ -1356,6 +1358,39 @@ export default function App() {
     return () => ro?.disconnect();
   }, []);
   const sidePanelUp = useStore(host.panels.panels).some((p) => p.side === "side");
+
+  // The context bar (the status bar) publishes its height as the header
+  // does — what stands on it (the bottom and side panels, the notices, the
+  // page's foot) sits on the bar as it IS — and when its controls do not
+  // fit one line (a tablet held upright: they wrapped, the bar grew and
+  // covered the keyboard, 2026-10-20) the context controls fold into "⋯".
+  // Measured, not a breakpoint: plugin items count, and a wider window
+  // unfolds it again.
+  const barRef = useRef<HTMLElement>(null);
+  const [barFolded, setBarFolded] = useState(false);
+  const [barMenu, setBarMenu] = useState(false);
+  const barNeeds = useRef(0);
+  const fitBar = useRef<() => void>(() => undefined);
+  fitBar.current = () => {
+    const el = barRef.current;
+    if (!el) return;
+    document.documentElement.style.setProperty("--battuta-bar-h", `${el.getBoundingClientRect().height}px`);
+    if (!barFolded && el.scrollWidth > el.clientWidth + 1) {
+      barNeeds.current = el.scrollWidth;
+      setBarFolded(true);
+    } else if (barFolded && el.clientWidth >= barNeeds.current) {
+      setBarFolded(false);
+      setBarMenu(false);
+    }
+  };
+  useLayoutEffect(() => fitBar.current()); // every render: a plugin item may have come or gone
+  useLayoutEffect(() => {
+    const el = barRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => fitBar.current());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // The workspace's opener and the LIVE external-change guard. A path a
   // plugin opens goes through the one open path (an already-open tab is
@@ -1715,7 +1750,12 @@ export default function App() {
         return "handled";
       }),
       rule("contextBar", (e) => hit("contextBar", e), () => {
-        document.querySelector<HTMLSelectElement>("[data-statusbar] select.sbsel:not(:disabled)")?.focus();
+        const first = () => document.querySelector<HTMLSelectElement>("[data-statusbar] select.sbsel:not(:disabled)");
+        // A folded bar keeps its selects behind "⋯": open it, then focus.
+        if (!first() && document.querySelector("[data-bar-more]")) {
+          document.querySelector<HTMLButtonElement>("[data-bar-more]")?.click();
+          requestAnimationFrame(() => first()?.focus());
+        } else first()?.focus();
         return "handled";
       }),
       // Numpad +/−/* — physical codes: layout-proof.
@@ -2526,8 +2566,166 @@ export default function App() {
     }
   }
 
+  // The context bar's context controls: inline, or folded into "⋯" when
+  // the bar is too narrow for them (see barFolded).
+  const contextControls = (
+    <>
+    {/* The bar's rule: host controls are anchored, contributions grow into
+        the free space to their LEFT. The slot sits right after the spacer,
+        so a plugin item appearing or leaving moves no host control; the
+        lanes select is the boundary — it exists only while some lane
+        (internal or a plugin's) is on offer, and hides without shifting
+        anything. Plugin selects use className="sbsel" for the same look
+        and join F6 roving focus (and ↑/↓ cycling with data-cycle). */}
+    <Slot store={host.slots} name="statusBar" onCommand={runPluginCommand} plugins={host.registry} />
+    {laneOptions.length > 0 && (
+      <select
+        value=""
+        data-lanes
+        title={`text lanes at the caret: ${laneOptions.map((o) => o.label).join(" · ")}`}
+        className="sbsel"
+        disabled={!session || !caret}
+        onChange={(e) => {
+          const id = e.target.value;
+          e.target.blur();
+          if (id) host.lanes.open(id); // leaves entry mode; a declared plugin lane wakes its plugin first
+        }}
+      >
+        <option value="">{laneState ? laneFace(laneState.spec) : "lanes"}</option>
+        {laneOptions.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    )}
+    {/* Current context at the caret; picking a value applies the change
+        there. Blur on change: a focused select swallows the keyboard. */}
+    <select
+      value=""
+      title="staves (add below / remove the caret's)"
+      className="sbsel"
+      disabled={!session}
+      onChange={(e) => {
+        const op = e.target.value;
+        e.target.blur();
+        if (!session || !op) return;
+        try {
+          if (op === "add") {
+            const n = session.addStaff();
+            afterCommand(session);
+            // land the caret at the start of the fresh staff, ready
+            // to enter notes (its first event is the m1 whole rest)
+            anchor.current = null;
+            setSelection([]);
+            setBlock(null);
+            lastEntered.current = null;
+            setCaret({ measureIndex: 0, staffN: n, layerN: 1, eventIndex: 0 });
+            setNotice(`staff ${n} added below — caret at its start`);
+          } else {
+            if (!caret) {
+              setNotice("place the caret on the staff to remove");
+              return;
+            }
+            const n = caret.staffN;
+            session.removeStaff(n);
+            setCaret(null);
+            setSelection([]);
+            setBlock(null);
+            anchor.current = null;
+            lastEntered.current = null;
+            afterCommand(session);
+            setNotice(`staff ${n} removed (ctrl+z restores it)`);
+          }
+        } catch (err) {
+          setNotice(`staves: ${err instanceof Error ? err.message : err}`);
+        }
+      }}
+    >
+      <option value="">{session ? `staves (${session.staffCount})` : "staves"}</option>
+      <option value="add">add staff below</option>
+      <option value="remove">remove caret staff</option>
+    </select>
+    <select
+      value=""
+      title="voices (caret staff: switch, add, remove)"
+      className="sbsel"
+      disabled={!session || !caret}
+      onChange={(e) => {
+        const op = e.target.value;
+        e.target.blur();
+        if (!session || !caret || !op) return;
+        try {
+          if (op === "add") {
+            const n = session.addVoice(caret.staffN, caret.measureIndex);
+            afterCommand(session);
+            const next = { measureIndex: caret.measureIndex, staffN: caret.staffN, layerN: n, eventIndex: 0 };
+            caretRef.current = next;
+            setCaret(next);
+            setNotice(`voice ${n} added to staff ${caret.staffN} from m${caret.measureIndex + 1} — caret is in it`);
+          } else if (op === "remove") {
+            const gone = caret.layerN;
+            session.removeVoice(caret.staffN, gone, caret.measureIndex);
+            afterCommand(session);
+            const layers = session.index.layersPerStaff.get(`${caret.measureIndex}/${caret.staffN}`) ?? [];
+            const next = layers.length ? { measureIndex: caret.measureIndex, staffN: caret.staffN, layerN: layers[0]!, eventIndex: 0 } : null;
+            caretRef.current = next;
+            setCaret(next);
+            setSelection([]);
+            lastEntered.current = null;
+            setNotice(`voice ${gone} removed from staff ${caret.staffN} from m${caret.measureIndex + 1} (ctrl+z restores it)`);
+          } else if (op.startsWith("go:")) {
+            const layerN = Number(op.slice(3));
+            const events = session.index.eventsAt(caret.measureIndex, caret.staffN, layerN);
+            if (!events.length) return;
+            const next = { measureIndex: caret.measureIndex, staffN: caret.staffN, layerN, eventIndex: Math.min(caret.eventIndex, events.length - 1) };
+            caretRef.current = next;
+            lastEntered.current = null;
+            setCaret(next);
+          }
+        } catch (err) {
+          setNotice(`voices: ${err instanceof Error ? err.message : err}`);
+        }
+      }}
+    >
+      <option value="">{caret ? `voice ${caret.layerN}` : "voice"}</option>
+      {(session && caret ? session.index.layersPerStaff.get(`${caret.measureIndex}/${caret.staffN}`) ?? [] : []).map((l) => (
+        <option key={l} value={`go:${l}`}>
+          {l === caret?.layerN ? `voice ${l} ✓` : `switch to voice ${l}`}
+        </option>
+      ))}
+      <option value="add">{caret && caret.measureIndex > 0 ? `add a voice (from m${caret.measureIndex + 1})` : "add a voice"}</option>
+      <option value="remove">{caret && caret.measureIndex > 0 ? `remove this voice (from m${caret.measureIndex + 1})` : "remove this voice"}</option>
+    </select>
+    <select value={shownClef} data-cycle title="clef at caret (staff-local)" className="sbsel" disabled={!session} onChange={(e) => { if (!barNav.current) e.target.blur(); applyContext("clef", e.target.value); }}>
+      {shownClef && !CLEFS[shownClef] && <option value={shownClef}>{shownClef}</option>}
+      {!shownClef && <option value="">clef</option>}
+      {Object.keys(CLEFS).map((k) => (
+        <option key={k} value={k}>
+          {CLEF_LABELS[k]}
+        </option>
+      ))}
+    </select>
+    <select value={shownKeysig} data-cycle title="key signature at caret (score-wide)" className="sbsel" disabled={!session} onChange={(e) => { if (!barNav.current) e.target.blur(); applyContext("key", e.target.value); }}>
+      {!shownKeysig && <option value="">key</option>}
+      {["7f", "6f", "5f", "4f", "3f", "2f", "1f", "0", "1s", "2s", "3s", "4s", "5s", "6s", "7s"].map((k) => (
+        <option key={k} value={k}>
+          {k === "0" ? "♮ (0)" : k.endsWith("s") ? `${k[0]}♯` : `${k[0]}♭`}
+        </option>
+      ))}
+    </select>
+    <select value={shownMeter} data-cycle title="meter at caret (score-wide; refuses if content no longer fits)" className="sbsel" disabled={!session} onChange={(e) => { if (!barNav.current) e.target.blur(); applyContext("meter", e.target.value); }}>
+      {shownMeter && !["4/4", "3/4", "2/4", "2/2", "3/2", "6/4", "6/8", "9/8", "12/8", "5/4", "7/8", "5/8", "3/8"].includes(shownMeter) && <option value={shownMeter}>{shownMeter}</option>}
+      {!shownMeter && <option value="">meter</option>}
+      {["4/4", "3/4", "2/4", "2/2", "3/2", "6/4", "6/8", "9/8", "12/8", "5/4", "7/8", "5/8", "3/8"].map((m) => (
+        <option key={m}>{m}</option>
+      ))}
+    </select>
+    </>
+  );
+
   return (
-    <div className={showPerf ? undefined : "no-perf"} style={{ fontFamily: `system-ui, "Noto Music", sans-serif`, padding: 12, paddingBottom: `calc(36px + ${SAFE_BOTTOM})` }}>
+    <div className={showPerf ? undefined : "no-perf"} style={{ fontFamily: `system-ui, "Noto Music", sans-serif`, padding: 12, paddingBottom: `calc(var(--battuta-bar-h, calc(24px + ${SAFE_BOTTOM})) + 12px)` }}>
       <header ref={headerRef} style={{ display: "flex", flexDirection: "column", gap: 6, position: "sticky", top: 0, zIndex: 35, background: "#fff", margin: "-12px -12px 4px", padding: `calc(12px + ${SAFE_TOP}) 12px 6px`, borderBottom: "1px solid #e3e7ec" }}>
       <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
         <span style={{ position: "relative" }}>
@@ -2768,7 +2966,7 @@ export default function App() {
           in the DOM (hidden when empty) — the e2e suites read [data-notice].
           The × dismisses before the timeout; the text itself stays
           selectable (error messages get copied around). */}
-      <div style={{ position: "fixed", right: 12, bottom: `calc(34px + ${SAFE_BOTTOM})`, zIndex: 55, display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", maxWidth: "46vw" }}>
+      <div style={{ position: "fixed", right: 12, bottom: `calc(var(--battuta-bar-h, calc(24px + ${SAFE_BOTTOM})) + 10px)`, zIndex: 55, display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", maxWidth: "46vw" }}>
         {error && (
           <div data-error style={{ display: "flex", alignItems: "baseline", gap: 8, background: "#5b1f24", color: "#fdd", border: "1px solid #a33", borderRadius: 6, padding: "6px 10px", fontSize: 12, boxShadow: "0 4px 16px rgba(0,0,0,.35)", userSelect: "text" }}>
             <button data-error-dismiss title="dismiss" onClick={() => setError(null)} style={{ background: "none", border: "none", color: "#faa", cursor: "pointer", fontSize: 13, padding: 0, lineHeight: 1 }}>
@@ -2910,7 +3108,7 @@ export default function App() {
       <Panels store={host.panels} side="side" />
       {/* Above the panels (32): the zoom and MIDI popovers open upward,
           over the bottom panel — under it they were hidden (2026-10-19). */}
-      <footer data-statusbar onKeyDown={onBarKey} style={{ position: "fixed", left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", gap: 12, background: "#1f2733", color: "#aab", fontSize: 12, lineHeight: "20px", padding: `2px 10px calc(2px + ${SAFE_BOTTOM})`, zIndex: 34 }}>
+      <footer ref={barRef} data-statusbar data-folded={barFolded || undefined} onKeyDown={onBarKey} style={{ position: "fixed", left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", gap: 12, whiteSpace: "nowrap", background: "#1f2733", color: "#aab", fontSize: 12, lineHeight: "20px", padding: `2px 10px calc(2px + ${SAFE_BOTTOM})`, zIndex: 34 }}>
         <button
           data-input-indicator
           title="note input mode (i)"
@@ -2923,157 +3121,25 @@ export default function App() {
           {caret ? `[ m ${caret.measureIndex + 1}, s ${caret.staffN}, v ${caret.layerN}, n ${caret.eventIndex + 1} ]` : "[ — ]"}
         </span>
         <span style={{ flex: 1 }} />
-        {/* The bar's rule: host controls are anchored, contributions grow into
-            the free space to their LEFT. The slot sits right after the spacer,
-            so a plugin item appearing or leaving moves no host control; the
-            lanes select is the boundary — it exists only while some lane
-            (internal or a plugin's) is on offer, and hides without shifting
-            anything. Plugin selects use className="sbsel" for the same look
-            and join F6 roving focus (and ↑/↓ cycling with data-cycle). */}
-        <Slot store={host.slots} name="statusBar" onCommand={runPluginCommand} plugins={host.registry} />
-        {laneOptions.length > 0 && (
-          <select
-            value=""
-            data-lanes
-            title={`text lanes at the caret: ${laneOptions.map((o) => o.label).join(" · ")}`}
-            className="sbsel"
-            disabled={!session || !caret}
-            onChange={(e) => {
-              const id = e.target.value;
-              e.target.blur();
-              if (id) host.lanes.open(id); // leaves entry mode; a declared plugin lane wakes its plugin first
-            }}
-          >
-            <option value="">{laneState ? laneFace(laneState.spec) : "lanes"}</option>
-            {laneOptions.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+        {barFolded ? (
+          <span style={{ position: "relative" }}>
+            {barMenu && (
+              <div data-bar-menu style={{ position: "absolute", right: 0, bottom: 26, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", width: "max-content", maxWidth: "calc(100vw - 24px)", whiteSpace: "normal", background: "#233040", color: "#dde", padding: "8px 10px", borderRadius: 4, boxShadow: "0 2px 10px rgba(0,0,0,.4)" }}>
+                {contextControls}
+              </div>
+            )}
+            <button
+              data-bar-more
+              title="staves, voices, clef, key, meter — and what plugins add to the bar"
+              onClick={() => setBarMenu((o) => !o)}
+              style={{ border: "none", cursor: "pointer", borderRadius: 3, padding: "1px 8px", fontSize: 13, fontFamily: "inherit", background: barMenu ? "#233040" : "transparent", color: "#cdd" }}
+            >
+              ⋯
+            </button>
+          </span>
+        ) : (
+          contextControls
         )}
-        {/* Current context at the caret; picking a value applies the change
-            there. Blur on change: a focused select swallows the keyboard. */}
-        <select
-          value=""
-          title="staves (add below / remove the caret's)"
-          className="sbsel"
-          disabled={!session}
-          onChange={(e) => {
-            const op = e.target.value;
-            e.target.blur();
-            if (!session || !op) return;
-            try {
-              if (op === "add") {
-                const n = session.addStaff();
-                afterCommand(session);
-                // land the caret at the start of the fresh staff, ready
-                // to enter notes (its first event is the m1 whole rest)
-                anchor.current = null;
-                setSelection([]);
-                setBlock(null);
-                lastEntered.current = null;
-                setCaret({ measureIndex: 0, staffN: n, layerN: 1, eventIndex: 0 });
-                setNotice(`staff ${n} added below — caret at its start`);
-              } else {
-                if (!caret) {
-                  setNotice("place the caret on the staff to remove");
-                  return;
-                }
-                const n = caret.staffN;
-                session.removeStaff(n);
-                setCaret(null);
-                setSelection([]);
-                setBlock(null);
-                anchor.current = null;
-                lastEntered.current = null;
-                afterCommand(session);
-                setNotice(`staff ${n} removed (ctrl+z restores it)`);
-              }
-            } catch (err) {
-              setNotice(`staves: ${err instanceof Error ? err.message : err}`);
-            }
-          }}
-        >
-          <option value="">{session ? `staves (${session.staffCount})` : "staves"}</option>
-          <option value="add">add staff below</option>
-          <option value="remove">remove caret staff</option>
-        </select>
-        <select
-          value=""
-          title="voices (caret staff: switch, add, remove)"
-          className="sbsel"
-          disabled={!session || !caret}
-          onChange={(e) => {
-            const op = e.target.value;
-            e.target.blur();
-            if (!session || !caret || !op) return;
-            try {
-              if (op === "add") {
-                const n = session.addVoice(caret.staffN, caret.measureIndex);
-                afterCommand(session);
-                const next = { measureIndex: caret.measureIndex, staffN: caret.staffN, layerN: n, eventIndex: 0 };
-                caretRef.current = next;
-                setCaret(next);
-                setNotice(`voice ${n} added to staff ${caret.staffN} from m${caret.measureIndex + 1} — caret is in it`);
-              } else if (op === "remove") {
-                const gone = caret.layerN;
-                session.removeVoice(caret.staffN, gone, caret.measureIndex);
-                afterCommand(session);
-                const layers = session.index.layersPerStaff.get(`${caret.measureIndex}/${caret.staffN}`) ?? [];
-                const next = layers.length ? { measureIndex: caret.measureIndex, staffN: caret.staffN, layerN: layers[0]!, eventIndex: 0 } : null;
-                caretRef.current = next;
-                setCaret(next);
-                setSelection([]);
-                lastEntered.current = null;
-                setNotice(`voice ${gone} removed from staff ${caret.staffN} from m${caret.measureIndex + 1} (ctrl+z restores it)`);
-              } else if (op.startsWith("go:")) {
-                const layerN = Number(op.slice(3));
-                const events = session.index.eventsAt(caret.measureIndex, caret.staffN, layerN);
-                if (!events.length) return;
-                const next = { measureIndex: caret.measureIndex, staffN: caret.staffN, layerN, eventIndex: Math.min(caret.eventIndex, events.length - 1) };
-                caretRef.current = next;
-                lastEntered.current = null;
-                setCaret(next);
-              }
-            } catch (err) {
-              setNotice(`voices: ${err instanceof Error ? err.message : err}`);
-            }
-          }}
-        >
-          <option value="">{caret ? `voice ${caret.layerN}` : "voice"}</option>
-          {(session && caret ? session.index.layersPerStaff.get(`${caret.measureIndex}/${caret.staffN}`) ?? [] : []).map((l) => (
-            <option key={l} value={`go:${l}`}>
-              {l === caret?.layerN ? `voice ${l} ✓` : `switch to voice ${l}`}
-            </option>
-          ))}
-          <option value="add">{caret && caret.measureIndex > 0 ? `add a voice (from m${caret.measureIndex + 1})` : "add a voice"}</option>
-          <option value="remove">{caret && caret.measureIndex > 0 ? `remove this voice (from m${caret.measureIndex + 1})` : "remove this voice"}</option>
-        </select>
-        <select value={shownClef} data-cycle title="clef at caret (staff-local)" className="sbsel" disabled={!session} onChange={(e) => { if (!barNav.current) e.target.blur(); applyContext("clef", e.target.value); }}>
-          {shownClef && !CLEFS[shownClef] && <option value={shownClef}>{shownClef}</option>}
-          {!shownClef && <option value="">clef</option>}
-          {Object.keys(CLEFS).map((k) => (
-            <option key={k} value={k}>
-              {CLEF_LABELS[k]}
-            </option>
-          ))}
-        </select>
-        <select value={shownKeysig} data-cycle title="key signature at caret (score-wide)" className="sbsel" disabled={!session} onChange={(e) => { if (!barNav.current) e.target.blur(); applyContext("key", e.target.value); }}>
-          {!shownKeysig && <option value="">key</option>}
-          {["7f", "6f", "5f", "4f", "3f", "2f", "1f", "0", "1s", "2s", "3s", "4s", "5s", "6s", "7s"].map((k) => (
-            <option key={k} value={k}>
-              {k === "0" ? "♮ (0)" : k.endsWith("s") ? `${k[0]}♯` : `${k[0]}♭`}
-            </option>
-          ))}
-        </select>
-        <select value={shownMeter} data-cycle title="meter at caret (score-wide; refuses if content no longer fits)" className="sbsel" disabled={!session} onChange={(e) => { if (!barNav.current) e.target.blur(); applyContext("meter", e.target.value); }}>
-          {shownMeter && !["4/4", "3/4", "2/4", "2/2", "3/2", "6/4", "6/8", "9/8", "12/8", "5/4", "7/8", "5/8", "3/8"].includes(shownMeter) && <option value={shownMeter}>{shownMeter}</option>}
-          {!shownMeter && <option value="">meter</option>}
-          {["4/4", "3/4", "2/4", "2/2", "3/2", "6/4", "6/8", "9/8", "12/8", "5/4", "7/8", "5/8", "3/8"].map((m) => (
-            <option key={m}>{m}</option>
-          ))}
-        </select>
         <span style={{ position: "relative" }}>
           {zoomPanel && (
             <div data-zoom-panel style={{ position: "absolute", right: 0, bottom: 26, background: "#233040", color: "#dde", padding: "6px 8px", borderRadius: 4, whiteSpace: "nowrap", boxShadow: "0 2px 10px rgba(0,0,0,.4)", display: "flex", gap: 6, alignItems: "center" }}>

@@ -143,12 +143,13 @@ export function Slot({ store, name, onCommand, plugins }: { store: SlotStore; na
  * indicator or gesture bar below. The page covers the whole screen
  * (viewport-fit=cover, index.html) and keeps its controls clear of them by
  * these; on desktop and in browsers they are 0. Everything placed against
- * the context bar moves up with it.
+ * the context bar stands on its measured height (`--battuta-bar-h`, the
+ * App's), which includes the inset — this fallback covers the first frame.
  */
 export const SAFE_TOP = "env(safe-area-inset-top, 0px)";
 export const SAFE_BOTTOM = "env(safe-area-inset-bottom, 0px)";
 
-const BOTTOM: React.CSSProperties = { position: "fixed", left: 0, right: 0, bottom: `calc(24px + ${SAFE_BOTTOM})`, zIndex: 32, background: "#1f2733", color: "#dde", borderTop: "1px solid #3a4656", maxHeight: "40vh", overflow: "auto" };
+const BOTTOM: React.CSSProperties = { position: "fixed", left: 0, right: 0, bottom: `var(--battuta-bar-h, calc(24px + ${SAFE_BOTTOM}))`, zIndex: 32, background: "#1f2733", color: "#dde", borderTop: "1px solid #3a4656", maxHeight: "40vh", overflow: "auto" };
 /**
  * The side area: on the LEFT, as most applications put a file view, and
  * BELOW the app header — its top is the header's measured height, which
@@ -158,7 +159,7 @@ const BOTTOM: React.CSSProperties = { position: "fixed", left: 0, right: 0, bott
  * margin while a side panel is up, so the editor is pushed right.
  */
 export const SIDE_PANEL_WIDTH = 280;
-const SIDE: React.CSSProperties = { position: "fixed", left: 0, top: "var(--battuta-header-h, 83px)", bottom: `calc(24px + ${SAFE_BOTTOM})`, width: SIDE_PANEL_WIDTH, zIndex: 32, background: "#fff", borderRight: "1px solid #e3e7ec", overflow: "auto" };
+const SIDE: React.CSSProperties = { position: "fixed", left: 0, top: "var(--battuta-header-h, 83px)", bottom: `var(--battuta-bar-h, calc(24px + ${SAFE_BOTTOM}))`, width: SIDE_PANEL_WIDTH, zIndex: 32, background: "#fff", borderRight: "1px solid #e3e7ec", overflow: "auto" };
 
 export function Panels({ store, side }: { store: PanelStore; side: PanelSide }) {
   const all = useStore(store.panels);

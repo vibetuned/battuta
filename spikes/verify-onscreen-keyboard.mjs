@@ -211,6 +211,70 @@ try {
   await tap("[data-vk-oct-down]");
   await page.waitForFunction(() => document.querySelector("[data-vk-oct]").textContent === "C3", null, { timeout: 5000 });
 
+  // --- 7b. ⌫ — erase backward, pinned under the × (M2, 2026-10-20) -------
+  const pinnedAt = await page.evaluate(() => {
+    const r = (s) => document.querySelector(s)?.getBoundingClientRect();
+    const x = r("[data-vk-close]");
+    const b = r('[data-vk-pinned] [data-vk-key="backspace"]');
+    return x && b ? { below: b.top >= x.bottom - 1, sameColumn: Math.abs(b.left - x.left) < 2 } : null;
+  });
+  check(`⌫ sits under the ×, outside the scrolling groups (${JSON.stringify(pinnedAt)})`, Boolean(pinnedAt?.below && pinnedAt.sameColumn));
+  const depthBs = await undoDepth();
+  await tap('[data-vk-pinned] [data-vk-key="backspace"]');
+  await page.waitForFunction((d) => window.__SESSION__.stack.undoDepth === d + 1, depthBs, { timeout: 5000 });
+  const erased = await caretEvent();
+  check(`⌫ erases backward: the previous note becomes a rest, the caret on it (${erased?.tag})`, erased?.tag === "rest");
+
+  // --- 7c. two lines in portrait, one in landscape (M2) --------------------
+  const lines = () =>
+    page.evaluate(() => {
+      const r = (s) => document.querySelector(s).getBoundingClientRect();
+      const p = r("[data-vk-piano]");
+      const g = r("[data-vk-groups]");
+      const x = r("[data-vk-pinned]");
+      return { groupsBelow: g.top >= p.bottom - 1, pinnedOnPianoLine: x.top < p.bottom, piano: Math.round(p.width) };
+    });
+  const landscape = await lines();
+  check(`landscape: one line, the groups beside the piano (${JSON.stringify(landscape)})`, !landscape.groupsBelow && landscape.pinnedOnPianoLine);
+  await page.setViewportSize({ width: 820, height: 1180 }); // an iPad Air held upright
+  await page.waitForFunction(() => document.querySelector("[data-vk-groups]").getBoundingClientRect().top >= document.querySelector("[data-vk-piano]").getBoundingClientRect().bottom - 1, null, { timeout: 5000 });
+  const portrait = await lines();
+  check(`portrait: two lines — octaves, piano, latches, × and ⌫, then the groups (${JSON.stringify(portrait)})`, portrait.groupsBelow && portrait.pinnedOnPianoLine && portrait.piano > landscape.piano);
+  check("…turning kept the octave rail as it was (the same elements, no remount)", (await page.evaluate(() => document.querySelector("[data-vk-oct]").textContent)) === "C3");
+  // The context bar at that width: it wrapped and grew over the keyboard
+  // (user-reported, 2026-10-20). Now it folds its context controls into ⋯,
+  // stays one line, and the keyboard stands on it.
+  await page.waitForFunction(() => document.querySelector("[data-statusbar]").hasAttribute("data-folded"), null, { timeout: 5000 });
+  const barAt = () =>
+    page.evaluate(() => {
+      const bar = document.querySelector("[data-statusbar]").getBoundingClientRect();
+      const panel = document.querySelector('[data-panels="bottom"]').getBoundingClientRect();
+      return { barH: Math.round(bar.height), panelBottom: Math.round(panel.bottom), barTop: Math.round(bar.top), more: Boolean(document.querySelector("[data-bar-more]")), inlineSelects: document.querySelectorAll("[data-statusbar] > select").length };
+    });
+  const folded = await barAt();
+  check(`portrait: the bar folds into ⋯ and stays one line (${JSON.stringify(folded)})`, folded.more && folded.inlineSelects === 0 && folded.barH <= 30);
+  check("…and the keyboard stands on it, not under it", folded.panelBottom <= folded.barTop + 1 && folded.panelBottom >= folded.barTop - 1);
+  await tap("[data-bar-more]");
+  const menu = await page.evaluate(() => {
+    const m = document.querySelector("[data-bar-menu]");
+    if (!m) return null;
+    const r = m.getBoundingClientRect();
+    const bar = document.querySelector("[data-statusbar]").getBoundingClientRect();
+    return { selects: m.querySelectorAll("select").length, above: r.bottom <= bar.top + 1, onScreen: r.left >= 0 && r.right <= innerWidth };
+  });
+  check(`⋯ opens the context controls above the bar, on screen (${JSON.stringify(menu)})`, Boolean(menu && menu.selects >= 5 && menu.above && menu.onScreen));
+  await tap("[data-bar-more]");
+  await page.waitForFunction(() => !document.querySelector("[data-bar-menu]"), null, { timeout: 5000 });
+  await page.keyboard.press("F6");
+  await page.waitForFunction(() => document.activeElement?.closest?.("[data-bar-menu]") && document.activeElement.tagName === "SELECT", null, { timeout: 5000 }).catch(() => undefined);
+  check("F6 on a folded bar opens ⋯ and focuses its first control", await page.evaluate(() => Boolean(document.activeElement?.closest?.("[data-bar-menu]")) && document.activeElement.tagName === "SELECT"));
+  await page.keyboard.press("Escape");
+  await tap("[data-bar-more]");
+  await page.setViewportSize({ width: 1500, height: 950 });
+  await page.waitForFunction(() => !document.querySelector("[data-statusbar]").hasAttribute("data-folded"), null, { timeout: 5000 });
+  const unfolded = await barAt();
+  check(`landscape: the bar unfolds, its controls inline again (${JSON.stringify(unfolded)})`, !unfolded.more && unfolded.inlineSelects >= 5);
+
   // --- 8. undo through the panel's own ctrl chord, and close --------------
   const depthEnd = await undoDepth();
   for (let i = 0; i < depthEnd; i++) {
