@@ -18,7 +18,6 @@
  * App binds, as the session and the view do.
  */
 import { toDisposable, type DirEntry, type Disposable, type WatchEvent, type WatchEventKind, type WorkspaceService } from "@battuta/api";
-import { shellPlatform } from "./shell";
 
 /** What the shell offers: `invoke` for the commands, `listen` for its events. Null in a browser. */
 export interface WorkspaceBridge {
@@ -49,7 +48,8 @@ interface WatchRecord {
 
 /** The global Tauri bridge when the page runs in the shell (withGlobalTauri), else null. */
 export const detectWorkspaceBridge = (): WorkspaceBridge | null => {
-  if (typeof window === "undefined" || shellPlatform()?.mobile) return null;
+  // On a tablet the shell answers too: its folder is battuta's own (no dialog), and it has no watch.
+  if (typeof window === "undefined") return null;
   const t = (window as unknown as { __TAURI__?: { event?: { listen?: WorkspaceBridge["listen"] }; core?: { invoke?: WorkspaceBridge["invoke"] } } }).__TAURI__;
   return t?.event?.listen && t.core?.invoke ? { listen: t.event.listen, invoke: t.core.invoke } : null;
 };
@@ -71,6 +71,15 @@ export class HostWorkspaceService implements WorkspaceService {
 
   bind(adapter: WorkspaceAdapter | null): void {
     this.adapter = adapter;
+  }
+
+  async home(): Promise<string | null> {
+    if (!this.bridge) return null;
+    // Only the tablet shells answer: elsewhere the command is not there.
+    return this.bridge.invoke("workspace_home").then(
+      (path) => (typeof path === "string" ? path : null),
+      () => null,
+    );
   }
 
   async pickFolder(): Promise<string | null> {

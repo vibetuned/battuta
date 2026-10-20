@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile",
+  "description": "the tablets' file paths (phase 10, M1): the OS document picker to import, its save sheet to export, a confirm dialog, and reading/writing exactly what those hand back",
+  "platforms": ["iOS", "android"],
+  "windows": ["*"],
+  "permissions": [
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "dialog:allow-ask",
+    "dialog:allow-confirm",
+    "dialog:allow-message",
+    "fs:allow-read-file",
+    "fs:allow-read-text-file",
+    "fs:allow-write-file"
+  ]
+}

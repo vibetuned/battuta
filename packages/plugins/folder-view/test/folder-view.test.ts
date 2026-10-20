@@ -22,6 +22,7 @@ import { memoryStorage, type SettingsIO } from "../../../../apps/editor/src/host
 import { manifest, COMMAND_TOGGLE, PANEL_ID, SETTING_FOLDER } from "../src/manifest";
 import type { FolderActions, FolderState } from "../src/Panel";
 import plugin from "../src/index";
+import { baseOf } from "../src/tree";
 
 const PLUGIN_ID = manifest.id;
 const ROOT = "/scores";
@@ -62,7 +63,7 @@ interface Fixture {
   created(): Map<string, string>;
 }
 
-function fixture(opts: { saved?: string; shell?: boolean; folder?: Record<string, DirEntry[]> } = {}): Fixture {
+function fixture(opts: { saved?: string; shell?: boolean; folder?: Record<string, DirEntry[]>; home?: string } = {}): Fixture {
   const shell = opts.shell ?? true;
   const folder = opts.folder ?? FOLDER;
   let loads = 0;
@@ -88,6 +89,8 @@ function fixture(opts: { saved?: string; shell?: boolean; folder?: Record<string
     invoke: async (cmd, args) => {
       invoked.push({ cmd, ...(args ? { args } : {}) });
       if (cmd === "workspace_pick_folder") return ROOT;
+      // only a tablet shell answers: elsewhere the command is not there
+      if (cmd === "workspace_home") return opts.home;
       if (cmd === "workspace_open_folder") return folder[String(args?.["path"])] !== undefined;
       if (cmd === "workspace_read_dir") {
         const entries = folder[String(args?.["path"])];
@@ -501,6 +504,49 @@ describe("when the platform is not there", () => {
     await flush();
     expect(f.savedFolder()).toBe("");
     expect(f.panel().state.get().error).toContain("no longer available");
+  });
+});
+
+describe("on a tablet: battuta's own folder (phase 10)", () => {
+  const HOME = "/battuta/Documents";
+  const TABLET = { ...FOLDER, [HOME]: [file(`${HOME}/aria.mei`)] };
+
+  it("opens battuta's folder with nothing to choose", async () => {
+    const f = fixture({ home: HOME, folder: TABLET });
+    await f.host.registry.runCommand(COMMAND_TOGGLE);
+    await flush();
+    expect(f.panel().state.get()).toMatchObject({ root: HOME, home: HOME });
+    expect(f.rows()).toEqual(["0:aria.mei"]);
+    expect(f.invoked().some((c) => c.cmd === "workspace_pick_folder")).toBe(false);
+  });
+
+  it("… picks another folder, ⌂ comes back — each remembered", async () => {
+    const f = fixture({ home: HOME, folder: TABLET });
+    await f.host.registry.runCommand(COMMAND_TOGGLE);
+    await flush();
+    f.panel().actions.pick();
+    await flush();
+    expect(f.panel().state.get().root).toBe(ROOT);
+    expect(f.savedFolder()).toBe(ROOT);
+    f.panel().actions.goHome();
+    await flush();
+    expect(f.panel().state.get().root).toBe(HOME);
+    expect(f.savedFolder()).toBe(HOME);
+  });
+
+  it("a picked folder that is gone falls back to battuta's folder, and says so", async () => {
+    const f = fixture({ home: HOME, folder: TABLET, saved: "/scores/moved" });
+    await f.host.fireStartupEvents({ coarsePointer: true });
+    await flush();
+    expect(f.panel().state.get().root).toBe(HOME);
+    expect(f.panel().state.get().error).toBeNull();
+    expect(f.notices().some((n) => n.includes("no longer available"))).toBe(true);
+  });
+
+  it("names an Android document tree by its folder, not its encoded id", () => {
+    expect(baseOf("content://com.android.externalstorage.documents/tree/primary%3AMusic")).toBe("Music");
+    expect(baseOf("content://com.android.externalstorage.documents/tree/primary%3AMusic%2Fscores")).toBe("scores");
+    expect(baseOf("content://com.android.externalstorage.documents/tree/primary%3AMusic/bach/aria.mei")).toBe("aria.mei");
   });
 });
 

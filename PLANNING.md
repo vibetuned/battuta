@@ -48,7 +48,15 @@ the editor, render, edit and play, checked by a device smoke.
 **M1 — files.** Working drafts in the app's storage
 (`BaseDirectory.AppLocalData` or `BaseDirectory.Document`, through
 `@tauri-apps/plugin-fs`); the OS document picker and share sheet to import
-and export `.mei`.
+and export `.mei`. Built (2026-10-20) on `Document` — the one the user can
+see (the Files app on iPadOS): it is battuta's folder, the folder view
+shows it with nothing to choose, a first save goes into it; the document
+picker opens, the save sheet sends copies and exports out. Then, at the
+user's request, any folder on both tablets and a share sheet proper,
+through battuta's own native plugin (`src-tauri/plugins/battuta-mobile`,
+Swift and Kotlin): iPadOS folders by security-scoped bookmark, Android
+document trees under path-shaped addresses the shell resolves; the api's
+`workspace.home()` (1.2.0) tells the folder view which folder is battuta's.
 
 **M2 — touch and the tablet layout.**
 - The virtual keyboard made perfectly usable on a tablet.

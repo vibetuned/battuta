@@ -1,0 +1,14 @@
+[package]
+name = "tauri-plugin-battuta-mobile"
+version = "1.2.0"
+license = "AGPL-3.0-only"
+description = "battuta's native tablet services: the share sheet, folders the user picks (iPadOS security-scoped bookmarks, Android document trees)"
+edition = "2021"
+links = "tauri-plugin-battuta-mobile"
+
+[dependencies]
+tauri = { version = "2" }
+serde = { version = "1", features = ["derive"] }
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }

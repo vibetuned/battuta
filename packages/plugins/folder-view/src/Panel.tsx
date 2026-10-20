@@ -32,6 +32,8 @@ export function useStore<T>(store: Store<T>): T {
 export interface FolderState {
   /** The picked folder, or null before there is one. */
   root: string | null;
+  /** The platform's own folder — a tablet's battuta folder — or null (desktop, browser). The view opens it when nothing else is chosen, and offers the way back to it. */
+  home: string | null;
   /** Folder path → its entries, for every folder that has been read. */
   loaded: ReadonlyMap<string, readonly DirEntry[]>;
   /** Folder paths the user opened. */
@@ -46,6 +48,8 @@ export interface FolderState {
 
 export interface FolderActions {
   pick(): void;
+  /** Back to the platform's own folder (a tablet's battuta folder). */
+  goHome(): void;
   toggleDir(path: string): void;
   open(path: string): void;
   /** Rename an entry in place; `newName` is the full name (a score's extension already put back). */
@@ -274,7 +278,7 @@ export function FolderPanel({ state, documents, active, available, actions }: Pa
           style={{ fontSize: 12, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", ...(rootIsTarget ? { boxShadow: TARGET_BAR, paddingLeft: 6 } : {}) }}
           title={rootIsTarget ? `${s.root} — new scores and folders go here` : (s.root ?? undefined)}
         >
-          {s.root ? baseOf(s.root) : "folder view"}
+          {s.root ? (s.root === s.home ? "battuta" : baseOf(s.root)) : "folder view"}
         </strong>
         {available && s.root && !s.error && target && (
           <>
@@ -285,6 +289,11 @@ export function FolderPanel({ state, documents, active, available, actions }: Pa
               + folder
             </button>
           </>
+        )}
+        {available && s.home && s.root !== s.home && (
+          <button data-folder-home title="back to battuta's folder" onClick={() => actions.goHome()} style={{ fontSize: 12 }}>
+            ⌂
+          </button>
         )}
         {available && s.root && (
           <button data-folder-pick title="open a different folder" onClick={() => actions.pick()} style={{ fontSize: 12 }}>

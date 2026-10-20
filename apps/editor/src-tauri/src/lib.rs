@@ -152,6 +152,9 @@ async fn confirm_dialog(title: String, message: String) -> bool {
 #[derive(Default)]
 struct Workspace {
     roots: std::sync::Mutex<Vec<std::path::PathBuf>>,
+    /// Android: picked document trees, as tree paths (see `is_tree_path`).
+    #[cfg(target_os = "android")]
+    trees: std::sync::Mutex<Vec<String>>,
     #[cfg(desktop)]
     watchers: std::sync::Mutex<std::collections::HashMap<u32, notify::RecommendedWatcher>>,
     #[cfg(desktop)]
@@ -181,6 +184,35 @@ fn admit_root(ws: &Workspace, path: &std::path::Path) -> Result<String, String> 
     Ok(c.to_string_lossy().into_owned())
 }
 
+/// Android: a folder picked there is a document tree with no path; the
+/// battuta-mobile plugin gives it one — the tree's URI, then the names
+/// down, `/`-separated — so the page's path logic works on it unchanged,
+/// and these commands hand such paths to the plugin instead of `std::fs`.
+#[cfg(target_os = "android")]
+fn is_tree_path(path: &str) -> bool {
+    path.starts_with("content://")
+}
+
+/// Android: a tree path at or under a picked tree; an error otherwise.
+#[cfg(target_os = "android")]
+fn within_trees(ws: &Workspace, path: &str) -> Result<(), String> {
+    let trees = ws.trees.lock().map_err(|_| "workspace state poisoned".to_string())?;
+    if trees.iter().any(|t| path == t || path.starts_with(&format!("{t}/"))) {
+        Ok(())
+    } else {
+        Err(format!("{path} is outside the opened folders"))
+    }
+}
+
+#[cfg(target_os = "android")]
+fn admit_tree(ws: &Workspace, path: &str) -> Result<(), String> {
+    let mut trees = ws.trees.lock().map_err(|_| "workspace state poisoned".to_string())?;
+    if !trees.iter().any(|t| t == path) {
+        trees.push(path.to_string());
+    }
+    Ok(())
+}
+
 /// The native folder dialog; the picked folder becomes a root. With
 /// BATTUTA_WORKSPACE_TEST_DIR set (the shell smoke), that folder is picked
 /// without a dialog.
@@ -201,10 +233,69 @@ async fn workspace_pick_folder(ws: tauri::State<'_, Workspace>, dir: Option<Stri
     admit_root(&ws, folder.path()).map(Some)
 }
 
+/// The tablets' folder picker (phase 10, M1): the system's, through the
+/// battuta-mobile plugin — on iPadOS a path whose security scope it starts
+/// and bookmarks, on Android a document tree, its permission persisted.
+#[cfg(mobile)]
+#[tauri::command]
+async fn workspace_pick_folder(app: tauri::AppHandle, ws: tauri::State<'_, Workspace>, dir: Option<String>) -> Result<Option<String>, String> {
+    use tauri_plugin_battuta_mobile::BattutaMobileExt;
+    let _ = dir;
+    let Some(path) = app.battuta_mobile().pick_folder()? else {
+        return Ok(None);
+    };
+    #[cfg(target_os = "android")]
+    if is_tree_path(&path) {
+        admit_tree(&ws, &path)?;
+        return Ok(Some(path));
+    }
+    admit_root(&ws, std::path::Path::new(&path)).map(Some)
+}
+
+/// battuta's own folder on a tablet (phase 10, M1): the app's Documents —
+/// "On My iPad › battuta" in the Files app (Info.ios.plist), on Android
+/// `Android/data/…/files/Documents`. Where a first save goes, and the
+/// folder view's folder until another is picked.
+#[cfg(mobile)]
+#[tauri::command]
+async fn workspace_home(app: tauri::AppHandle, ws: tauri::State<'_, Workspace>) -> Result<String, String> {
+    use tauri::Manager;
+    let home = app.path().document_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&home).map_err(|e| format!("{}: {e}", home.display()))?;
+    admit_root(&ws, &home)
+}
+
+/// The system share sheet (tablets): AirDrop, Mail, another app.
+#[cfg(mobile)]
+#[tauri::command]
+async fn share_file(app: tauri::AppHandle, name: String, bytes: Vec<u8>) -> Result<bool, String> {
+    use tauri_plugin_battuta_mobile::BattutaMobileExt;
+    app.battuta_mobile().share(&name, &to_base64(&bytes))
+}
+
 /// Re-admit a folder from an earlier session (a plugin persists the path). False when it is gone.
 #[tauri::command]
-fn workspace_open_folder(ws: tauri::State<'_, Workspace>, path: String) -> bool {
-    admit_root(&ws, std::path::Path::new(&path)).is_ok()
+async fn workspace_open_folder(_app: tauri::AppHandle, ws: tauri::State<'_, Workspace>, path: String) -> Result<bool, String> {
+    // A folder picked on a tablet reopens through the native side: an
+    // Android tree while its permission is held, an iPad folder through its
+    // bookmark, which starts its security scope again.
+    #[cfg(target_os = "android")]
+    if is_tree_path(&path) {
+        use tauri_plugin_battuta_mobile::BattutaMobileExt;
+        let held = _app.battuta_mobile().open_folder(&path)?.is_some();
+        if held {
+            admit_tree(&ws, &path)?;
+        }
+        return Ok(held);
+    }
+    #[cfg(target_os = "ios")]
+    {
+        use tauri_plugin_battuta_mobile::BattutaMobileExt;
+        if let Some(p) = _app.battuta_mobile().open_folder(&path)? {
+            return Ok(p == path && admit_root(&ws, std::path::Path::new(&p)).is_ok());
+        }
+    }
+    Ok(admit_root(&ws, std::path::Path::new(&path)).is_ok())
 }
 
 /// Rename a file or folder IN PLACE (same parent) under a picked root —
@@ -241,7 +332,16 @@ fn rename_within(roots: &[std::path::PathBuf], path: &str, new_name: &str) -> Re
 }
 
 #[tauri::command]
-fn workspace_rename(ws: tauri::State<'_, Workspace>, path: String, new_name: String) -> Result<String, String> {
+async fn workspace_rename(_app: tauri::AppHandle, ws: tauri::State<'_, Workspace>, path: String, new_name: String) -> Result<String, String> {
+    #[cfg(target_os = "android")]
+    if is_tree_path(&path) {
+        use tauri_plugin_battuta_mobile::BattutaMobileExt;
+        within_trees(&ws, &path)?;
+        if ws.trees.lock().map_err(|_| "workspace state poisoned".to_string())?.iter().any(|t| t == &path) {
+            return Err("a picked folder itself cannot be renamed here".into());
+        }
+        return _app.battuta_mobile().rename(&path, valid_name(&new_name)?);
+    }
     let roots = ws.roots.lock().map_err(|_| "workspace state poisoned".to_string())?.clone();
     rename_within(&roots, &path, &new_name).map(|p| p.to_string_lossy().into_owned())
 }
@@ -293,13 +393,25 @@ fn create_within(roots: &[std::path::PathBuf], dir: &str, raw_name: &str, conten
 }
 
 #[tauri::command]
-fn workspace_create_folder(ws: tauri::State<'_, Workspace>, path: String, name: String) -> Result<String, String> {
+async fn workspace_create_folder(_app: tauri::AppHandle, ws: tauri::State<'_, Workspace>, path: String, name: String) -> Result<String, String> {
+    #[cfg(target_os = "android")]
+    if is_tree_path(&path) {
+        use tauri_plugin_battuta_mobile::BattutaMobileExt;
+        within_trees(&ws, &path)?;
+        return _app.battuta_mobile().create_folder(&path, valid_name(&name)?);
+    }
     let roots = ws.roots.lock().map_err(|_| "workspace state poisoned".to_string())?.clone();
     create_within(&roots, &path, &name, None).map(|p| p.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
-fn workspace_create_file(ws: tauri::State<'_, Workspace>, path: String, name: String, contents: String) -> Result<String, String> {
+async fn workspace_create_file(_app: tauri::AppHandle, ws: tauri::State<'_, Workspace>, path: String, name: String, contents: String) -> Result<String, String> {
+    #[cfg(target_os = "android")]
+    if is_tree_path(&path) {
+        use tauri_plugin_battuta_mobile::BattutaMobileExt;
+        within_trees(&ws, &path)?;
+        return _app.battuta_mobile().create_file(&path, valid_name(&name)?, &contents);
+    }
     let roots = ws.roots.lock().map_err(|_| "workspace state poisoned".to_string())?.clone();
     create_within(&roots, &path, &name, Some(&contents)).map(|p| p.to_string_lossy().into_owned())
 }
@@ -313,9 +425,19 @@ struct DirEntryOut {
 
 /// The entries of a folder under a root: folders first, then files, by name; hidden entries skipped.
 #[tauri::command]
-fn workspace_read_dir(ws: tauri::State<'_, Workspace>, path: String) -> Result<Vec<DirEntryOut>, String> {
-    let p = within_roots(&ws, &path)?;
+async fn workspace_read_dir(_app: tauri::AppHandle, ws: tauri::State<'_, Workspace>, path: String) -> Result<Vec<DirEntryOut>, String> {
     let mut out = Vec::new();
+    #[cfg(target_os = "android")]
+    if is_tree_path(&path) {
+        use tauri_plugin_battuta_mobile::BattutaMobileExt;
+        within_trees(&ws, &path)?;
+        for e in _app.battuta_mobile().list_dir(&path)? {
+            out.push(DirEntryOut { name: e.name, path: e.path, kind: if e.is_dir { "dir" } else { "file" } });
+        }
+        out.sort_by(|a, b| (a.kind != "dir").cmp(&(b.kind != "dir")).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+        return Ok(out);
+    }
+    let p = within_roots(&ws, &path)?;
     for entry in std::fs::read_dir(&p).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let name = entry.file_name().to_string_lossy().into_owned();
@@ -339,9 +461,17 @@ fn workspace_read_dir(ws: tauri::State<'_, Workspace>, path: String) -> Result<V
 /// A file under a root, as text — or base64 when its extension is one the
 /// frontend's formats registry reads as bytes (the open dialog's rule).
 #[tauri::command]
-fn workspace_read_file(ws: tauri::State<'_, Workspace>, path: String, binary_exts: Option<Vec<String>>) -> Result<String, String> {
-    let p = within_roots(&ws, &path)?;
+async fn workspace_read_file(_app: tauri::AppHandle, ws: tauri::State<'_, Workspace>, path: String, binary_exts: Option<Vec<String>>) -> Result<String, String> {
     let binary = binary_exts.unwrap_or_default();
+    #[cfg(target_os = "android")]
+    if is_tree_path(&path) {
+        use tauri_plugin_battuta_mobile::BattutaMobileExt;
+        within_trees(&ws, &path)?;
+        let name = path.rsplit('/').next().unwrap_or_default();
+        let is_binary = name.rsplit_once('.').is_some_and(|(_, e)| binary.iter().any(|b| e.eq_ignore_ascii_case(b)));
+        return _app.battuta_mobile().read_file(&path, is_binary);
+    }
+    let p = within_roots(&ws, &path)?;
     if p.extension().is_some_and(|e| binary.iter().any(|b| e.eq_ignore_ascii_case(b))) {
         Ok(to_base64(&std::fs::read(&p).map_err(|e| e.to_string())?))
     } else {
@@ -393,14 +523,27 @@ fn workspace_unwatch(ws: tauri::State<'_, Workspace>, id: u32) {
 /// guard: save compares this against the value recorded at open/save and
 /// alerts before overwriting edits made by another program.
 #[tauri::command]
-fn file_mtime(path: String) -> Option<i64> {
-    let m = std::fs::metadata(&path).ok()?.modified().ok()?;
-    Some(m.duration_since(std::time::UNIX_EPOCH).ok()?.as_millis() as i64)
+async fn file_mtime(_app: tauri::AppHandle, path: String) -> Result<Option<i64>, String> {
+    #[cfg(target_os = "android")]
+    if is_tree_path(&path) {
+        use tauri_plugin_battuta_mobile::BattutaMobileExt;
+        return Ok(_app.battuta_mobile().mtime(&path).ok().flatten());
+    }
+    let mtime = || -> Option<i64> {
+        let m = std::fs::metadata(&path).ok()?.modified().ok()?;
+        Some(m.duration_since(std::time::UNIX_EPOCH).ok()?.as_millis() as i64)
+    };
+    Ok(mtime())
 }
 
 /// Silent save to a known path (ctrl+s on an already-saved score).
 #[tauri::command]
-async fn save_score(path: String, contents: String) -> Result<(), String> {
+async fn save_score(_app: tauri::AppHandle, path: String, contents: String) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    if is_tree_path(&path) {
+        use tauri_plugin_battuta_mobile::BattutaMobileExt;
+        return _app.battuta_mobile().write_file(&path, &contents);
+    }
     std::fs::write(&path, contents).map_err(|e| e.to_string())
 }
 
@@ -635,6 +778,10 @@ pub fn run() {
         .manage(Workspace::default());
     #[cfg(desktop)]
     let builder = builder.manage(MidiOut(std::sync::Mutex::new(Vec::new())));
+    // The tablets' document picker and save sheet, and file access that
+    // reads what they return (content:// URIs, security-scoped files).
+    #[cfg(mobile)]
+    let builder = builder.plugin(tauri_plugin_dialog::init()).plugin(tauri_plugin_fs::init()).plugin(tauri_plugin_battuta_mobile::init());
     builder
         .setup(|app| {
             use tauri::Manager;
@@ -932,17 +1079,18 @@ pub fn run() {
         });
 }
 
-/// The commands this platform answers. Mobile has no native dialogs, MIDI
-/// or folder watching yet: the page is told what shell it runs in
+/// The commands this platform answers. Tablets have no native dialogs of
+/// ours (the dialog plugin's picker and save sheet instead), MIDI or
+/// folder watching: the page is told what shell it runs in
 /// (`window.__BATTUTA_SHELL__`, set before it loads) and does not call
-/// the rest.
+/// the rest. Their `workspace_pick_folder` picks battuta's own folder.
 #[cfg(desktop)]
 fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool {
     tauri::generate_handler![bench_echo, bench_report, js_log, open_score, save_score, save_score_as, export_file, file_mtime, confirm_dialog, midi_open_outputs, midi_close_outputs, midi_send, initial_score, workspace_pick_folder, workspace_open_folder, workspace_read_dir, workspace_read_file, workspace_rename, workspace_create_folder, workspace_create_file, workspace_watch, workspace_unwatch]
 }
 #[cfg(mobile)]
 fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool {
-    tauri::generate_handler![bench_echo, bench_report, js_log, save_score, file_mtime, initial_score, workspace_open_folder, workspace_read_dir, workspace_read_file, workspace_rename, workspace_create_folder, workspace_create_file]
+    tauri::generate_handler![bench_echo, bench_report, js_log, save_score, file_mtime, initial_score, share_file, workspace_home, workspace_pick_folder, workspace_open_folder, workspace_read_dir, workspace_read_file, workspace_rename, workspace_create_folder, workspace_create_file]
 }
 
 #[cfg(test)]

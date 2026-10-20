@@ -31,8 +31,16 @@ export interface WatchEvent {
 export interface WorkspaceService {
   /** False in a browser build: tell the user the shell is required, and do nothing else. */
   readonly available: boolean;
-  /** The native folder dialog. The picked folder becomes readable; null when cancelled or unavailable. */
+  /** The native folder dialog — on a tablet, the system's folder picker (Files and iCloud Drive on an iPad, any storage on Android). The picked folder becomes readable; null when cancelled or unavailable. */
   pickFolder(): Promise<string | null>;
+  /**
+   * The platform's own folder for scores, readable like a picked one — on a
+   * tablet, battuta's folder: the app's Documents, where a new score's first
+   * save goes ("On My iPad › battuta" in the Files app). Null where there is
+   * none: the desktop app (its folders are the user's) and a browser.
+   * Added in 1.2.0 for the folder view on tablets (phase 10).
+   */
+  home(): Promise<string | null>;
   /** Re-admit a folder picked in an earlier session (a plugin persists the path). False when it no longer exists or the shell is unavailable. */
   openFolder(path: string): Promise<boolean>;
   /** The entries of a folder inside a picked root: folders first, then files, hidden entries skipped. Rejects outside the roots. */

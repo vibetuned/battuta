@@ -43,6 +43,11 @@ export const parentOf = (path: string): string => {
 
 /** The last segment of a path — the folder's own name, for the panel's header. */
 export const baseOf = (path: string): string => {
+  // A folder picked on Android is a document tree; at its root, the last
+  // segment is the tree's id, encoded ("primary%3AMusic"): its name is the
+  // decoded id's last part ("Music"). Below the root, names are plain.
+  const tree = /^content:\/\/[^/]+\/tree\/([^/]+)$/.exec(path);
+  if (tree) return decodeURIComponent(tree[1]!).split(/[:/]/).filter(Boolean).pop() ?? path;
   const at = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   return at < 0 || at === path.length - 1 ? path : path.slice(at + 1);
 };

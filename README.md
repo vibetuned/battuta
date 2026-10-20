@@ -122,6 +122,21 @@ connected tablet over the WebView's DevTools socket; on an iPad, debug
 builds append the shell's probe lines to `shell.log` in the app's data
 folder, which `xcrun devicectl device copy from` fetches.
 
+The tablet icons come from the logo (`docs/src/assets/logo.svg`) through
+`src-tauri/icons/mobile/icons.json`: iOS takes the logo as it is (black on
+white — its icons cannot be transparent); Android's adaptive icon takes
+`android-foreground.svg`, the glyph alone at half size, inside the safe
+zone launchers never crop (the full logo filled the canvas and was cut to
+the launcher's circle). To regenerate without touching the desktop's
+icons, generate into a scratch folder and copy only the mobile sets:
+
+```sh
+cd apps/editor && npx tauri icon src-tauri/icons/mobile/icons.json -o /tmp/battuta-icons
+cp /tmp/battuta-icons/ios/*.png src-tauri/gen/apple/Assets.xcassets/AppIcon.appiconset/
+# android/mipmap-*, mipmap-anydpi-v26 and values/ic_launcher_background.xml
+# go to src-tauri/gen/android/app/src/main/res/ the same way
+```
+
 ### Packaging (0.0.1)
 
 ```sh

@@ -1,0 +1,3 @@
+[default]
+description = "Nothing for the page: the shell calls this plugin from Rust."
+permissions = []

@@ -36,6 +36,30 @@ save-as. A toast confirms every write.
 In a browser instead of the desktop app, saving downloads the file and opening
 uses the browser's file picker; nothing else differs.
 
+## On a tablet
+
+On an iPad or an Android tablet, battuta keeps your scores in **its own
+folder** — in the Files app it is *On My iPad › battuta*; on Android it is
+battuta's documents folder (`Android/data/com.vibetuned.battuta/files/Documents`).
+The [folder view](../folder-view/) shows it: there is no folder to choose.
+
+| Action | On a tablet |
+| --- | --- |
+| Save | A score from battuta's folder saves in place, as on the desktop. A new or imported score's **first save puts it in battuta's folder** under its tab's name — `untitled-1.mei`, or `untitled-1 2.mei` if that name is taken; nothing is overwritten. Rename it in the folder view (✎) and the tab follows. |
+| Open a file | The system's document picker: anything on the tablet or in your cloud drives. The score opens as a new tab; its first save puts it in battuta's folder. |
+| Save a copy | **save a copy…** in the battuta menu (or <kbd>ctrl</kbd> + <kbd>shift</kbd> + <kbd>s</kbd> on a keyboard) sends a **copy** out through the system's save sheet — to Downloads, a cloud drive, another app's folder. The tab keeps its own file. |
+| Share | **share…** in the battuta menu hands the score, as MEI, to the system's share sheet: AirDrop, Mail, Quick Share, another app. |
+| Export | Every [export format](#exporting) goes out through the save sheet too. |
+
+Scores need not live in battuta's folder: the [folder view](../folder-view/)
+opens any folder you pick — on an iPad in Files or iCloud Drive, on Android
+anywhere on the tablet or in a cloud drive — and a score opened from there
+saves back where it is.
+
+The picker shows every file: Android's picker cannot tell an `.mei` score
+from any other file, so battuta checks what you chose and says so when it is
+not a score it opens.
+
 ### The dirty marker
 
 A tab shows `*` while the document has unsaved changes. It is computed from the

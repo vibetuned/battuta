@@ -416,4 +416,4 @@ export type { MidiBackend } from "./midi";
 export { MidiSink, NOTE_ON, NOTE_OFF } from "./midiSink";
 export { ActionTable, rule, gate, modal, isMod } from "./actions";
 export type { ActionStep, ActionRule, KeyEvent, Outcome } from "./actions";
-export { confirmDialog, tauriInvoke } from "./shell";
+export { confirmDialog, tauriInvoke, onTablet } from "./shell";

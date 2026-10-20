@@ -27,6 +27,16 @@ rfd = "0.15"
 midir = "0.10"
 notify = "6"
 
+# Tablet-only (phase 10, M1): the OS document picker and save sheet, and
+# file access that understands what they hand back (Android content:// URIs,
+# iOS security-scoped files). The desktop keeps rfd and std::fs.
+[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+# battuta's own native side: the share sheet and folders the user picks
+# (iPadOS bookmarks, Android document trees) — plugins/battuta-mobile.
+tauri-plugin-battuta-mobile = { path = "plugins/battuta-mobile" }
+
 # CoreMIDI delivers hot-plug notifications to the run loop of the thread
 # that created the MIDI client — the poll thread must PUMP one on macOS
 # or the device list stays frozen at the startup snapshot.

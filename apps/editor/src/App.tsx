@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
 import { RenderPool, type TileResult } from "./render/renderPool";
 import { keyMatches, type Keymap, type Layout } from "./keymap";
-import { host, useStore, Slot, Panels, SIDE_PANEL_WIDTH, SAFE_TOP, SAFE_BOTTOM, LaneInput, laneFace, TileOverlays, TileBands, rowBandHeights, confirmDialog, tauriInvoke, blockOfEvents, rule, gate, modal, isMod, type ActionStep, type KeyEvent, type Outcome, type OverlayStore } from "./host";
+import { host, useStore, Slot, Panels, SIDE_PANEL_WIDTH, SAFE_TOP, SAFE_BOTTOM, LaneInput, laneFace, TileOverlays, TileBands, rowBandHeights, confirmDialog, tauriInvoke, onTablet, blockOfEvents, rule, gate, modal, isMod, type ActionStep, type KeyEvent, type Outcome, type OverlayStore } from "./host";
 import { ShortcutEditor } from "./ShortcutEditor";
 import { loadSettings, saveSettings, detectLayout } from "./settings";
 import { DocumentSession } from "./session";
@@ -35,6 +35,8 @@ interface OpenDoc {
 /** Tab name from a native path: both separators (Windows), any case. */
 /** The tab's name: the file's base name without its extension. */
 const docNameFromPath = (path: string): string => path.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") || "score";
+/** The tablets' document picker, save sheet and folder saves (phase 10, M1) — loaded on first use. */
+const tabletFiles = () => import("./tabletFiles");
 
 /** Folder of a native path (either separator); remembered for dialogs. */
 const rememberDir = (path: string): void => {
@@ -1084,6 +1086,17 @@ export default function App() {
 
   /** ctrl+o: native dialog in the shell, the hidden file input in browsers. */
   const openScore = useCallback(() => {
+    if (onTablet()) {
+      // The OS document picker. The score opens as a new tab, and its
+      // first save puts it in battuta's folder (phase 10, M1).
+      void tabletFiles()
+        .then((t) => t.pickToImport(host.formats.openExtensions.get(), host.formats.binaryExtensions()))
+        .then((picked) => {
+          if (picked) openFile(picked.name, picked.contents);
+        })
+        .catch((e) => setNotice(`open failed: ${e}`));
+      return;
+    }
     const invoke = tauriInvoke();
     if (!invoke) {
       fileInputRef.current?.click();
@@ -1129,6 +1142,33 @@ export default function App() {
         setNotice(`downloaded ${active.name}.mei`);
         return;
       }
+      if (onTablet() && saveAs) {
+        // A tablet's save-as is a COPY sent out through the OS save sheet:
+        // the tab keeps its file in battuta's folder (phase 10, M1).
+        void tabletFiles()
+          .then((t) => t.saveWithSheet(`${active.name}.mei`, xml))
+          .then((done) => {
+            if (done) setNotice(`saved a copy of ${active.name}.mei — this tab keeps its file in battuta's folder`);
+          })
+          .catch((e) => setNotice(`save failed: ${e}`));
+        return;
+      }
+      if (onTablet() && !active.path) {
+        // A first save on a tablet goes into battuta's folder under the
+        // tab's name (never over a score already there); the folder view
+        // renames it, and the tab follows.
+        void tabletFiles()
+          .then((t) => t.saveIntoFolder(active.name, xml))
+          .then((path) => {
+            recordMtime(path);
+            const name = docNameFromPath(path);
+            markSaved();
+            setDocs((ds) => ds.map((d) => (d.id === active.id ? { ...d, path, name } : d)));
+            setNotice(`saved ${name}.mei in battuta's folder — rename it there with ✎`);
+          })
+          .catch((e) => setNotice(`save failed: ${e}`));
+        return;
+      }
       if (!saveAs && active.path) {
         const path = active.path;
         const write = () =>
@@ -1172,9 +1212,19 @@ export default function App() {
     [session, active, recordMtime],
   );
   const saveDoc = () => saveActive(false);
+  /** A tablet's share sheet: the score, as MEI, to AirDrop, Mail, another app (phase 10). */
+  const shareActive = () => {
+    if (!session || !active) return;
+    const name = `${active.name}.mei`;
+    void tabletFiles()
+      .then((t) => t.shareFile(name, session.saveDocument()))
+      .then((sent) => sent && setNotice(`shared ${name}`))
+      .catch((e) => setNotice(`share failed: ${e}`));
+  };
 
-  /** Write an export: download in browsers, native save dialog in the shell. */
+  /** Write an export: download in browsers, native save dialog in the shell, the OS save sheet on a tablet. */
   const saveExport = useCallback((filename: string, data: string | Uint8Array, mime: string): Promise<void> => {
+    if (onTablet()) return tabletFiles().then((t) => t.saveWithSheet(filename, data)).then(() => undefined);
     const invoke = tauriInvoke();
     if (!invoke) {
       const blob = new Blob([data as BlobPart], { type: mime });
@@ -2510,6 +2560,17 @@ export default function App() {
                 >
                   save
                 </button>
+                {/* A tablet has no save-as key without a keyboard, and has a share sheet. */}
+                {onTablet() && (
+                  <>
+                    <button style={MENU_ITEM} onClick={() => (setMenuOpen(false), saveActive(true))}>
+                      save a copy…
+                    </button>
+                    <button data-share style={MENU_ITEM} onClick={() => (setMenuOpen(false), shareActive())}>
+                      share…
+                    </button>
+                  </>
+                )}
                 {/* The export registry (host/formats.ts): the App's own
                     exports and every export a plugin declares, listed
                     before the plugin's code loads. */}

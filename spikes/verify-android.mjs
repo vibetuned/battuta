@@ -7,15 +7,18 @@
  *   node spikes/verify-android.mjs --no-install
  *
  * Checks: the shell says it is Android/mobile before the page runs; Verovio
- * renders in the WebView; the desktop-only services stay off (folders) and
- * MIDI comes through Web MIDI; an edit made through the real UI (a tap on
- * the measure, input mode, a pitch key) reaches the document and the
- * player's timemap; and the app is still alive with no Rust panic logged.
+ * renders in the WebView; the folder service is battuta's own Documents,
+ * picked without a dialog (M1), and MIDI comes through Web MIDI; an edit
+ * made through the real UI (a tap on the measure, input mode, a pitch key)
+ * reaches the document and the player's timemap; a new score's first save
+ * lands in battuta's folder (M1); and the app is still alive with no Rust
+ * panic logged.
  *
- * Leaves the device as it found it: the edit is undone (the document is the
- * one the app opened, back to its saved mark) — Android's WebView has no
- * incognito storage to isolate a run in, so the run makes no change that
- * would outlive it.
+ * Leaves the device as it found it — Android's WebView has no incognito
+ * storage to isolate a run in, so the run takes back exactly what it made:
+ * the edit is undone (the document back at its saved mark), and the score
+ * it saves gets a unique name, its tab is closed, and that one file is
+ * removed over adb.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -78,6 +81,8 @@ for (let t = 0; t < 40; t++) {
 }
 adb("forward", `tcp:${PORT}`, `localabstract:webview_devtools_remote_${pid}`);
 const browser = await chromium.connectOverCDP(`http://localhost:${PORT}`);
+/** The score this run saves on the tablet, removed again at the end. */
+let runFile = null;
 
 try {
   const page = browser.contexts()[0].pages()[0];
@@ -88,7 +93,10 @@ try {
   check(`the shell says what it is before the page runs (${JSON.stringify(shell)})`, shell?.platform === "android" && shell.mobile === true);
   const tiles = await page.evaluate(() => ({ tiles: document.querySelectorAll(".tile").length, svg: document.querySelectorAll(".tile svg").length }));
   check(`Verovio renders in the WebView (${tiles.svg} svg in ${tiles.tiles} tiles)`, tiles.tiles > 0 && tiles.svg >= tiles.tiles);
-  check("no folder service on the tablet yet (desktop-only, M1)", await page.evaluate(() => window.__HOST__.workspace.available === false));
+  // M1: battuta's own folder — the platform's home, no dialog (pickFolder
+  // is the system's folder picker on a tablet: a user's gesture, not this run's).
+  const folder = await page.evaluate(() => (window.__HOST__.workspace.available ? window.__HOST__.workspace.home() : null));
+  check(`battuta's folder is its own Documents, no dialog (${folder})`, typeof folder === "string" && folder.endsWith(`/Android/data/${PKG}/files/Documents`));
   const midi = await page.evaluate(() => window.__HOST__.midi.inputs.get().map((p) => p.name));
   check(`MIDI through the WebView's Web MIDI (${midi.join(", ")})`, Array.isArray(midi));
 
@@ -114,12 +122,39 @@ try {
   await page.keyboard.press("Escape");
   while ((await page.evaluate(() => window.__SESSION__.stack.undoDepth)) > depth0) await page.keyboard.press("Control+z");
   check("the edit is undone (the document back as the app opened it)", (await page.evaluate(() => window.__SESSION__.stack.undoDepth)) === depth0);
+
+  // M1: a first save goes into battuta's folder. The file is this run's own —
+  // a fresh tab, renamed to a unique name, its tab closed, and the file
+  // removed over adb at the end: Android's WebView has no throwaway storage
+  // to run in, so the run takes back exactly what it made.
+  const tabs = () => page.evaluate(() => document.querySelectorAll(".tab:not(.tab-new)").length);
+  const tabs0 = await tabs();
+  await page.locator(".tab-new").click();
+  await page.waitForFunction((n) => document.querySelectorAll(".tab:not(.tab-new)").length === n + 1, tabs0, { timeout: 5000 });
+  await page.keyboard.press("Control+s");
+  await page.waitForFunction(() => window.__HOST__.document.get()?.path, null, { timeout: 10000 });
+  const firstSave = await page.evaluate(() => ({ path: window.__HOST__.document.get().path, notice: document.querySelector("[data-notice]")?.textContent ?? "" }));
+  check(`a first save puts the score in battuta's folder (${firstSave.path?.split("/").slice(-2).join("/")}: "${firstSave.notice}")`, firstSave.path?.startsWith(`${folder}/`) && firstSave.path.endsWith(".mei"));
+  const unique = `verify-android-${Date.now()}`;
+  runFile = await page.evaluate(({ path, name }) => window.__HOST__.workspace.rename(path, `${name}.mei`), { path: firstSave.path, name: unique });
+  await page.waitForFunction((p) => window.__HOST__.document.get()?.path === p, runFile, { timeout: 5000 });
+  const listed = await page.evaluate((dir) => window.__HOST__.workspace.readDir(dir).then((es) => es.map((e) => e.name)), folder);
+  check(`renamed in the folder, the tab follows it (${unique}.mei listed: ${listed.includes(`${unique}.mei`)})`, listed.includes(`${unique}.mei`));
+  const ondisk = adb("shell", "cat", runFile);
+  check(`the file on the tablet is the score (${ondisk.length} bytes, MEI: ${ondisk.includes("<mei")})`, ondisk.includes("<mei") && ondisk.includes("<measure"));
+  await page.locator(".tab.active .tab-close, .tab[aria-selected='true'] .tab-close").first().click().catch(() => undefined);
+  await page.waitForFunction((n) => document.querySelectorAll(".tab:not(.tab-new)").length === n, tabs0, { timeout: 5000 }).catch(() => undefined);
+  check("its tab closes clean (saved, no prompt)", (await tabs()) === tabs0);
 } catch (e) {
   console.error("SCRIPT ERROR", e);
   failures++;
 } finally {
   await browser.close().catch(() => undefined);
   adb("forward", "--remove", `tcp:${PORT}`);
+  if (runFile) {
+    adb("shell", "rm", "-f", runFile);
+    check("the run's score is removed from the tablet", !adb("shell", "ls", runFile.replace(/\/[^/]+$/, "")).includes(runFile.split("/").pop()));
+  }
 }
 
 let alive = "";

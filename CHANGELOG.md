@@ -11,6 +11,115 @@ below, and changes since the last tag gather under *Unreleased*.
 
 ## Unreleased
 
+- **Phase 10, M1 continued — any folder and a share sheet on the tablets;
+  the black iPad; the Android icon (2026-10-20).** User-reported: the iPad
+  showed the app black, the Android icon looked "horrible", and once
+  battuta's folder was open there was no way to choose another; the user
+  approved a native addition for a share sheet and new plugin api, and
+  chose **any folder on both tablets** over battuta's folder alone.
+  **Black iPad:** the iPad was in dark mode and every layer of the page
+  was transparent (`html`, `body`, `#root` all `rgba(0,0,0,0)` in a
+  temporary probe) — WKWebView showed its own black behind black
+  notation; the page now says `color-scheme: light` and paints `html` and
+  `body` white (`index.html`). **Android icon:** the adaptive icon's
+  foreground was the whole logo edge to edge, so launchers cut it to
+  their circle; the foreground is now `src-tauri/icons/mobile/
+  android-foreground.svg`, the glyph alone at half size inside the 66/108
+  safe zone (the `android_fg_scale` manifest option did nothing),
+  generated through `icons/mobile/icons.json` (iOS unchanged,
+  byte-identical). **battuta's native plugin** —
+  `src-tauri/plugins/battuta-mobile`, a local Tauri plugin crate with a
+  Swift package and a Kotlin module, called only by the shell's Rust (no
+  commands for the page): the **share sheet** (UIActivityViewController,
+  anchored as a popover on iPad; Android's chooser through its own
+  FileProvider subclass, so it never collides with the app's); the
+  **system folder picker** — iPadOS keeps a security-scoped bookmark per
+  path and holds the scope for the app's life, so the shell reads and
+  writes there by path as anywhere; Android persists the tree permission,
+  and since a document tree has no path the shell gives it one — the
+  tree's URI, then names, `/`-separated (`content://…/tree/<id>/scores/
+  aria.mei`) — so the folder view's and the App's path logic (parent,
+  base name, rename moves, the tab's name) works unchanged, and the
+  plugin lists, reads, writes, creates and renames by walking the tree
+  name by name (any provider, not only the device's storage, whose ids
+  happen to look like paths). The shell's workspace commands route tree
+  paths there (scoped to the picked trees; same refusal wording), became
+  async (a native call never waits on the UI thread), and the tablets
+  gain `workspace_home` and `share_file`. **Plugin api:**
+  `WorkspaceService.home()` — the platform's own folder (a tablet's
+  battuta folder) or null — kept at 1.2.0 by the user's decision (never
+  bump a never-tagged version; the regenerated snapshot shows the
+  change). **Folder view:** opens the saved folder, else battuta's; **…**
+  is the system folder picker on a tablet, **⌂** goes back to battuta's
+  folder, a picked folder that has gone falls back to it with a notice,
+  battuta's folder is shown as "battuta" and an Android tree by its
+  folder's name. **App:** a first save asks the shell for battuta's
+  folder (the picker is the user's gesture now); **save a copy…** and
+  **share…** join the battuta menu on tablets. **Budget:** the initial
+  chunk is 383.2 kB against 382.8 kB (392,000 bytes) — the two menu items
+  render at startup and cannot be lazy; raising the ceiling is the
+  user's call, pending. Tests: folder view 54 (+4: battuta's folder with
+  nothing to choose; … then ⌂, each remembered; a gone folder falls back
+  home with a notice; Android tree names); `verify-android.mjs` 15
+  (battuta's folder asked through `home()` — `pickFolder` is the
+  system picker now); on the Galaxy Tab, driven once through Android's
+  own screens with UI Automator: a folder picked in Downloads (tree path
+  returned, reopened as after a relaunch), listed, a folder and a score
+  created in it, a duplicate refused in the shell's words, a score
+  renamed, opened as a tab under its tree path, saved with ctrl+s (54 →
+  61 kB, its 60 `accid.ges` written), its mtime read; the share sheet
+  offering Quick Share, Gmail, Drive, Bluetooth…; everything the run put
+  on the tablet removed after. iPad: builds with the Swift plugin and
+  starts clean (the picker, the bookmark reopen and the share sheet await
+  the user's hands). Desktop: shell smoke 15, folder-view 40 and app 18
+  e2e, shell tests.
+- **Phase 10, M1 — files on the tablets; the battuta icon (2026-10-20).**
+  The user: "the app logo… and you can start M1" — the tablets showed
+  Tauri's placeholder icon. **Icon:** the iOS and Android icon sets are
+  generated from the logo (`docs/src/assets/logo.svg` — vector, so the
+  1024-px App Store size is sharp; black on white, as iOS icons cannot be
+  transparent) into a scratch folder and only the mobile sets copied into
+  `gen/` — `tauri icon` would otherwise regenerate the desktop icons too
+  (README says how). **Files**, as the user set out — drafts in the app's
+  storage, the OS picker and save sheet for everything else — on
+  `BaseDirectory.Document`, the one a user can see: the iPad's Documents
+  (the Files app's "On My iPad › battuta", by `UIFileSharingEnabled` and
+  `LSSupportsOpeningDocumentsInPlace` in a new `Info.ios.plist` the CLI
+  merges), Android's `Android/data/…/files/Documents`. It is **battuta's
+  folder**: the tablets' `workspace_pick_folder` answers it without a
+  dialog, so the folder view — listing, ✎ rename, + score, + folder — is
+  the tablet's file browser unchanged (no live watch there; no api
+  change). A new or imported score's **first save** goes into it under
+  the tab's name (`name.mei`, else `name 2.mei` — never over a score);
+  saves after that are by path, as on desktop. **Open file…** is the OS
+  document picker — unfiltered: Android's maps extensions to MIME types
+  and silently dropped `.mei`, showing only `.xml` files; the extension is
+  checked after the pick instead. **Save as** sends a copy out through the
+  OS save sheet (the tab keeps its file), as do all **exports**; the
+  confirm dialog goes through the OS too (WKWebView answers
+  `window.confirm` with false without asking). `tauri-plugin-dialog` and
+  `tauri-plugin-fs` (2.x, MIT/Apache) are tablet-only dependencies with a
+  tablet-only capability (`capabilities/mobile.json`: pick, save sheet,
+  confirm, and reading/writing what those hand back); their JavaScript and
+  the App's tablet code (`src/tabletFiles.ts`) load on first use. M0's
+  "no shell bridge on a tablet" was too coarse — it blocked reading and
+  saving by path — so the bridge is back on every shell and only what
+  opens a dialog branches for tablets. Not a new host module: the
+  host-boundaries test makes one an architecture decision for the user,
+  and the tablet confirm belongs in `shell.ts`, whose job is the shell's
+  dialogs. **The startup bundle is at its ceiling**: 382.8 kB of 382.8 kB
+  (moving the tablet code behind a dynamic import brought it back from
+  383.9); the next startup-time feature needs a budget decision. Tests:
+  `verify-android.mjs` 15 (+5: the folder is battuta's Documents with no
+  dialog; a new score's first save lands there; renamed, the tab follows;
+  the file on the tablet is the score; its tab closes clean — and the
+  run's file is removed over adb, Android having no throwaway storage);
+  the picker and the save sheet driven through Android's own UI with UI
+  Automator once — a chorale pushed to Downloads imported as a tab (14
+  measures, unsaved), saved back out as a copy (61 kB, its 60
+  `accid.ges` in it), the test files removed after; on the iPad the
+  build carries both Files keys and starts clean. Desktop: shell smoke 15,
+  the app, folder-view and formats e2e unchanged.
 - **Phase 10 opens: battuta on tablets — M0, it runs on both (2026-10-20).**
   The user, after the Verovio team's licensing page: launch iPadOS and
   Android, tablets first, published by Vibetuned (a nonprofit for music

@@ -70,7 +70,7 @@ const WOKEN_BY_THE_BUTTON: ActivationEvent = `onCommand:${COMMAND_TOGGLE}`;
 
 export default definePlugin({
   activate(ctx: PluginContext) {
-    const state = signal<FolderState>({ root: null, loaded: new Map(), expanded: new Set(), error: null, busy: false, target: null });
+    const state = signal<FolderState>({ root: null, home: null, loaded: new Map(), expanded: new Set(), error: null, busy: false, target: null });
     const open = signal(false);
     const patch = (fields: Partial<FolderState>) => state.set({ ...state.get(), ...fields });
     let panel: Disposable | null = null;
@@ -119,6 +119,10 @@ export default definePlugin({
     };
 
     const actions = {
+      goHome: () => {
+        const home = state.get().home;
+        if (home) void adopt(home, { persist: true });
+      },
       pick: () => {
         void ctx.workspace
           .pickFolder()
@@ -228,24 +232,31 @@ export default definePlugin({
     // shell only grants what the user picked, so a path from last session
     // has to be asked for again). Runs on every wake-up path, including
     // the 📁: the folder is there when the panel opens.
+    // The folder the user chose last, else the platform's own (a tablet's
+    // battuta folder: there, the view always has a folder to show).
     const saved = ctx.settings.get<string>(SETTING_FOLDER);
-    if (saved) {
-      void ctx.workspace
-        .openFolder(saved)
-        .then((ok) => {
+    void ctx.workspace
+      .home()
+      .then((home) => {
+        patch({ home });
+        if (!saved) return home ? adopt(home) : undefined;
+        return ctx.workspace.openFolder(saved).then((ok) => {
           if (ok) return adopt(saved);
           // Only forget it when the shell was actually asked. In a browser
           // `openFolder` answers false because there is no shell, and
           // wiping the setting there would lose the folder for the desktop
           // app too.
-          if (ctx.workspace.available) {
-            ctx.settings.set(SETTING_FOLDER, "");
-            patch({ error: `The folder "${baseOf(saved)}" is no longer available. Choose another one.` });
+          if (!ctx.workspace.available) return undefined;
+          ctx.settings.set(SETTING_FOLDER, "");
+          if (home) {
+            ctx.notice(`The folder "${baseOf(saved)}" is no longer available — back to battuta's folder.`);
+            return adopt(home);
           }
+          patch({ error: `The folder "${baseOf(saved)}" is no longer available. Choose another one.` });
           return undefined;
-        })
-        .catch((e) => patch({ error: `Could not reopen that folder: ${message(e)}` }));
-    }
+        });
+      })
+      .catch((e) => patch({ error: `Could not reopen that folder: ${message(e)}` }));
 
     ctx.registerCommand(COMMAND_TOGGLE, () => setOpen(panel === null));
 

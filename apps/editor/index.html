@@ -7,6 +7,17 @@
          header's white and the context bar's dark reach the screen edges.
          Elsewhere the insets are 0 and nothing changes. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- battuta is a light page, and paints its own white: with nothing said,
+         a tablet in dark mode showed its own black behind the transparent
+         page — black notation on black (the iPad, 2026-10-20). -->
+    <meta name="color-scheme" content="light" />
+    <style>
+      html,
+      body {
+        background: #fff;
+        color: #000;
+      }
+    </style>
     <title>battuta — MEI score editor</title>
   </head>
   <body>

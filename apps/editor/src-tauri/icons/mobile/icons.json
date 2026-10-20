@@ -1,0 +1,6 @@
+{
+  "default": "../../../../../docs/src/assets/logo.svg",
+  "bg_color": "#ffffff",
+  "android_fg": "android-foreground.svg",
+  "android_fg_scale": 100
+}

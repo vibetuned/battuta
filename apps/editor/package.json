@@ -26,6 +26,8 @@
     "@battuta/plugin-pitch-reference": "*",
     "@battuta/plugin-playback": "*",
     "@battuta/plugin-reflection": "*",
+    "@tauri-apps/plugin-dialog": "^2.8.3",
+    "@tauri-apps/plugin-fs": "^2.7.1",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "verovio": "^6.2.0"
