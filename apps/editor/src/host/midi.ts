@@ -24,6 +24,7 @@
 import { toDisposable, type Disposable, type MidiNoteEvent, type MidiOutputs, type MidiPort, type MidiService, type MidiVirtualInput } from "@battuta/api";
 import { MidiSink } from "./midiSink";
 import { createStore, type WritableStore } from "./store";
+import { shellPlatform } from "./shell";
 
 const NOTE_ON = 0x90;
 const NOTE_OFF = 0x80;
@@ -188,7 +189,7 @@ export function shellMidiBackend(shell: ShellMidiBridge): MidiBackend {
 /** Web MIDI where the browser has it, the bridge inside the shell, nothing otherwise. */
 export function detectMidiBackend(): MidiBackend {
   if (typeof navigator !== "undefined" && "requestMIDIAccess" in navigator) return webMidiBackend(navigator as unknown as WebMidiNavigator);
-  if (typeof window !== "undefined") {
+  if (typeof window !== "undefined" && !shellPlatform()?.mobile) {
     const t = (window as unknown as { __TAURI__?: { event?: { listen?: ShellMidiBridge["listen"] }; core?: { invoke?: ShellMidiBridge["invoke"] } } }).__TAURI__;
     if (t?.event?.listen && t.core?.invoke) return shellMidiBackend({ listen: t.event.listen, invoke: t.core.invoke });
   }

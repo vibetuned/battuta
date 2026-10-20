@@ -1,0 +1,465 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1AD6556550ED393E3F7996F6 /* assets in Resources */ = {isa = PBXBuildFile; fileRef = C7D7773866AA41254E456411 /* assets */; };
+		347140F6DD46CF9C0082B9CB /* libapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 19989DBF90DB3E499F4FAF97 /* libapp.a */; };
+		791578974B743DA0254C1C7D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = D62B39A36C0D383FD16E5BB3 /* LaunchScreen.storyboard */; };
+		98028E84D151B8C1D22FF6AA /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4678D96433D6D72BD9C6ED37 /* Security.framework */; };
+		AA5C2B0786DFAC1BB1BE7B19 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6CB32BA2BF3D010110B5797E /* UIKit.framework */; };
+		B244FE994A26F38308EDDC3D /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 68C8398C66C95E27339DCBBF /* Metal.framework */; };
+		BE45D6D7BEBECE9BF7608AB0 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 57731315B8F7759C5A92E412 /* Assets.xcassets */; };
+		C22678817703B050C006CD4D /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B25D5DBB04682E24ACE4FBD8 /* QuartzCore.framework */; };
+		C841A225DFF8A5D606366AE5 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 81992C1AE3E256280BD032C5 /* CoreGraphics.framework */; };
+		CD839494640324BAF1A3C014 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 27C51F623349BCA30BD7A777 /* main.mm */; };
+		E1367EE3896F725ACE87122C /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 234B077321CD8A7EEF7739D4 /* MetalKit.framework */; };
+		FC9A2C4791FD14334664A0EB /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5109C26BE4BB6D48B36C26AC /* WebKit.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		19989DBF90DB3E499F4FAF97 /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
+		234B077321CD8A7EEF7739D4 /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
+		27C51F623349BCA30BD7A777 /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
+		294898781D63C403A9D6BF94 /* battuta-editor_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "battuta-editor_iOS.entitlements"; sourceTree = "<group>"; };
+		4678D96433D6D72BD9C6ED37 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		5109C26BE4BB6D48B36C26AC /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+		51C8BE25FA351CDB62B1E468 /* battuta-editor_iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "battuta-editor_iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		56EF8A1613DF1CD3142B61A2 /* bindings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bindings.h; sourceTree = "<group>"; };
+		57731315B8F7759C5A92E412 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		5FD56C54F5DF5B1C3596738D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		68C8398C66C95E27339DCBBF /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		6CB32BA2BF3D010110B5797E /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+		81992C1AE3E256280BD032C5 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		8BBF9B52E51A241EC9043E7A /* lib.rs */ = {isa = PBXFileReference; path = lib.rs; sourceTree = "<group>"; };
+		B25D5DBB04682E24ACE4FBD8 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		C7D7773866AA41254E456411 /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = SOURCE_ROOT; };
+		D4E2DD2FEDE4063E18696FEA /* main.rs */ = {isa = PBXFileReference; path = main.rs; sourceTree = "<group>"; };
+		D62B39A36C0D383FD16E5BB3 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		6CE25ED3F52F19EED26AC6B8 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				347140F6DD46CF9C0082B9CB /* libapp.a in Frameworks */,
+				C841A225DFF8A5D606366AE5 /* CoreGraphics.framework in Frameworks */,
+				B244FE994A26F38308EDDC3D /* Metal.framework in Frameworks */,
+				E1367EE3896F725ACE87122C /* MetalKit.framework in Frameworks */,
+				C22678817703B050C006CD4D /* QuartzCore.framework in Frameworks */,
+				98028E84D151B8C1D22FF6AA /* Security.framework in Frameworks */,
+				AA5C2B0786DFAC1BB1BE7B19 /* UIKit.framework in Frameworks */,
+				FC9A2C4791FD14334664A0EB /* WebKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		329178FC907D918E2BF4F60E /* Externals */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Externals;
+			sourceTree = "<group>";
+		};
+		37A042E6DA2387B30C3F0F74 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				494BAEE9F170288340212C57 /* battuta-editor */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		494BAEE9F170288340212C57 /* battuta-editor */ = {
+			isa = PBXGroup;
+			children = (
+				27C51F623349BCA30BD7A777 /* main.mm */,
+				DDFF9DAFABC91C388E324BDF /* bindings */,
+			);
+			path = "battuta-editor";
+			sourceTree = "<group>";
+		};
+		6844915550B95176E328A20C /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				81992C1AE3E256280BD032C5 /* CoreGraphics.framework */,
+				19989DBF90DB3E499F4FAF97 /* libapp.a */,
+				68C8398C66C95E27339DCBBF /* Metal.framework */,
+				234B077321CD8A7EEF7739D4 /* MetalKit.framework */,
+				B25D5DBB04682E24ACE4FBD8 /* QuartzCore.framework */,
+				4678D96433D6D72BD9C6ED37 /* Security.framework */,
+				6CB32BA2BF3D010110B5797E /* UIKit.framework */,
+				5109C26BE4BB6D48B36C26AC /* WebKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		6BE0218BF17FA0559041DB18 /* battuta-editor_iOS */ = {
+			isa = PBXGroup;
+			children = (
+				294898781D63C403A9D6BF94 /* battuta-editor_iOS.entitlements */,
+				5FD56C54F5DF5B1C3596738D /* Info.plist */,
+			);
+			path = "battuta-editor_iOS";
+			sourceTree = "<group>";
+		};
+		823B474E4D1D0F0568C8FB0D /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				51C8BE25FA351CDB62B1E468 /* battuta-editor_iOS.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		B9CB7892BA2E79A736437AD6 /* src */ = {
+			isa = PBXGroup;
+			children = (
+				8BBF9B52E51A241EC9043E7A /* lib.rs */,
+				D4E2DD2FEDE4063E18696FEA /* main.rs */,
+			);
+			name = src;
+			path = ../../src;
+			sourceTree = "<group>";
+		};
+		C015E42D1A0640EFB1A83C2A = {
+			isa = PBXGroup;
+			children = (
+				C7D7773866AA41254E456411 /* assets */,
+				57731315B8F7759C5A92E412 /* Assets.xcassets */,
+				D62B39A36C0D383FD16E5BB3 /* LaunchScreen.storyboard */,
+				6BE0218BF17FA0559041DB18 /* battuta-editor_iOS */,
+				329178FC907D918E2BF4F60E /* Externals */,
+				37A042E6DA2387B30C3F0F74 /* Sources */,
+				B9CB7892BA2E79A736437AD6 /* src */,
+				6844915550B95176E328A20C /* Frameworks */,
+				823B474E4D1D0F0568C8FB0D /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		DDFF9DAFABC91C388E324BDF /* bindings */ = {
+			isa = PBXGroup;
+			children = (
+				56EF8A1613DF1CD3142B61A2 /* bindings.h */,
+			);
+			path = bindings;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		95ABDAD0F247B7BCF628B50C /* battuta-editor_iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E9178CFFBF087CD65DFC00E6 /* Build configuration list for PBXNativeTarget "battuta-editor_iOS" */;
+			buildPhases = (
+				AE8071E01085DA09F1968127 /* Build Rust Code */,
+				9E79F2DD04A0B74FC588C8C1 /* Sources */,
+				59F6B527191F3F67F8E2964A /* Resources */,
+				6CE25ED3F52F19EED26AC6B8 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "battuta-editor_iOS";
+			packageProductDependencies = (
+			);
+			productName = "battuta-editor_iOS";
+			productReference = 51C8BE25FA351CDB62B1E468 /* battuta-editor_iOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		94ABCDC8A8B229676EC5427A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					95ABDAD0F247B7BCF628B50C = {
+						DevelopmentTeam = 47D2CT68R2;
+					};
+				};
+			};
+			buildConfigurationList = 71115B1AD2D98A6BA578219D /* Build configuration list for PBXProject "battuta-editor" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = C015E42D1A0640EFB1A83C2A;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 823B474E4D1D0F0568C8FB0D /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				95ABDAD0F247B7BCF628B50C /* battuta-editor_iOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		59F6B527191F3F67F8E2964A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BE45D6D7BEBECE9BF7608AB0 /* Assets.xcassets in Resources */,
+				791578974B743DA0254C1C7D /* LaunchScreen.storyboard in Resources */,
+				1AD6556550ED393E3F7996F6 /* assets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		AE8071E01085DA09F1968127 /* Build Rust Code */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Rust Code";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/Externals/x86_64/${CONFIGURATION}/libapp.a",
+				"$(SRCROOT)/Externals/arm64/${CONFIGURATION}/libapp.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "npm run -- tauri ios xcode-script -v --platform ${PLATFORM_DISPLAY_NAME:?} --sdk-root ${SDKROOT:?} --framework-search-paths \"${FRAMEWORK_SEARCH_PATHS:?}\" --header-search-paths \"${HEADER_SEARCH_PATHS:?}\" --gcc-preprocessor-definitions \"${GCC_PREPROCESSOR_DEFINITIONS:-}\" --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?}";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		9E79F2DD04A0B74FC588C8C1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CD839494640324BAF1A3C014 /* main.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		201DBDCFAA7C2903DD0753E2 /* debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = debug;
+		};
+		448202235BF46FA5899FE651 /* release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ARCHS = (
+					arm64,
+				);
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "battuta-editor_iOS/battuta-editor_iOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = "47D2CT68R2";
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				INFOPLIST_FILE = "battuta-editor_iOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.vibetuned.battuta;
+				PRODUCT_NAME = "battuta";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = arm64;
+			};
+			name = release;
+		};
+		AB4D26EC346C82B32A83FA6F /* debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ARCHS = (
+					arm64,
+				);
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "battuta-editor_iOS/battuta-editor_iOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = "47D2CT68R2";
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				INFOPLIST_FILE = "battuta-editor_iOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.vibetuned.battuta;
+				PRODUCT_NAME = "battuta";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = arm64;
+			};
+			name = debug;
+		};
+		B0823413AA3D83C3A9D05A45 /* release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		71115B1AD2D98A6BA578219D /* Build configuration list for PBXProject "battuta-editor" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				201DBDCFAA7C2903DD0753E2 /* debug */,
+				B0823413AA3D83C3A9D05A45 /* release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = debug;
+		};
+		E9178CFFBF087CD65DFC00E6 /* Build configuration list for PBXNativeTarget "battuta-editor_iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AB4D26EC346C82B32A83FA6F /* debug */,
+				448202235BF46FA5899FE651 /* release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 94ABCDC8A8B229676EC5427A /* Project object */;
+}

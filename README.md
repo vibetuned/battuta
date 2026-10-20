@@ -102,6 +102,26 @@ The old WebKitGTK 2.52 blank-webview issue no longer reproduces;
 It runs the shell with `BATTUTA_EPHEMERAL_STORAGE=1`, an in-memory WebView
 data store, so its test scores never reach your recovered session.
 
+### Tablets (Phase 10)
+
+The same shell builds for iPadOS and Android (`com.vibetuned.battuta`;
+the generated projects live in `src-tauri/gen/apple` and `gen/android`):
+
+```sh
+npm run android -- build --debug --apk --target aarch64   # then: node spikes/verify-android.mjs
+npm run ios -- build --debug --target aarch64 --export-method debugging
+```
+
+`scripts/mobile.sh` finds Android's SDK and NDK where Android Studio puts
+them and a JDK 21 (Android Studio's bundled Java 25 is too new for the
+generated Gradle), for these commands only. iOS signs with the Vibetuned
+team; it needs Xcode, CocoaPods and the Rust targets `aarch64-apple-ios`
+and `aarch64-apple-ios-sim` (Android: `aarch64-linux-android` and the
+other three). `node spikes/verify-android.mjs` drives the debug APK on a
+connected tablet over the WebView's DevTools socket; on an iPad, debug
+builds append the shell's probe lines to `shell.log` in the app's data
+folder, which `xcrun devicectl device copy from` fetches.
+
 ### Packaging (0.0.1)
 
 ```sh
@@ -228,4 +248,7 @@ with a certificate issued by the [SignPath Foundation](https://signpath.org/).
 
 [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only).
 Verovio, which does all notation rendering, is LGPL-3.0 — compatible
-with this licensing.
+with this licensing. battuta is made by Vibetuned, a nonprofit for music
+and arts education; contributions are accepted under its
+[contributor licence agreement](CLA.md) — see
+[CONTRIBUTING.md](CONTRIBUTING.md).

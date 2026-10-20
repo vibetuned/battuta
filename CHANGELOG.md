@@ -11,6 +11,70 @@ below, and changes since the last tag gather under *Unreleased*.
 
 ## Unreleased
 
+- **Phase 10 opens: battuta on tablets — M0, it runs on both (2026-10-20).**
+  The user, after the Verovio team's licensing page: launch iPadOS and
+  Android, tablets first, published by Vibetuned (a nonprofit for music
+  and arts education) as `com.vibetuned.battuta`, everything open source;
+  Verovio stays an unmodified WASM module in the WebView and is credited
+  in the stores and the app; outside contributions come under a CLA —
+  the Apache ICLA V2.2 with Vibetuned in the Foundation's place, its
+  eight sections otherwise verbatim (`CLA.md`), signed by a comment on
+  the first pull request (`CONTRIBUTING.md`; the README's licence section
+  points there).
+  The plan is in PLANNING.md (M0–M4). **M0:** the Rust shell is now a
+  library — `src/lib.rs` is the former `main.rs` with `run()` as the entry
+  (`#[tauri::mobile_entry_point]` on mobile), `main.rs` a three-line
+  desktop launcher, `[lib] battuta_lib` built as staticlib/cdylib/rlib.
+  Native dialogs (`rfd`), MIDI (`midir`) and folder watching (`notify`)
+  are desktop-only dependencies and `#[cfg(desktop)]` code; mobile
+  registers only the portable commands. The page learns which shell it
+  is in before its first script (`window.__BATTUTA_SHELL__`, an
+  initialization script), and on mobile the desktop bridge reads as
+  absent, so the app takes the browser's paths there (file input, no
+  folder view, Web MIDI) until M1–M3. One identifier on every platform,
+  `com.vibetuned.battuta` — the desktop's `dev.battuta.editor` aligned
+  at the user's request, knowing its settings and recovered session
+  start fresh under the new one (scores on disk untouched; the shell
+  smoke fingerprints both names, the Homebrew cask zaps both);
+  `tauri.ios.conf.json` carries the signing team (47D2CT68R2) and an
+  iPadOS 15.0 floor; `npm run android -- …` /
+  `npm run ios -- …` run the CLI through `scripts/mobile.sh` (SDK, NDK and
+  a JDK 21 found for those commands only). Found on the way: **a crash on
+  Android** — the page-load handler logged `webview.url()`, which on
+  Android runs on the UI thread and waits on that same thread; wry gave up
+  after 10 s and then aborted on the late answer; it logs the payload's
+  URL now. **Xcode 27** builds no iOS target below 15.0 (the generated
+  14.0 failed), and its SwiftPM appends the host SDK after swift-rs's
+  overrides — `swift-rs` 1.0.9 (lockfile) fixes it. **The iPad hid the
+  context bar** (user-reported): the shell gave every platform its desktop
+  window size, and on iPadOS that sized the WebView 1280×860 on an
+  1180×820 screen — the bar ran off its bottom edge (found with a
+  temporary layout probe in `shell.log`: the viewport was exactly the
+  window size); title and size are desktop-only now. That alone left a
+  white strip under the bar (user-reported: WebKit kept the page out of
+  the home indicator's area), so the page now covers the whole screen
+  (`viewport-fit=cover`) and pads itself by the safe-area insets
+  (`SAFE_TOP`/`SAFE_BOTTOM` in the host, `env(safe-area-inset-*)`, 0 on
+  desktop and in browsers): the header's white runs under the status bar,
+  the bar's dark to the screen's edge with its controls above the home
+  indicator, and what stands on the bar — the bottom and side panels, the
+  toasts, the page's foot, the caret-follow margins (now measured from the
+  header and the bar, not fixed 70/45 px) — moves up with it. Measured:
+  the iPad 1180×820 with insets 32/25, the bar 771–820 padded 27; the
+  Galaxy Tab, edge to edge, insets 30/15 — its gesture handle no longer
+  crosses the bar's controls. **Android Studio's
+  Java 25** is too new for the generated Gradle 8.14. Android's WebView
+  offers Web MIDI: the tablet's USB port and a networked device came up
+  with no plugin. Verified on the reference tablets: the Galaxy Tab S8
+  Ultra by `spikes/verify-android.mjs` (new, 10 checks over the WebView's
+  DevTools socket — the shell's marker, every tile rendered by Verovio,
+  folders off, MIDI through Web MIDI, a tap + `i` + `e` entering an E4
+  that the timemap sounds as MIDI 64, undone, the app alive, no Rust
+  panic); the iPad Air 11" (M4) by the shell's probe in `shell.log` (debug
+  iOS builds append probe lines there, fetched with `xcrun devicectl`):
+  `tiles=4 rendered=8 shell={"platform":"ios","mobile":true}` (new fields
+  after `tiles=`, which the desktop shell smoke matches). The desktop shell
+  smoke still passes (15).
 - **Sounding accidentals in the file: `@accid.ges`, and `<accid>`
   children read and written (2026-10-19).** The user, on the entry below:
   patching the accidentals in for playback only "hides the issue" — the

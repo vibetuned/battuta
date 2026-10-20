@@ -70,6 +70,9 @@ jobs:
             app "battuta.app"
 
             zap trash: [
+              "~/Library/WebKit/com.vibetuned.battuta",
+              "~/Library/Caches/com.vibetuned.battuta",
+              "~/Library/Saved Application State/com.vibetuned.battuta.savedState",
               "~/Library/WebKit/dev.battuta.editor",
               "~/Library/Caches/dev.battuta.editor",
               "~/Library/Saved Application State/dev.battuta.editor.savedState",

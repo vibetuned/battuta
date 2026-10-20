@@ -18,6 +18,7 @@
  * App binds, as the session and the view do.
  */
 import { toDisposable, type DirEntry, type Disposable, type WatchEvent, type WatchEventKind, type WorkspaceService } from "@battuta/api";
+import { shellPlatform } from "./shell";
 
 /** What the shell offers: `invoke` for the commands, `listen` for its events. Null in a browser. */
 export interface WorkspaceBridge {
@@ -48,7 +49,7 @@ interface WatchRecord {
 
 /** The global Tauri bridge when the page runs in the shell (withGlobalTauri), else null. */
 export const detectWorkspaceBridge = (): WorkspaceBridge | null => {
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined" || shellPlatform()?.mobile) return null;
   const t = (window as unknown as { __TAURI__?: { event?: { listen?: WorkspaceBridge["listen"] }; core?: { invoke?: WorkspaceBridge["invoke"] } } }).__TAURI__;
   return t?.event?.listen && t.core?.invoke ? { listen: t.event.listen, invoke: t.core.invoke } : null;
 };

@@ -19,7 +19,9 @@
     "docs": "npm --prefix docs run dev",
     "docs:build": "npm --prefix docs run build",
     "test:plugins": "node packages/plugins/run-tests.mjs",
-    "tauri": "cd apps/editor && tauri"
+    "tauri": "cd apps/editor && tauri",
+    "android": "cd apps/editor && sh scripts/mobile.sh android",
+    "ios": "cd apps/editor && sh scripts/mobile.sh ios"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",

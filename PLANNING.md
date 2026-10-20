@@ -8,12 +8,69 @@ Each phase ends in something usable day-to-day; nothing in a later phase is requ
 > the quality-of-life round — lyrics, staff groups, the mouse-free
 > context bar, playback to MIDI devices).** Plans, exit criteria,
 > triage and progress notes live in [CHANGELOG.md](CHANGELOG.md).
-> **Phase 9 below is the open one.** Still carried into it from earlier
+> **Phase 9 below shipped as 1.0.0; Phase 10 — tablets — is the open
+> one.** Still carried into Phase 9 from earlier
 > rounds: live (rather than save-time) file watching, which ships in
 > the folder-view slice; splice-at-caret and overlay-as-new-layer paste
 > policies; split view; MusicXML *export* (no Verovio support — needs
 > another engine); and the possible Rust/WASM core rewrite, which the
 > API package sits above.
+
+## Phase 10 — Tablets: iPadOS and Android (decided 2026-10-20)
+
+battuta on tablets, from this codebase: the same frontend in the system
+WebView (WKWebView, Android WebView), the same Rust shell built as a
+library, published by Vibetuned — a nonprofit for music and arts
+education — as `com.vibetuned.battuta`, and **open source like the
+desktop** (AGPL-3.0). Tablets first: an iPad and an Android tablet are the
+reference devices (iPad Air 11" M4; Galaxy Tab S8 Ultra); phones later.
+
+**Licensing.** Verovio (LGPLv3) runs unmodified as WebAssembly inside the
+WebView and is never linked into the app binary — the case Verovio's own
+[licensing page](https://book.verovio.org/introduction/licensing.html)
+allows. What that asks of us: **credit Verovio** in both store listings and
+in an in-app licence notice (with the other bundled licences — pdf.js
+Apache-2.0, Noto Music OFL, the MPL-2.0 crates Tauri pulls in, the
+MIT/BSD ones). Contributions from outside come under a **CLA** — the
+Apache ICLA with Vibetuned in the Foundation's place ([CLA.md](CLA.md),
+signed on the first pull request as [CONTRIBUTING.md](CONTRIBUTING.md)
+says).
+
+**M0 — it runs.** The shell is a library (`lib.rs`; `main.rs` launches it
+on desktop); native dialogs, MIDI and folder watching are desktop-only;
+the page is told which shell it runs in before it loads; a desktop
+window's title and size stay desktop-only. Generated Android and Xcode
+projects (`src-tauri/gen/`), one identifier for every platform
+(`com.vibetuned.battuta`), the iOS signing team and floor in
+`tauri.ios.conf.json`, and `npm run android -- …` / `npm run ios -- …`. Done when both tablets open
+the editor, render, edit and play, checked by a device smoke.
+
+**M1 — files.** Working drafts in the app's storage
+(`BaseDirectory.AppLocalData` or `BaseDirectory.Document`, through
+`@tauri-apps/plugin-fs`); the OS document picker and share sheet to import
+and export `.mei`.
+
+**M2 — touch and the tablet layout.**
+- The virtual keyboard made perfectly usable on a tablet.
+- Taps are far less precise than a cursor: instead of binding
+  pointerdown to the tiny `<g class="note">`, hit-test with
+  `document.elementsFromPoint(x, y)` or the nearest notehead box within a
+  24 px touch radius.
+- Narrow viewports (`window.innerWidth < 768`): Verovio's options switch
+  to `adjustPageHeight: true`, smaller `pageMarginLeft`/`pageMarginRight`,
+  and a `pageWidth` computed from `window.innerWidth`, so one or two
+  measures fill the width cleanly.
+
+**M3 — MIDI.** Android's WebView already offers Web MIDI (found in M0: the
+tablet's USB port and a networked device listed); iPadOS's WebKit has
+none, so the shell brings CoreMIDI there (`midir` supports iOS).
+
+**M4 — the stores.** Icons and launch screens, the licence notice and the
+Verovio credit in the listings, release signing, Apple's privacy manifest.
+Open for then: iPad-only or universal (the App Store allows adding iPhone
+later, never removing it), and the PDF reference on iPadOS before 17.4
+(pdf.js uses `Promise.withResolvers`; the app's floor is iPadOS 15, the
+oldest Xcode 27 builds for).
 
 ## Phase 9 — Extension architecture (v0.1.0, ≈4–6 weeks in slices)
 

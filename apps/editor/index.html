@@ -2,7 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover: on a tablet the page runs under the status bar and
+         the home indicator, and pads itself by env(safe-area-inset-*) — the
+         header's white and the context bar's dark reach the screen edges.
+         Elsewhere the insets are 0 and nothing changes. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>battuta — MEI score editor</title>
   </head>
   <body>

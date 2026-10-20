@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
 import { RenderPool, type TileResult } from "./render/renderPool";
 import { keyMatches, type Keymap, type Layout } from "./keymap";
-import { host, useStore, Slot, Panels, SIDE_PANEL_WIDTH, LaneInput, laneFace, TileOverlays, TileBands, rowBandHeights, confirmDialog, tauriInvoke, blockOfEvents, rule, gate, modal, isMod, type ActionStep, type KeyEvent, type Outcome, type OverlayStore } from "./host";
+import { host, useStore, Slot, Panels, SIDE_PANEL_WIDTH, SAFE_TOP, SAFE_BOTTOM, LaneInput, laneFace, TileOverlays, TileBands, rowBandHeights, confirmDialog, tauriInvoke, blockOfEvents, rule, gate, modal, isMod, type ActionStep, type KeyEvent, type Outcome, type OverlayStore } from "./host";
 import { ShortcutEditor } from "./ShortcutEditor";
 import { loadSettings, saveSettings, detectLayout } from "./settings";
 import { DocumentSession } from "./session";
@@ -2404,8 +2404,11 @@ export default function App() {
     if (caretId !== lastScrolledCaret.current) {
       lastScrolledCaret.current = caretId;
       // …and the bottom panel area, whose height the host publishes (a caret behind a panel is as lost as one below the fold).
+      // Measured, not assumed: on a tablet both bars grow by the screen's safe-area insets.
       const bottomPanelH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--battuta-bottom-h")) || 0;
-      if (gr.top < 70 || gr.bottom > window.innerHeight - 45 - bottomPanelH) {
+      const headerBottom = headerRef.current?.getBoundingClientRect().bottom ?? 75;
+      const barTop = document.querySelector("[data-statusbar]")?.getBoundingClientRect().top ?? window.innerHeight - 24;
+      if (gr.top < headerBottom - 5 || gr.bottom > barTop - 21 - bottomPanelH) {
         g.scrollIntoView({ block: "center", behavior: "smooth" });
       }
     }
@@ -2474,8 +2477,8 @@ export default function App() {
   }
 
   return (
-    <div className={showPerf ? undefined : "no-perf"} style={{ fontFamily: `system-ui, "Noto Music", sans-serif`, padding: 12, paddingBottom: 36 }}>
-      <header ref={headerRef} style={{ display: "flex", flexDirection: "column", gap: 6, position: "sticky", top: 0, zIndex: 35, background: "#fff", margin: "-12px -12px 4px", padding: "12px 12px 6px", borderBottom: "1px solid #e3e7ec" }}>
+    <div className={showPerf ? undefined : "no-perf"} style={{ fontFamily: `system-ui, "Noto Music", sans-serif`, padding: 12, paddingBottom: `calc(36px + ${SAFE_BOTTOM})` }}>
+      <header ref={headerRef} style={{ display: "flex", flexDirection: "column", gap: 6, position: "sticky", top: 0, zIndex: 35, background: "#fff", margin: "-12px -12px 4px", padding: `calc(12px + ${SAFE_TOP}) 12px 6px`, borderBottom: "1px solid #e3e7ec" }}>
       <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
         <span style={{ position: "relative" }}>
           <button data-menu-toggle onClick={() => setMenuOpen((o) => !o)} style={{ fontWeight: 700, fontSize: 14, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
@@ -2704,7 +2707,7 @@ export default function App() {
           in the DOM (hidden when empty) — the e2e suites read [data-notice].
           The × dismisses before the timeout; the text itself stays
           selectable (error messages get copied around). */}
-      <div style={{ position: "fixed", right: 12, bottom: 34, zIndex: 55, display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", maxWidth: "46vw" }}>
+      <div style={{ position: "fixed", right: 12, bottom: `calc(34px + ${SAFE_BOTTOM})`, zIndex: 55, display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", maxWidth: "46vw" }}>
         {error && (
           <div data-error style={{ display: "flex", alignItems: "baseline", gap: 8, background: "#5b1f24", color: "#fdd", border: "1px solid #a33", borderRadius: 6, padding: "6px 10px", fontSize: 12, boxShadow: "0 4px 16px rgba(0,0,0,.35)", userSelect: "text" }}>
             <button data-error-dismiss title="dismiss" onClick={() => setError(null)} style={{ background: "none", border: "none", color: "#faa", cursor: "pointer", fontSize: 13, padding: 0, lineHeight: 1 }}>
@@ -2846,7 +2849,7 @@ export default function App() {
       <Panels store={host.panels} side="side" />
       {/* Above the panels (32): the zoom and MIDI popovers open upward,
           over the bottom panel — under it they were hidden (2026-10-19). */}
-      <footer data-statusbar onKeyDown={onBarKey} style={{ position: "fixed", left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", gap: 12, background: "#1f2733", color: "#aab", fontSize: 12, lineHeight: "20px", padding: "2px 10px", zIndex: 34 }}>
+      <footer data-statusbar onKeyDown={onBarKey} style={{ position: "fixed", left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", gap: 12, background: "#1f2733", color: "#aab", fontSize: 12, lineHeight: "20px", padding: `2px 10px calc(2px + ${SAFE_BOTTOM})`, zIndex: 34 }}>
         <button
           data-input-indicator
           title="note input mode (i)"

@@ -24,8 +24,11 @@ storage_fingerprint() {
   # macOS: WebKit keeps per-origin data (localStorage, IndexedDB) under
   # WebsiteData/Default/<origin hash>/ — the process name for a plain binary,
   # the bundle identifier for the .app. Linux: the app's local data dir.
-  for d in "$HOME/Library/WebKit/battuta-editor/WebsiteData/Default" "$HOME/Library/WebKit/dev.battuta.editor/WebsiteData/Default" \
-           "$HOME/.local/share/battuta-editor" "$HOME/.local/share/dev.battuta.editor"; do
+  # The identifier became com.vibetuned.battuta (2026-10-20, desktop and
+  # tablets alike); the old one is still checked for data from before.
+  for d in "$HOME/Library/WebKit/battuta-editor/WebsiteData/Default" "$HOME/Library/WebKit/com.vibetuned.battuta/WebsiteData/Default" \
+           "$HOME/Library/WebKit/dev.battuta.editor/WebsiteData/Default" \
+           "$HOME/.local/share/battuta-editor" "$HOME/.local/share/com.vibetuned.battuta" "$HOME/.local/share/dev.battuta.editor"; do
     if [ -d "$d" ]; then find "$d" -type f -exec cat {} + 2>/dev/null | cksum; fi
   done
   true # a missing directory is not a failure (set -e)
