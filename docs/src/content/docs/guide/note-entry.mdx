@@ -144,8 +144,15 @@ see what is connected. If you play a note while input mode is off, battuta hints
 that you should press <kbd>i</kbd>.
 
 The desktop app bridges MIDI natively (ALSA on Linux, CoreMIDI on macOS) because
-WebKit has no Web MIDI API; in Chromium the same pipeline runs on Web MIDI. Every
-route ends in the same entry code, so behaviour is identical.
+WebKit has no Web MIDI API; in Chromium the same pipeline runs on Web MIDI. On a
+tablet, the iPad app bridges CoreMIDI the same way, and Android's own WebView
+has Web MIDI — a USB keyboard plugged into either tablet just works. A Bluetooth
+one is paired from battuta itself: click `MIDI` in the status bar, then
+**Bluetooth MIDI…** — on an iPad, Apple's Bluetooth MIDI view lists the
+instruments in range; on Android, battuta asks for *nearby devices* the first
+time, then lists the instruments it finds. Tap one, and it joins the device
+list like a USB keyboard. Every route ends in the same entry code, so behaviour
+is identical.
 
 ## All entry bindings
 

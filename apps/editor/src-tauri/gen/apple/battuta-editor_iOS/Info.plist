@@ -59,5 +59,11 @@
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>battuta connects to your Bluetooth MIDI instrument to hear what you play.</string>
 </dict>
 </plist>

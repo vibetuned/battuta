@@ -3169,6 +3169,19 @@ export default function App() {
           {midiPanel && (
             <div data-midi-list style={{ position: "absolute", right: 0, bottom: 26, background: "#233040", color: "#dde", padding: "6px 10px", borderRadius: 4, whiteSpace: "nowrap", boxShadow: "0 2px 10px rgba(0,0,0,.4)" }}>
               {midiDevices.length ? midiDevices.map((n, i) => <div key={`${n}${i}`}>🎹 {n}</div>) : <div>no MIDI devices connected</div>}
+              {/* A tablet pairs Bluetooth instruments here (M3): the system's view on an iPad, a scan on Android. */}
+              {onTablet() && (
+                <button
+                  data-midi-bluetooth
+                  onClick={() => {
+                    setMidiPanel(false);
+                    void tauriInvoke()?.("midi_bluetooth").catch((e) => setNotice(`Bluetooth MIDI: ${e}`));
+                  }}
+                  style={{ marginTop: 6, border: "1px solid #4a5a6e", borderRadius: 3, background: "transparent", color: "#cdd", padding: "2px 8px", fontSize: 12, fontFamily: "inherit", cursor: "pointer" }}
+                >
+                  Bluetooth MIDI…
+                </button>
+              )}
             </div>
           )}
           <button

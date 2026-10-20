@@ -23,6 +23,10 @@ let package = Package(
             dependencies: [
                 .byName(name: "Tauri")
             ],
-            path: "Sources")
+            path: "Sources",
+            linkerSettings: [
+                // Apple's Bluetooth MIDI view (CABTMIDICentralViewController).
+                .linkedFramework("CoreAudioKit"),
+            ])
     ]
 )

@@ -20,12 +20,17 @@ tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# Desktop-only services: native dialogs, MIDI, and the workspace watcher
+# Desktop-only services: native dialogs and the workspace watcher
 # (slice 9a: live file watching under the folders the user opened).
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 rfd = "0.15"
-midir = "0.10"
 notify = "6"
+
+# MIDI through the shell everywhere the WebView has no Web MIDI: the desktop
+# (WebKitGTK, WKWebView) and the iPad (phase 10, M3 — CoreMIDI). Android's
+# WebView has Web MIDI.
+[target.'cfg(not(target_os = "android"))'.dependencies]
+midir = "0.10"
 
 # Tablet-only (phase 10, M1): the OS document picker and save sheet, and
 # file access that understands what they hand back (Android content:// URIs,
@@ -38,9 +43,9 @@ tauri-plugin-fs = "2"
 tauri-plugin-battuta-mobile = { path = "plugins/battuta-mobile" }
 
 # CoreMIDI delivers hot-plug notifications to the run loop of the thread
-# that created the MIDI client — the poll thread must PUMP one on macOS
-# or the device list stays frozen at the startup snapshot.
-[target.'cfg(target_os = "macos")'.dependencies]
+# that created the MIDI client — the poll thread must PUMP one on macOS and
+# iOS or the device list stays frozen at the startup snapshot.
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 core-foundation = "0.10"
 
 [features]

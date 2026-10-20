@@ -1,17 +1,37 @@
 package com.vibetuned.battuta.mobile
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.AlertDialog
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanFilter
+import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
+import android.content.Context
 import android.content.Intent
+import android.media.midi.MidiDevice
+import android.media.midi.MidiManager
 import android.net.Uri
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.ParcelUuid
 import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
 import android.util.Base64
 import android.webkit.MimeTypeMap
+import android.widget.ArrayAdapter
+import app.tauri.PermissionState
 import androidx.activity.result.ActivityResult
 import androidx.core.content.FileProvider
 import app.tauri.annotation.ActivityCallback
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
+import app.tauri.annotation.Permission
+import app.tauri.annotation.PermissionCallback
 import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSArray
@@ -19,6 +39,10 @@ import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
 import java.io.File
 import java.io.FileNotFoundException
+import java.util.UUID
+
+/** The Bluetooth LE MIDI service every BLE MIDI instrument advertises. */
+private val MIDI_SERVICE: UUID = UUID.fromString("03B80E5A-EDE8-4B33-A751-6CE34EC4C700")
 
 /** The share sheet's own provider class (the app declares a FileProvider of its own). */
 class BattutaShareProvider : FileProvider()
@@ -77,8 +101,88 @@ class RenameArgs {
  * any storage provider, not only the device's own storage, whose document
  * ids happen to look like paths.
  */
-@TauriPlugin
+@TauriPlugin(
+    permissions = [
+        // Android 12+: "nearby devices" (scan + connect), never the location.
+        Permission(strings = [Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT], alias = "bluetooth"),
+        // Android 8 to 11: a Bluetooth scan needs the location.
+        Permission(strings = [Manifest.permission.ACCESS_FINE_LOCATION], alias = "location"),
+    ]
+)
 class BattutaMobilePlugin(private val activity: Activity) : Plugin(activity) {
+    private val main = Handler(Looper.getMainLooper())
+
+    /** Bluetooth MIDI connections: held open while the app is — closing one unpairs it. */
+    private val bluetooth = ArrayList<MidiDevice>()
+
+    // --- Bluetooth MIDI pairing (M3; after midi-stroke's working version) ---
+    //
+    // A scan for the MIDI service, a list of what answers, and the tapped
+    // instrument opened through MidiManager. From then on it is a MIDI device
+    // of the system like a USB one, so the WebView's Web MIDI lists it and
+    // battuta plays and listens through it with no more native code.
+
+    private fun bluetoothAlias() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) "bluetooth" else "location"
+
+    @Command
+    fun bluetoothMidi(invoke: Invoke) {
+        if (getPermissionState(bluetoothAlias()) != PermissionState.GRANTED) {
+            requestPermissionForAlias(bluetoothAlias(), invoke, "bluetoothMidiPermission")
+            return
+        }
+        main.post { scan(invoke) }
+    }
+
+    @PermissionCallback
+    private fun bluetoothMidiPermission(invoke: Invoke) {
+        if (getPermissionState(bluetoothAlias()) == PermissionState.GRANTED) main.post { scan(invoke) }
+        else invoke.reject("Bluetooth permission denied")
+    }
+
+    /** The Bluetooth MIDI instruments in range, listed as they answer; one tapped is connected. */
+    @SuppressLint("MissingPermission")
+    private fun scan(invoke: Invoke) {
+        val adapter = (activity.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
+        val scanner = adapter?.bluetoothLeScanner
+        if (adapter == null || !adapter.isEnabled || scanner == null) {
+            invoke.reject("Bluetooth is off")
+            return
+        }
+        val found = ArrayList<BluetoothDevice>()
+        val names = ArrayAdapter<String>(activity, android.R.layout.simple_list_item_1, ArrayList())
+        val results = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, result: ScanResult) {
+                main.post {
+                    val device = result.device
+                    if (found.none { it.address == device.address }) {
+                        found.add(device)
+                        names.add(device.name ?: result.scanRecord?.deviceName ?: device.address)
+                    }
+                }
+            }
+        }
+        val stop = { runCatching { scanner.stopScan(results) } }
+        AlertDialog.Builder(activity)
+            .setTitle("Bluetooth MIDI — looking for instruments…")
+            .setAdapter(names) { _, which ->
+                stop()
+                connect(found[which])
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .setOnDismissListener { stop() }
+            .show()
+        scanner.startScan(
+            listOf(ScanFilter.Builder().setServiceUuid(ParcelUuid(MIDI_SERVICE)).build()),
+            ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(),
+            results,
+        )
+        invoke.resolve()
+    }
+
+    private fun connect(device: BluetoothDevice) {
+        val midi = activity.getSystemService(Context.MIDI_SERVICE) as? MidiManager ?: return
+        midi.openBluetoothDevice(device, { opened -> if (opened != null) bluetooth.add(opened) }, main)
+    }
 
     // --- the share sheet ------------------------------------------------------
 

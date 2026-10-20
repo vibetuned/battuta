@@ -2,6 +2,12 @@
 //! WebView nor Tauri's own plugins give a tablet.
 //!
 //! - **The share sheet** — a file handed to AirDrop, Mail, another app.
+//! - **Bluetooth MIDI pairing** (M3) — Apple's own Bluetooth MIDI view on
+//!   iPadOS; on Android a scan for the MIDI service, a list, and the
+//!   connection held open. A paired instrument is then an ordinary MIDI
+//!   device of the system: the shell's CoreMIDI bridge hears it on the iPad,
+//!   the WebView's Web MIDI on Android. (After midi-stroke's working
+//!   version, Vibetuned's other app.)
 //! - **Folders the user picks.** On iPadOS a picked folder is a real path
 //!   behind a security scope: the plugin starts the scope and keeps a
 //!   bookmark, so the folder reopens next launch (`open_folder`). On
@@ -89,6 +95,13 @@ impl<R: Runtime> BattutaMobile<R> {
             data: &'a str,
         }
         self.call::<SharedOut>("share", Args { name, data }).map(|o| o.completed)
+    }
+
+    /// Pair a Bluetooth MIDI instrument: the system's view on iPadOS, a scan
+    /// and a list on Android (asking for "nearby devices" first). Returns
+    /// when the view is shown; the instrument arrives as a MIDI device.
+    pub fn bluetooth_midi(&self) -> Result<(), String> {
+        self.call::<Nothing>("bluetoothMidi", ()).map(|_| ())
     }
 
     /// The system folder picker. iPadOS: a path, its scope started and a

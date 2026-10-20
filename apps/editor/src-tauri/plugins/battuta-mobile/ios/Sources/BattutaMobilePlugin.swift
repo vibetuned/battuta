@@ -1,3 +1,4 @@
+import CoreAudioKit
 import SwiftRs
 import Tauri
 import UIKit
@@ -56,6 +57,32 @@ class BattutaMobilePlugin: Plugin, UIDocumentPickerDelegate {
       }
       self.manager.viewController?.present(sheet, animated: true)
     }
+  }
+
+  // MARK: Bluetooth MIDI
+
+  /// Apple's Bluetooth MIDI view: the instruments in range, to connect or
+  /// disconnect. A connected one is a CoreMIDI source from then on — the
+  /// shell's MIDI bridge hears it at its next hot-plug poll. Resolves when
+  /// the view is up (after midi-stroke's working version).
+  @objc public func bluetoothMidi(_ invoke: Invoke) {
+    DispatchQueue.main.async {
+      guard let presenter = self.manager.viewController else {
+        invoke.reject("no view to present from")
+        return
+      }
+      let central = CABTMIDICentralViewController()
+      central.navigationItem.rightBarButtonItem = UIBarButtonItem(
+        barButtonSystemItem: .done, target: self, action: #selector(self.closeBluetoothMidi))
+      let navigation = UINavigationController(rootViewController: central)
+      navigation.modalPresentationStyle = .formSheet
+      presenter.present(navigation, animated: true)
+      invoke.resolve()
+    }
+  }
+
+  @objc private func closeBluetoothMidi() {
+    manager.viewController?.dismiss(animated: true)
   }
 
   // MARK: folders the user picks

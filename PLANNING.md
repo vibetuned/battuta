@@ -73,7 +73,13 @@ document trees under path-shaped addresses the shell resolves; the api's
 
 **M3 — MIDI.** Android's WebView already offers Web MIDI (found in M0: the
 tablet's USB port and a networked device listed); iPadOS's WebKit has
-none, so the shell brings CoreMIDI there (`midir` supports iOS).
+none, so the shell brings CoreMIDI there (`midir` supports iOS). Begun
+2026-10-20: the shell's MIDI bridge builds for iOS too, with the "battuta"
+virtual source (the background-audio mode iPadOS asks for, the user's
+choice); Android's input is proven end to end; Bluetooth MIDI is paired
+from the MIDI list on both (after midi-stroke's working version). Verified
+the same day: Android's input and output end to end against the Mac, and
+Bluetooth pairing on both tablets by the user.
 
 **M4 — the stores.** Icons and launch screens, the licence notice and the
 Verovio credit in the listings, release signing, Apple's privacy manifest.

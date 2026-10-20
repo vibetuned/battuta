@@ -11,6 +11,71 @@ below, and changes since the last tag gather under *Unreleased*.
 
 ## Unreleased
 
+- **Phase 10, M3 verified (2026-10-20).** The user tested Bluetooth MIDI
+  pairing on both tablets ("both working") — the ROLI Piano 49 shows in
+  Android's MIDI service as a Bluetooth device battuta holds open — and
+  stopped midi-stroke, which settled Android's output: with it gone,
+  battuta is the MIDI service's only client, and a C5 battuta played from
+  the tablet reached the Mac (note-on, note-off and the closing CC 123
+  all-notes-off, heard on `SAMSUNG_Android`). The cause was as suspected:
+  Android lets one app at a time hold a device's sending port, and Web
+  MIDI's refusal is silent. The troubleshooting page says so (and how to
+  pair a Bluetooth instrument from battuta).
+- **Phase 10, M3 — battuta's MIDI source on the iPad; Bluetooth MIDI on
+  both tablets (2026-10-20).** The user: yes to the iPad's virtual
+  source, and for Bluetooth pairing "we already add a working version of
+  that to the midi-stroke project". **Virtual source:** iPadOS creates a
+  virtual MIDI endpoint only for an app with the audio background mode, so
+  `Info.ios.plist` declares `UIBackgroundModes: audio` (it also keeps
+  playback going when the iPad locks); a temporary probe then showed the
+  shell's outputs as `["battuta (virtual source)"]`, as on the desktop.
+  **Bluetooth MIDI**, after midi-stroke's working version (read, not
+  touched): battuta needs only its PAIRING half — midi-stroke carries a
+  whole native MIDI layer because it does not use Web MIDI on mobile,
+  while here a paired instrument is just another MIDI device of the system,
+  heard by the CoreMIDI bridge on the iPad and by Web MIDI on Android. In
+  the battuta-mobile plugin: on iPadOS Apple's `CABTMIDICentralViewController`
+  as a form sheet with a Done button (`CoreAudioKit` linked from
+  `Package.swift`, `NSBluetoothAlwaysUsageDescription` in
+  `Info.ios.plist`); on Android a BLE scan filtered on the MIDI service
+  (`03B80E5A-…`), the answers listed live in a native dialog, the tapped
+  one opened with `MidiManager.openBluetoothDevice` and held for the app's
+  life — "nearby devices" asked first on Android 12+, the location below
+  (the plugin's manifest declares both, `neverForLocation`). The shell's
+  `midi_bluetooth` command on both tablets; **Bluetooth MIDI…** in the
+  status bar's MIDI list, on tablets. Verified: on the Galaxy Tab the
+  command raises Android's "nearby devices" prompt, and dismissing it
+  rejects cleanly ("Bluetooth permission denied") with the permission
+  left ungranted for the user; the iPad builds with the view and the
+  usage text and starts clean. Pairing a real instrument is the user's
+  to try. Desktop untouched (the additions are tablet-only); initial
+  chunk 385.3 kB of 390.6.
+- **Phase 10, M3 begins — MIDI on the tablets (2026-10-20).** "you can
+  start m3". **iPad:** its WebKit has no Web MIDI, so the shell's MIDI
+  bridge — the desktop's `midir` input thread (hot-plug poll, note
+  events) and its output commands — now builds for iOS too: `midir` is a
+  dependency everywhere but Android, the MIDI code is
+  `#[cfg(not(target_os = "android"))]`, the run-loop pump that keeps
+  CoreMIDI's hot-plug alive runs on iOS as on macOS
+  (`core-foundation` for both), the iOS shell registers
+  `midi_open_outputs`/`midi_close_outputs`/`midi_send` (the handler list
+  is split per tablet), and the page takes the shell's MIDI wherever the
+  WebView has none (`shellPlatform().platform !== "android"`). On the
+  iPad, a temporary probe showed the bridge answering (`midi_open_outputs`
+  → `[]`, no error: CoreMIDI up, no device plugged in) — and no
+  "battuta" virtual source: iPadOS creates one only for apps with the
+  audio background mode, a store decision left open. **Android:** Web
+  MIDI, as M0 found; **input proven end to end** with the Mac as the
+  instrument — the tablet in USB MIDI mode shows the Mac as
+  `SAMSUNG_Android`; a throwaway `midir` tool there played G4 into
+  battuta on the tablet, which entered a G4 (undone after). **Output not
+  yet**: the tablet opens its USB port ("Port du périphérique USB") and
+  sends without error, but nothing reaches the Mac (whose listener was
+  checked on a virtual loop) — `dumpsys midi` shows another app,
+  `com.vibetuned.midi_stroke`, frozen in the background with connections
+  to the same devices, and Android lets one client hold a device's input
+  port; left to the user. Desktop: shell smoke 15 (the native MIDI
+  bridge still reaches the status bar), phase 4 75 (the MIDI e2e).
 - **Phase 10, M2 — the context bar folds when it would not fit
   (2026-10-20).** User-reported: in portrait the status bar "gets too fat
   and hides part of the keyboard". Its controls did not fit one line at a

@@ -9,5 +9,16 @@
   <true/>
   <key>LSSupportsOpeningDocumentsInPlace</key>
   <true/>
+  <!-- Background audio (phase 10, M3): iPadOS lets an app create a virtual
+       MIDI source — the "battuta" other apps hear playback from, as on the
+       desktop — only with this mode (MIDISourceCreate is refused without
+       it); it also keeps playback going when the iPad locks. -->
+  <!-- Asked before Apple's Bluetooth MIDI view lists instruments (M3). -->
+  <key>NSBluetoothAlwaysUsageDescription</key>
+  <string>battuta connects to your Bluetooth MIDI instrument to hear what you play.</string>
+  <key>UIBackgroundModes</key>
+  <array>
+    <string>audio</string>
+  </array>
 </dict>
 </plist>

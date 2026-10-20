@@ -1,9 +1,10 @@
 //! The battuta shell — desktop (Windows, macOS, Linux) and mobile (iPadOS,
 //! Android tablets) from one crate. `run()` is the entry both use: desktop
 //! through `main.rs`, mobile through the generated Xcode / Gradle projects.
-//! Desktop-only services — native dialogs (`rfd`), MIDI (`midir`), folder
-//! watching (`notify`) — are `#[cfg(desktop)]`; mobile gets them through
-//! the OS document picker and its own MIDI later (phase 10).
+//! Desktop-only services — native dialogs (`rfd`), folder watching
+//! (`notify`) — are `#[cfg(desktop)]`; tablets go through the OS document
+//! picker and battuta's native plugin (phase 10). MIDI (`midir`) is the
+//! shell's wherever the WebView has no Web MIDI: desktop and iPadOS.
 
 /// IPC benchmark: echo an SVG-sized string back to the webview.
 #[tauri::command]
@@ -263,6 +264,16 @@ async fn workspace_home(app: tauri::AppHandle, ws: tauri::State<'_, Workspace>) 
     let home = app.path().document_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&home).map_err(|e| format!("{}: {e}", home.display()))?;
     admit_root(&ws, &home)
+}
+
+/// Pair a Bluetooth MIDI instrument (tablets, M3): Apple's view on iPadOS,
+/// a scan and a list on Android. The instrument then arrives as a MIDI
+/// device — the CoreMIDI bridge on the iPad, Web MIDI on Android.
+#[cfg(mobile)]
+#[tauri::command]
+async fn midi_bluetooth(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_battuta_mobile::BattutaMobileExt;
+    app.battuta_mobile().bluetooth_midi()
 }
 
 /// The system share sheet (tablets): AirDrop, Mail, another app.
@@ -571,10 +582,10 @@ async fn save_score_as(contents: String, suggested: String, dir: Option<String>)
 /// MIDI here): the frontend opens every output port once, then streams
 /// note events through midi_send. Ports are deduped by name — the same
 /// driver quirk as inputs. Dropping a connection closes it.
-#[cfg(desktop)]
+#[cfg(not(target_os = "android"))]
 struct MidiOut(std::sync::Mutex<Vec<midir::MidiOutputConnection>>);
 
-#[cfg(desktop)]
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 fn midi_open_outputs(state: tauri::State<MidiOut>) -> Vec<String> {
     let mut conns = state.0.lock().expect("midi-out lock");
@@ -615,13 +626,13 @@ fn midi_open_outputs(state: tauri::State<MidiOut>) -> Vec<String> {
 
 /// Uncheck: drop the connections AND the published virtual source, so
 /// "battuta" doesn't linger in other apps' device lists.
-#[cfg(desktop)]
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 fn midi_close_outputs(state: tauri::State<MidiOut>) {
     state.0.lock().expect("midi-out lock").clear();
 }
 
-#[cfg(desktop)]
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 fn midi_send(state: tauri::State<MidiOut>, data: Vec<u8>) {
     let mut conns = state.0.lock().expect("midi-out lock");
@@ -630,11 +641,12 @@ fn midi_send(state: tauri::State<MidiOut>, data: Vec<u8>) {
     }
 }
 
-/// Native MIDI: WebKitGTK has no Web MIDI API, so the shell bridges it —
+/// Native MIDI: WebKitGTK and the iPad's WebKit have no Web MIDI API, so the
+/// shell bridges it (CoreMIDI on macOS and iPadOS) —
 /// every input port is connected and note on/off events stream to the
 /// webview as Tauri events ("midi-note"), with the device list on
 /// "midi-devices". A 2s poll handles hot-plug (midir has no callbacks).
-#[cfg(desktop)]
+#[cfg(not(target_os = "android"))]
 fn spawn_midi(app: tauri::AppHandle) {
     use tauri::Emitter;
     std::thread::spawn(move || {
@@ -718,7 +730,7 @@ fn spawn_midi(app: tauri::AppHandle) {
             // they are processed — so pump the run loop for the interval
             // (falling back to sleep in the slices where it has no sources
             // and returns immediately).
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
             {
                 use core_foundation::runloop::{kCFRunLoopDefaultMode, CFRunLoop, CFRunLoopRunResult};
                 let deadline = std::time::Instant::now() + std::time::Duration::from_millis(2000);
@@ -729,7 +741,7 @@ fn spawn_midi(app: tauri::AppHandle) {
                     }
                 }
             }
-            #[cfg(not(target_os = "macos"))]
+            #[cfg(not(any(target_os = "macos", target_os = "ios")))]
             std::thread::sleep(std::time::Duration::from_millis(2000));
         }
     });
@@ -776,7 +788,7 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .manage(InitialFile(std::sync::Mutex::new(initial)))
         .manage(Workspace::default());
-    #[cfg(desktop)]
+    #[cfg(not(target_os = "android"))]
     let builder = builder.manage(MidiOut(std::sync::Mutex::new(Vec::new())));
     // The tablets' document picker and save sheet, and file access that
     // reads what they return (content:// URIs, security-scoped files).
@@ -810,7 +822,7 @@ pub fn run() {
             #[cfg(desktop)]
             let builder = builder.title("battuta").inner_size(1280.0, 860.0);
             builder.build()?;
-            #[cfg(desktop)]
+            #[cfg(not(target_os = "android"))]
             spawn_midi(app.app_handle().clone());
             Ok(())
         })
@@ -1088,9 +1100,15 @@ pub fn run() {
 fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool {
     tauri::generate_handler![bench_echo, bench_report, js_log, open_score, save_score, save_score_as, export_file, file_mtime, confirm_dialog, midi_open_outputs, midi_close_outputs, midi_send, initial_score, workspace_pick_folder, workspace_open_folder, workspace_read_dir, workspace_read_file, workspace_rename, workspace_create_folder, workspace_create_file, workspace_watch, workspace_unwatch]
 }
-#[cfg(mobile)]
+/// The iPad answers MIDI too (CoreMIDI, M3): its WebKit has no Web MIDI.
+#[cfg(target_os = "ios")]
 fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool {
-    tauri::generate_handler![bench_echo, bench_report, js_log, save_score, file_mtime, initial_score, share_file, workspace_home, workspace_pick_folder, workspace_open_folder, workspace_read_dir, workspace_read_file, workspace_rename, workspace_create_folder, workspace_create_file]
+    tauri::generate_handler![bench_echo, bench_report, js_log, save_score, file_mtime, initial_score, share_file, midi_open_outputs, midi_close_outputs, midi_send, midi_bluetooth, workspace_home, workspace_pick_folder, workspace_open_folder, workspace_read_dir, workspace_read_file, workspace_rename, workspace_create_folder, workspace_create_file]
+}
+/// Android's WebView has Web MIDI: the page talks to the devices itself.
+#[cfg(target_os = "android")]
+fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool {
+    tauri::generate_handler![bench_echo, bench_report, js_log, save_score, file_mtime, initial_score, share_file, midi_bluetooth, workspace_home, workspace_pick_folder, workspace_open_folder, workspace_read_dir, workspace_read_file, workspace_rename, workspace_create_folder, workspace_create_file]
 }
 
 #[cfg(test)]

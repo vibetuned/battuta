@@ -189,7 +189,9 @@ export function shellMidiBackend(shell: ShellMidiBridge): MidiBackend {
 /** Web MIDI where the browser has it, the bridge inside the shell, nothing otherwise. */
 export function detectMidiBackend(): MidiBackend {
   if (typeof navigator !== "undefined" && "requestMIDIAccess" in navigator) return webMidiBackend(navigator as unknown as WebMidiNavigator);
-  if (typeof window !== "undefined" && !shellPlatform()?.mobile) {
+  // The shell's MIDI where the WebView has none: the desktop, and the iPad
+  // (CoreMIDI, phase 10 M3). Android's WebView has Web MIDI (taken above).
+  if (typeof window !== "undefined" && shellPlatform()?.platform !== "android") {
     const t = (window as unknown as { __TAURI__?: { event?: { listen?: ShellMidiBridge["listen"] }; core?: { invoke?: ShellMidiBridge["invoke"] } } }).__TAURI__;
     if (t?.event?.listen && t.core?.invoke) return shellMidiBackend({ listen: t.event.listen, invoke: t.core.invoke });
   }
