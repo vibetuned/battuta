@@ -1,7 +1,8 @@
 # On-screen keyboard
 
 Every battuta action is a keystroke, which is a problem on a tablet. This
-plugin puts the whole keymap on screen: a two-octave piano that enters
+plugin puts the whole keymap on screen: a two-octave piano (one octave on
+a phone, so the keys stay wide enough to play) that enters
 notes exactly as a MIDI controller does, sticky **alt** and **shift**
 latches, a digit pad that becomes durations, voltas, fingering or finger
 change depending on the latch, and one button per action — generated from

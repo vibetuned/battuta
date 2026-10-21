@@ -12,9 +12,9 @@ no accounts, no sign-in, no licence check, no update ping. The application
 makes no network requests of its own — not on first run, not ever. Nothing you
 open, edit, play or save leaves your machine.
 
-There is no server to send anything to: battuta is a desktop application that
-reads and writes MEI files on your disk, and nobody — including the
-maintainer — can see what you are working on.
+There is no server to send anything to: battuta — on the desktop, on iPhone
+and iPad, and on Android — reads and writes MEI files on your own device, and
+nobody — including the maintainer — can see what you are working on.
 
 ## What the app stores
 
@@ -31,6 +31,32 @@ it without losing a score.
 The session entry holds file *paths* and names — not the contents of your
 scores. Clearing your browser data (web build) or the app's local storage
 (desktop) resets all three; your files on disk are untouched.
+
+## On iPhone, iPad and Android
+
+The phone and tablet apps keep the same promise, with what a phone adds:
+
+| What | Where | Why |
+| --- | --- | --- |
+| Your scores | battuta's own folder (in the Files app on iPhone and iPad), or a folder you picked | Where *save* puts a new score; the folder view lists it |
+| Folders you picked | iOS: a bookmark in the app's own settings; Android: the system's grant | So the folder view reopens them next time — removed with the app |
+
+- **Bluetooth** is used only to connect a MIDI instrument you choose — through
+  Apple's Bluetooth MIDI view on iPhone and iPad, through a scan for Bluetooth
+  MIDI devices on Android. Android 8 to 11 ask for the *location* permission
+  before any Bluetooth scan; battuta never reads your location, and Android 12
+  and later do not ask for it.
+- **Files leave the app only when you send them**: the share sheet, or a copy
+  you save somewhere yourself.
+- **No network.** Verovio, the piano samples and the fonts ship inside the
+  app. The Android app declares the internet permission because the
+  framework's template does; nothing in battuta uses it.
+- The App Store's privacy label reads *Data Not Collected*, and Google Play's
+  data safety section *No data collected* and *No data shared*.
+
+Deleting the app deletes everything it stored — **battuta's own folder
+included**, on iPhone, iPad and Android alike: move the scores you want to
+keep somewhere else first. Scores in a folder you picked stay where they are.
 
 ## MIDI and audio
 

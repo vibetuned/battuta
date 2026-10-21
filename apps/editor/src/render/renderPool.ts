@@ -66,9 +66,9 @@ class PoolWorker {
     this.worker.postMessage({ type: "render", id, xml, optionsJson });
   }
 
-  renderPages(id: number, xml: string, onPage: (index: number, svg: string) => void, done: (pageCount: number) => void) {
+  renderPages(id: number, xml: string, optionsJson: string, onPage: (index: number, svg: string) => void, done: (pageCount: number) => void) {
     this.pageHandlers.set(id, { onPage, done });
-    this.worker.postMessage({ type: "renderPages", id, xml });
+    this.worker.postMessage({ type: "renderPages", id, xml, optionsJson });
   }
 
   timemap(id: number, xml: string, expand: string | null, done: (data: PlaybackData) => void) {
@@ -125,12 +125,12 @@ export class RenderPool {
     return p;
   }
 
-  /** Full-document paged rendering (page view); streams pages as they finish. */
-  async renderDocumentPages(xml: string, onPage: (index: number, svg: string) => void): Promise<number> {
+  /** Full-document paged rendering (page view); streams pages as they finish. `options` overrides the A4 page (the page view on a phone). */
+  async renderDocumentPages(xml: string, onPage: (index: number, svg: string) => void, options?: Record<string, unknown>): Promise<number> {
     const w = this.workers[0]!;
     await w.ready;
     return new Promise((resolve) => {
-      w.renderPages(this.nextId++, xml, onPage, resolve);
+      w.renderPages(this.nextId++, xml, JSON.stringify(options ?? {}), onPage, resolve);
     });
   }
 

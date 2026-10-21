@@ -25,7 +25,7 @@ import { ZOOM_STEPS } from "./PageEditor";
 import { bandHeightFor, cropOf, scaleFor } from "./geometry";
 import { matchMeasures, measureFor, type Matching } from "./match";
 import { PdfPanel, type PdfActions, type PdfState, type PickedFile } from "./Panel";
-import { releasePages, renderPdf, type RenderedPage } from "./pdf";
+import { PDF_NEEDS, pdfMissing, releasePages, renderPdf, type RenderedPage } from "./pdf";
 import { ScanCell } from "./ScanCell";
 import { signal, useStore } from "./store";
 
@@ -142,6 +142,7 @@ export default definePlugin({
         let pages = before.pages;
         let fileName = before.fileName;
         if (pdf) {
+          if (pdfMissing().length) throw new Error(PDF_NEEDS);
           const bytes = await pdf.arrayBuffer();
           // the key BEFORE rendering: the library may take the buffer over
           const key = drawingKey(pdf.name, bytes.byteLength);

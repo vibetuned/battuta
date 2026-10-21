@@ -1,5 +1,5 @@
 /**
- * The panel itself: a two-octave piano, the modifier latches, and one
+ * The panel itself: a two-octave piano (one on a phone), the modifier latches, and one
  * button per action — the keymap's rows generated from `ctx.keymap`, the
  * locked rows hand-listed in keys.ts.
  *
@@ -26,7 +26,8 @@ const BLACKS: [number, number][] = [
   [8, 4],
   [10, 5],
 ];
-const WHITE_COUNT = 14; // two octaves
+/** The rail's top: the lower octave shown at C7 — on a phone, the only one — reaches the piano's last keys. */
+const OCT_MAX = 7;
 
 /**
  * The row's height, declared rather than inherited. Until slice 4b it was
@@ -63,16 +64,26 @@ const LATCHED: CSSProperties = { background: "#4a7dbd", color: "#fff", borderCol
  * their own — because one line squeezes the piano to a sliver at a
  * tablet's portrait width (2026-10-20, M2). Same elements either way, so
  * turning the tablet keeps the octave rail and the latches as they were.
+ *
+ * A phone shows one octave, not two (2026-10-21, the user: two left the
+ * keys too thin to play): the upper octave's block is hidden and the lower
+ * one takes the piano's width, so every key is twice as wide. A phone is a
+ * touch screen whose shorter side is under 600 px — the host's own phone
+ * width — so it holds upright and sideways, and a tablet never matches.
  */
 const LAYOUT_CSS = `
 [data-vkeys] { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: stretch; padding: 8px 10px; background: #1a222d; user-select: none; }
 [data-vkeys] > [data-vk-piano] { flex: 0 0 clamp(240px, 34vw, 460px); }
 [data-vkeys] > [data-vk-groups] { flex: 1 1 0; min-width: 0; order: 4; }
 [data-vkeys] > [data-vk-pinned] { order: 5; }
+[data-vkeys] [data-vk-octave] { position: relative; flex: 1; display: flex; }
 @media (orientation: portrait) {
   [data-vkeys] > [data-vk-piano] { flex: 1 1 auto; }
   [data-vkeys] > [data-vk-pinned] { order: 4; }
   [data-vkeys] > [data-vk-groups] { order: 5; flex: 1 0 100%; }
+}
+@media (pointer: coarse) and (max-width: 599px), (pointer: coarse) and (max-height: 599px) {
+  [data-vkeys] [data-vk-octave="1"] { display: none; }
 }
 `;
 
@@ -91,12 +102,12 @@ export interface KeyboardPanelProps {
 }
 
 export function KeyboardPanel({ keymap, entryMode, runnable, onAction, onNoteOn, onNoteOff, onClose }: KeyboardPanelProps) {
-  /** Lowest shown octave: oct 3 shows C3–B4 (middle C on the left half). */
+  /** Lowest shown octave: oct 3 shows C3–B4 (middle C on the left half), C3–B3 on a phone. */
   const [oct, setOct] = useState(3);
   const [mods, setMods] = useState<LatchedMods>(NO_MODS);
   const [held, setHeld] = useState<Set<number>>(new Set());
 
-  const stepOctave = (d: number) => setOct((o) => Math.min(6, Math.max(0, o + d)));
+  const stepOctave = (d: number) => setOct((o) => Math.min(OCT_MAX, Math.max(0, o + d)));
 
   const noteOn = (midi: number) => {
     setHeld((h) => new Set(h).add(midi));
@@ -117,19 +128,10 @@ export function KeyboardPanel({ keymap, entryMode, runnable, onAction, onNoteOn,
   // both would cost more to keep correct than it saves.
   const groups = groupKeys(keymap, runnable);
 
-  // Piano geometry in percent of the piano width.
-  const whiteW = 100 / WHITE_COUNT;
+  // Piano geometry in percent of ONE octave's width: each octave is a block
+  // of its own, so a phone can hide the upper one (LAYOUT_CSS).
+  const whiteW = 100 / 7;
   const blackW = whiteW * 0.62;
-  const whites = Array.from({ length: WHITE_COUNT }, (_, i) => ({
-    midi: (oct + 1 + Math.floor(i / 7)) * 12 + WHITE_SEMIS[i % 7]!,
-    label: i % 7 === 0 ? `C${oct + Math.floor(i / 7)}` : "",
-  }));
-  const blacks = [0, 1].flatMap((o) =>
-    BLACKS.map(([semi, after]) => ({
-      midi: (oct + 1 + o) * 12 + semi,
-      left: (o * 7 + after + 1) * whiteW - blackW / 2,
-    })),
-  );
 
   const keyEvents = (midi: number) => ({
     onPointerDown: (e: ReactPointerEvent) => {
@@ -177,25 +179,36 @@ export function KeyboardPanel({ keymap, entryMode, runnable, onAction, onNoteOn,
       onWheel={(e) => stepOctave(e.deltaY > 0 ? -1 : 1)}
     >
       <div style={{ display: "flex", height: "100%" }}>
-        {whites.map((w) => (
-          <div
-            key={w.midi}
-            data-vk-note={w.midi}
-            {...keyEvents(w.midi)}
-            style={{ flex: 1, background: held.has(w.midi) ? "#9fc3ea" : "#f3f5f7", border: "1px solid #556", borderRadius: "0 0 4px 4px", display: "flex", alignItems: "flex-end", justifyContent: "center", color: "#667", fontSize: 10, paddingBottom: 2 }}
-          >
-            {w.label}
+        {[0, 1].map((o) => (
+          // laid out by LAYOUT_CSS, not inline: an inline display would win over the phone's rule
+          <div key={o} data-vk-octave={o}>
+            {WHITE_SEMIS.map((semi, i) => {
+              const midi = (oct + 1 + o) * 12 + semi;
+              return (
+                <div
+                  key={midi}
+                  data-vk-note={midi}
+                  {...keyEvents(midi)}
+                  style={{ flex: 1, background: held.has(midi) ? "#9fc3ea" : "#f3f5f7", border: "1px solid #556", borderRadius: "0 0 4px 4px", display: "flex", alignItems: "flex-end", justifyContent: "center", color: "#667", fontSize: 10, paddingBottom: 2 }}
+                >
+                  {i === 0 ? `C${oct + o}` : ""}
+                </div>
+              );
+            })}
+            {BLACKS.map(([semi, after]) => {
+              const midi = (oct + 1 + o) * 12 + semi;
+              return (
+                <div
+                  key={midi}
+                  data-vk-note={midi}
+                  {...keyEvents(midi)}
+                  style={{ position: "absolute", top: 0, left: `${(after + 1) * whiteW - blackW / 2}%`, width: `${blackW}%`, height: "60%", background: held.has(midi) ? "#4a7dbd" : "#222a34", border: "1px solid #111", borderRadius: "0 0 3px 3px", zIndex: 1 }}
+                />
+              );
+            })}
           </div>
         ))}
       </div>
-      {blacks.map((b) => (
-        <div
-          key={b.midi}
-          data-vk-note={b.midi}
-          {...keyEvents(b.midi)}
-          style={{ position: "absolute", top: 0, left: `${b.left}%`, width: `${blackW}%`, height: "60%", background: held.has(b.midi) ? "#4a7dbd" : "#222a34", border: "1px solid #111", borderRadius: "0 0 3px 3px", zIndex: 1 }}
-        />
-      ))}
     </div>
   );
 

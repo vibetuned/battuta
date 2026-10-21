@@ -21,7 +21,8 @@
     "test:plugins": "node packages/plugins/run-tests.mjs",
     "tauri": "cd apps/editor && tauri",
     "android": "cd apps/editor && sh scripts/mobile.sh android",
-    "ios": "cd apps/editor && sh scripts/mobile.sh ios"
+    "ios": "cd apps/editor && sh scripts/mobile.sh ios",
+    "store:screenshots": "npm run store:screenshots -w @battuta/editor"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",

@@ -14,7 +14,7 @@
  * 🎹 that opens the on-screen keyboard cannot come from the keyboard's
  * own code). Decided 2026-09-14.
  */
-import { Fragment, useLayoutEffect, useRef } from "react";
+import { Fragment, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { toDisposable, type Disposable, type PanelSide, type PanelSpec, type SlotItem, type SlotItemContribution, type SlotName, type Store } from "@battuta/api";
 import { createStore, useStore } from "./store";
 import type { PluginInfo } from "./registry";
@@ -140,7 +140,8 @@ export function Slot({ store, name, onCommand, plugins }: { store: SlotStore; na
 
 /**
  * The screen's safe-area insets — a tablet's status bar above, its home
- * indicator or gesture bar below. The page covers the whole screen
+ * indicator or gesture bar below, and a phone's camera housing on one side
+ * while it is held sideways. The page covers the whole screen
  * (viewport-fit=cover, index.html) and keeps its controls clear of them by
  * these; on desktop and in browsers they are 0. Everything placed against
  * the context bar stands on its measured height (`--battuta-bar-h`, the
@@ -148,8 +149,26 @@ export function Slot({ store, name, onCommand, plugins }: { store: SlotStore; na
  */
 export const SAFE_TOP = "env(safe-area-inset-top, 0px)";
 export const SAFE_BOTTOM = "env(safe-area-inset-bottom, 0px)";
+export const SAFE_LEFT = "env(safe-area-inset-left, 0px)";
+export const SAFE_RIGHT = "env(safe-area-inset-right, 0px)";
 
-const BOTTOM: React.CSSProperties = { position: "fixed", left: 0, right: 0, bottom: `var(--battuta-bar-h, calc(24px + ${SAFE_BOTTOM}))`, zIndex: 32, background: "#1f2733", color: "#dde", borderTop: "1px solid #3a4656", maxHeight: "40vh", overflow: "auto" };
+/**
+ * A phone's screen (phase 10, M4): under 600 px a side panel slides OVER
+ * the score instead of pushing it aside — pushed, a portrait phone kept
+ * about 100 px of music beside the 280 px panel. Tablets, and phones held
+ * sideways, keep the push.
+ */
+const NARROW = "(max-width: 599px)";
+const narrowNow = (): boolean => typeof matchMedia !== "undefined" && matchMedia(NARROW).matches;
+const onNarrowChange = (cb: () => void): (() => void) => {
+  if (typeof matchMedia === "undefined") return () => undefined;
+  const query = matchMedia(NARROW);
+  query.addEventListener("change", cb);
+  return () => query.removeEventListener("change", cb);
+};
+export const useNarrowScreen = (): boolean => useSyncExternalStore(onNarrowChange, narrowNow, () => false);
+
+const BOTTOM: React.CSSProperties = { position: "fixed", left: 0, right: 0, bottom: `var(--battuta-bar-h, calc(24px + ${SAFE_BOTTOM}))`, zIndex: 32, background: "#1f2733", color: "#dde", borderTop: "1px solid #3a4656", maxHeight: "40vh", overflow: "auto", paddingRight: SAFE_RIGHT };
 /**
  * The side area: on the LEFT, as most applications put a file view, and
  * BELOW the app header — its top is the header's measured height, which
@@ -159,7 +178,9 @@ const BOTTOM: React.CSSProperties = { position: "fixed", left: 0, right: 0, bott
  * margin while a side panel is up, so the editor is pushed right.
  */
 export const SIDE_PANEL_WIDTH = 280;
-const SIDE: React.CSSProperties = { position: "fixed", left: 0, top: "var(--battuta-header-h, 83px)", bottom: `var(--battuta-bar-h, calc(24px + ${SAFE_BOTTOM}))`, width: SIDE_PANEL_WIDTH, zIndex: 32, background: "#fff", borderRight: "1px solid #e3e7ec", overflow: "auto" };
+const SIDE: React.CSSProperties = { position: "fixed", left: 0, top: "var(--battuta-header-h, 83px)", bottom: `var(--battuta-bar-h, calc(24px + ${SAFE_BOTTOM}))`, width: `calc(${SIDE_PANEL_WIDTH}px + ${SAFE_LEFT})`, paddingLeft: SAFE_LEFT, boxSizing: "border-box", zIndex: 32, background: "#fff", borderRight: "1px solid #e3e7ec", overflow: "auto" };
+/** On a phone the side panel lies over the score — and over the bottom area, which keeps the full width. */
+const SIDE_OVER: React.CSSProperties = { ...SIDE, zIndex: 33, boxShadow: "4px 0 16px rgba(0,0,0,.18)" };
 
 export function Panels({ store, side }: { store: PanelStore; side: PanelSide }) {
   const all = useStore(store.panels);
@@ -169,6 +190,7 @@ export function Panels({ store, side }: { store: PanelStore; side: PanelSide }) 
   // first 280 px hidden (2026-10-19: the folder view over the PDF
   // reference's strip).
   const sideUp = all.some((p) => p.side === "side");
+  const narrow = useNarrowScreen();
   const ref = useRef<HTMLElement>(null);
   // The bottom area is fixed over the window's foot, so it PUBLISHES its
   // height as `--battuta-bottom-h`: the App pads the score by it, so the
@@ -195,7 +217,7 @@ export function Panels({ store, side }: { store: PanelStore; side: PanelSide }) 
   }, [side, panels.length]);
   if (!panels.length) return null;
   return (
-    <aside ref={ref} data-panels={side} style={side === "bottom" ? { ...BOTTOM, left: sideUp ? SIDE_PANEL_WIDTH : 0 } : SIDE}>
+    <aside ref={ref} data-panels={side} style={side === "bottom" ? (sideUp && !narrow ? { ...BOTTOM, left: `calc(${SIDE_PANEL_WIDTH}px + ${SAFE_LEFT})` } : { ...BOTTOM, paddingLeft: SAFE_LEFT }) : narrow ? SIDE_OVER : SIDE}>
       {panels.map((p) => (
         <section key={p.id} data-panel={p.id} aria-label={p.title}>
           {p.render()}

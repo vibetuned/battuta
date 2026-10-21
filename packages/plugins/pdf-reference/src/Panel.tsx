@@ -14,7 +14,7 @@ import type { Drawing } from "./drawing";
 import { scaleFor, scaled, systemView } from "./geometry";
 import { PageEditor, ZOOM_STEPS, type Tool } from "./PageEditor";
 import type { Matching } from "./match";
-import type { RenderedPage } from "./pdf";
+import { PDF_NEEDS, pdfMissing, type RenderedPage } from "./pdf";
 import { useStore } from "./store";
 
 export type PdfStatus = "empty" | "loading" | "ready" | "error";
@@ -139,7 +139,19 @@ export function PdfPanel({ state, actions }: { state: Store<PdfState>; actions: 
     const view = s.view;
     const image = view ? s.pages.find((p) => p.page === view.page) : undefined;
     if (s.status !== "ready" || !view || !image) {
-      return <div style={HINT}>{s.status === "loading" ? status() : "Load a score's PDF together with its annotation files (…_page1.json, …_page2.json…) to see each measure's scan above its tile."}</div>;
+      return (
+        <div style={HINT}>
+          <div>
+            {s.status === "loading" ? status() : "Load a score's PDF together with its annotation files (…_page1.json, …_page2.json…) to see each measure's scan above its tile."}
+            {/* an older iPhone or iPad: said once — here, or in the status line after a PDF was tried */}
+            {s.status !== "loading" && s.error !== PDF_NEEDS && pdfMissing().length > 0 && (
+              <div data-pdf-needs style={{ marginTop: 6 }}>
+                {PDF_NEEDS}
+              </div>
+            )}
+          </div>
+        </div>
+      );
     }
     const page = s.annotations?.pages.find((p) => p.page === view.page);
     const k = scaleFor(page, image.width);

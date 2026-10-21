@@ -102,14 +102,15 @@ The old WebKitGTK 2.52 blank-webview issue no longer reproduces;
 It runs the shell with `BATTUTA_EPHEMERAL_STORAGE=1`, an in-memory WebView
 data store, so its test scores never reach your recovered session.
 
-### Tablets (Phase 10)
+### Tablets and phones (Phase 10)
 
-The same shell builds for iPadOS and Android (`com.vibetuned.battuta`;
+The same shell builds for iPhone, iPad and Android (`com.vibetuned.battuta`;
 the generated projects live in `src-tauri/gen/apple` and `gen/android`):
 
 ```sh
 npm run android -- build --debug --apk --target aarch64   # then: node spikes/verify-android.mjs
 npm run ios -- build --debug --target aarch64 --export-method debugging
+npm run ios -- build --debug --target aarch64-sim         # the simulator (an iPhone)
 ```
 
 `scripts/mobile.sh` finds Android's SDK and NDK where Android Studio puts
@@ -120,7 +121,29 @@ and `aarch64-apple-ios-sim` (Android: `aarch64-linux-android` and the
 other three). `node spikes/verify-android.mjs` drives the debug APK on a
 connected tablet over the WebView's DevTools socket; on an iPad, debug
 builds append the shell's probe lines to `shell.log` in the app's data
-folder, which `xcrun devicectl device copy from` fetches.
+folder, which `xcrun devicectl device copy from` fetches. A simulator
+build needs the simulator runtime of Xcode's own SDK
+(`xcodebuild -downloadPlatform iOS`), and Tauri will not overwrite a
+previous one: remove `src-tauri/gen/apple/build/arm64-sim/battuta.app`
+first.
+
+**For the stores**, published from Xcode and Android Studio, as
+Vibetuned's midi-stroke is. `npm run ios -- build --open` (or `android`)
+builds, opens the IDE on the generated project and keeps the Tauri CLI
+running — leave that terminal open: the project's Rust step calls back into
+it. In Xcode, *Any iOS Device (arm64)*, **Product → Archive**, then the
+Organizer's **Distribute App → App Store Connect**; in Android Studio,
+**Build → Generate Signed App Bundle or APK → Android App Bundle**, the
+upload key, the *universalRelease* variant. (A release build from the
+command line signs with the upload key named in
+`src-tauri/gen/android/keystore.properties` — `keyAlias`, `password`,
+`storeFile`; kept out of git, unsigned without it.) The listings' texts
+and every question the two stores ask, answered:
+[`apps/editor/store/`](apps/editor/store/); their screenshots, feature
+graphic and Play icon: `npm run store:screenshots`.
+The app's notices (battuta menu → *about battuta*) are generated from what
+the build bundles and the shell links: after a dependency changes, run
+`npm run licences -w @battuta/editor` (a test fails until then).
 
 The tablet icons come from the logo (`docs/src/assets/logo.svg`) through
 `src-tauri/icons/mobile/icons.json`: iOS takes the logo as it is (black on

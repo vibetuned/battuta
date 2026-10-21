@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
 import { RenderPool, type TileResult } from "./render/renderPool";
 import { keyMatches, type Keymap, type Layout } from "./keymap";
-import { host, useStore, Slot, Panels, SIDE_PANEL_WIDTH, SAFE_TOP, SAFE_BOTTOM, LaneInput, laneFace, TileOverlays, TileBands, rowBandHeights, confirmDialog, tauriInvoke, onTablet, blockOfEvents, rule, gate, modal, isMod, type ActionStep, type KeyEvent, type Outcome, type OverlayStore } from "./host";
+import { host, useStore, Slot, Panels, SIDE_PANEL_WIDTH, SAFE_TOP, SAFE_BOTTOM, SAFE_LEFT, SAFE_RIGHT, useNarrowScreen, LaneInput, laneFace, TileOverlays, TileBands, rowBandHeights, confirmDialog, tauriInvoke, onTablet, blockOfEvents, rule, gate, modal, isMod, type ActionStep, type KeyEvent, type Outcome, type OverlayStore } from "./host";
 import { ShortcutEditor } from "./ShortcutEditor";
+// The about box and its notices load when it opens (phase 10, M4).
+const About = lazy(() => import("./About").then((m) => ({ default: m.About })));
 import { loadSettings, saveSettings, detectLayout } from "./settings";
 import { DocumentSession } from "./session";
 // Musical Unicode (𝅝 𝅗𝅥 𝅘𝅥𝅯 𝄆 𝄇 𝄐 𝄪 …) has NO macOS system font — the UI
@@ -442,24 +444,52 @@ function TileGrid({ session, version, pool, zoom, overlays, onRendered, onSettle
   );
 }
 
+/**
+ * The page view on a phone (phase 10, M4): under 768 px an A4 page shrank
+ * to a third of its size. There the page is the view's width at the
+ * desktop's staff size (Verovio's scale 40 draws 0.4 px per unit), with
+ * slimmer side margins and cut to its music, so a system holds a measure
+ * or two. Widths step by 10 px, so a resize re-lays out only on a real
+ * change. Exports never pass this: they keep the A4 page.
+ */
+const narrowPageOptions = (viewport: number, width: number): string =>
+  viewport >= 768 ? "{}" : JSON.stringify({ pageWidth: Math.round(Math.floor(width / 10) * 10 / 0.4), pageMarginLeft: 50, pageMarginRight: 50, adjustPageHeight: true });
+
 /** Full Verovio paged layout for proofreading; pages stream in as rendered. */
 function PageView({ session, pool }: { session: DocumentSession; pool: RenderPool }) {
   const [pages, setPages] = useState<ReadonlyMap<number, string>>(new Map());
+  const ref = useRef<HTMLDivElement>(null);
+  // null until measured, so a phone never lays the document out twice.
+  const [options, setOptions] = useState<string | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => setOptions(narrowPageOptions(window.innerWidth, el.clientWidth));
+    measure();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, []);
 
   useEffect(() => {
+    if (options === null) return;
     let cancelled = false;
     setPages(new Map());
     // Serialize the CURRENT document (edits included), not the loaded file.
-    pool.renderDocumentPages(session.serializeForPageView(), (index, svg) => {
-      if (!cancelled) setPages((prev) => new Map(prev).set(index, svg));
-    });
+    pool.renderDocumentPages(
+      session.serializeForPageView(),
+      (index, svg) => {
+        if (!cancelled) setPages((prev) => new Map(prev).set(index, svg));
+      },
+      JSON.parse(options) as Record<string, unknown>,
+    );
     return () => {
       cancelled = true;
     };
-  }, [session, pool]);
+  }, [session, pool, options]);
 
   return (
-    <div className="pages">
+    <div ref={ref} className="pages">
       {[...pages.entries()]
         .sort(([a], [b]) => a - b)
         .map(([index, svg]) => (
@@ -509,6 +539,7 @@ export default function App() {
     host.keymap.setLayout(l);
   };
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
   /** App menu under the battuta name (open/save/tools). */
   const [menuOpen, setMenuOpen] = useState(false);
   /** Title editor buffer — null while closed (the header shows the button). */
@@ -1358,6 +1389,8 @@ export default function App() {
     return () => ro?.disconnect();
   }, []);
   const sidePanelUp = useStore(host.panels.panels).some((p) => p.side === "side");
+  /** A phone: the side panel lies over the score instead of pushing it (host/slots.tsx). */
+  const narrowScreen = useNarrowScreen();
 
   // The context bar (the status bar) publishes its height as the header
   // does — what stands on it (the bottom and side panels, the notices, the
@@ -1690,8 +1723,8 @@ export default function App() {
     };
 
     const steps: ActionStep[] = [
-      // The shortcut editor owns the keyboard — for plugins' run(id) too.
-      gate(() => shortcutsOpen),
+      // The shortcut editor owns the keyboard — for plugins' run(id) too; so does the about box.
+      gate(() => shortcutsOpen || aboutOpen),
       // --- system chords and numpad structure: no caret needed ---
       rule("undo", (e) => isMod(e) && e.key.toLowerCase() === "z" && !e.shiftKey, () => {
         if (session.stack.canUndo) {
@@ -2248,7 +2281,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [session, caret, block, editTargets, afterCommand, entryMode, caretId, enterAtCaret, nearestOctave, structural, selection, accidPick, openAccidPicker, saveActive, openScore, zoomStep, keymap, shortcutsOpen, runFromBlock, blockFromSelection, activeId]);
+  }, [session, caret, block, editTargets, afterCommand, entryMode, caretId, enterAtCaret, nearestOctave, structural, selection, accidPick, openAccidPicker, saveActive, openScore, zoomStep, keymap, shortcutsOpen, aboutOpen, runFromBlock, blockFromSelection, activeId]);
 
   // --- MIDI entry: note-ons enter at the caret while input mode is active;
   // keys held together build a CHORD (like MuseScore). The devices belong
@@ -2725,8 +2758,8 @@ export default function App() {
   );
 
   return (
-    <div className={showPerf ? undefined : "no-perf"} style={{ fontFamily: `system-ui, "Noto Music", sans-serif`, padding: 12, paddingBottom: `calc(var(--battuta-bar-h, calc(24px + ${SAFE_BOTTOM})) + 12px)` }}>
-      <header ref={headerRef} style={{ display: "flex", flexDirection: "column", gap: 6, position: "sticky", top: 0, zIndex: 35, background: "#fff", margin: "-12px -12px 4px", padding: `calc(12px + ${SAFE_TOP}) 12px 6px`, borderBottom: "1px solid #e3e7ec" }}>
+    <div className={showPerf ? undefined : "no-perf"} style={{ fontFamily: `system-ui, "Noto Music", sans-serif`, padding: 12, paddingLeft: `calc(12px + ${SAFE_LEFT})`, paddingRight: `calc(12px + ${SAFE_RIGHT})`, paddingBottom: `calc(var(--battuta-bar-h, calc(24px + ${SAFE_BOTTOM})) + 12px)` }}>
+      <header ref={headerRef} style={{ display: "flex", flexDirection: "column", gap: 6, position: "sticky", top: 0, zIndex: 35, background: "#fff", margin: `-12px calc(-12px - ${SAFE_RIGHT}) 4px calc(-12px - ${SAFE_LEFT})`, padding: `calc(12px + ${SAFE_TOP}) calc(12px + ${SAFE_RIGHT}) 6px calc(12px + ${SAFE_LEFT})`, borderBottom: "1px solid #e3e7ec" }}>
       <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
         <span style={{ position: "relative" }}>
           <button data-menu-toggle onClick={() => setMenuOpen((o) => !o)} style={{ fontWeight: 700, fontSize: 14, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
@@ -2827,6 +2860,9 @@ export default function App() {
                   ⟲ regenerate ids
                 </button>
                 <Slot store={host.slots} name="menu" onCommand={runPluginCommand} plugins={host.registry} />
+                <button data-about-open style={MENU_ITEM} onClick={() => (setMenuOpen(false), setAboutOpen(true))}>
+                  about battuta — credits and licences
+                </button>
               </div>
             </>
           )}
@@ -2966,7 +3002,7 @@ export default function App() {
           in the DOM (hidden when empty) — the e2e suites read [data-notice].
           The × dismisses before the timeout; the text itself stays
           selectable (error messages get copied around). */}
-      <div style={{ position: "fixed", right: 12, bottom: `calc(var(--battuta-bar-h, calc(24px + ${SAFE_BOTTOM})) + 10px)`, zIndex: 55, display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", maxWidth: "46vw" }}>
+      <div style={{ position: "fixed", right: `calc(12px + ${SAFE_RIGHT})`, bottom: `calc(var(--battuta-bar-h, calc(24px + ${SAFE_BOTTOM})) + 10px)`, zIndex: 55, display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", maxWidth: "46vw" }}>
         {error && (
           <div data-error style={{ display: "flex", alignItems: "baseline", gap: 8, background: "#5b1f24", color: "#fdd", border: "1px solid #a33", borderRadius: 6, padding: "6px 10px", fontSize: 12, boxShadow: "0 4px 16px rgba(0,0,0,.35)", userSelect: "text" }}>
             <button data-error-dismiss title="dismiss" onClick={() => setError(null)} style={{ background: "none", border: "none", color: "#faa", cursor: "pointer", fontSize: 13, padding: 0, lineHeight: 1 }}>
@@ -3022,6 +3058,11 @@ export default function App() {
             });
           }}
         />
+      )}
+      {aboutOpen && (
+        <Suspense fallback={null}>
+          <About onClose={() => setAboutOpen(false)} />
+        </Suspense>
       )}
       {accidPick && (
         <div data-accid-pick style={{ position: "fixed", left: accidPick.x, top: accidPick.y, background: "#233", color: "#fff", padding: "4px 8px", borderRadius: 4, fontSize: 12, zIndex: 40, pointerEvents: "none", boxShadow: "0 2px 8px rgba(0,0,0,.35)" }}>
@@ -3093,7 +3134,7 @@ export default function App() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         ref={mainRef}
-        style={{ position: "relative", userSelect: "none", marginLeft: sidePanelUp ? SIDE_PANEL_WIDTH : 0, paddingBottom: "var(--battuta-bottom-h, 0px)" }}
+        style={{ position: "relative", userSelect: "none", marginLeft: sidePanelUp && !narrowScreen ? SIDE_PANEL_WIDTH : 0, paddingBottom: "var(--battuta-bottom-h, 0px)" }}
         data-caret={caretId ?? ""}
         data-selection={selection.length}
         data-block={block ? `${block.measureFrom}-${block.measureTo}/${block.staffFrom}-${block.staffTo}` : ""}
@@ -3108,7 +3149,7 @@ export default function App() {
       <Panels store={host.panels} side="side" />
       {/* Above the panels (32): the zoom and MIDI popovers open upward,
           over the bottom panel — under it they were hidden (2026-10-19). */}
-      <footer ref={barRef} data-statusbar data-folded={barFolded || undefined} onKeyDown={onBarKey} style={{ position: "fixed", left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", gap: 12, whiteSpace: "nowrap", background: "#1f2733", color: "#aab", fontSize: 12, lineHeight: "20px", padding: `2px 10px calc(2px + ${SAFE_BOTTOM})`, zIndex: 34 }}>
+      <footer ref={barRef} data-statusbar data-folded={barFolded || undefined} onKeyDown={onBarKey} style={{ position: "fixed", left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", gap: 12, whiteSpace: "nowrap", background: "#1f2733", color: "#aab", fontSize: 12, lineHeight: "20px", padding: `2px calc(10px + ${SAFE_RIGHT}) calc(2px + ${SAFE_BOTTOM}) calc(10px + ${SAFE_LEFT})`, zIndex: 34 }}>
         <button
           data-input-indicator
           title="note input mode (i)"

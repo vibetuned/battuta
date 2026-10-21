@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		1AD6556550ED393E3F7996F6 /* assets in Resources */ = {isa = PBXBuildFile; fileRef = C7D7773866AA41254E456411 /* assets */; };
 		347140F6DD46CF9C0082B9CB /* libapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 19989DBF90DB3E499F4FAF97 /* libapp.a */; };
+		62EF81B8444ADA0B485D7097 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 2D639BC4918F78F91299861E /* PrivacyInfo.xcprivacy */; };
 		791578974B743DA0254C1C7D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = D62B39A36C0D383FD16E5BB3 /* LaunchScreen.storyboard */; };
 		98028E84D151B8C1D22FF6AA /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4678D96433D6D72BD9C6ED37 /* Security.framework */; };
 		AA5C2B0786DFAC1BB1BE7B19 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6CB32BA2BF3D010110B5797E /* UIKit.framework */; };
@@ -26,6 +27,7 @@
 		234B077321CD8A7EEF7739D4 /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
 		27C51F623349BCA30BD7A777 /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
 		294898781D63C403A9D6BF94 /* battuta-editor_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "battuta-editor_iOS.entitlements"; sourceTree = "<group>"; };
+		2D639BC4918F78F91299861E /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		4678D96433D6D72BD9C6ED37 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		5109C26BE4BB6D48B36C26AC /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
 		51C8BE25FA351CDB62B1E468 /* battuta-editor_iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "battuta-editor_iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -105,6 +107,7 @@
 			children = (
 				294898781D63C403A9D6BF94 /* battuta-editor_iOS.entitlements */,
 				5FD56C54F5DF5B1C3596738D /* Info.plist */,
+				2D639BC4918F78F91299861E /* PrivacyInfo.xcprivacy */,
 			);
 			path = "battuta-editor_iOS";
 			sourceTree = "<group>";
@@ -213,6 +216,7 @@
 			files = (
 				BE45D6D7BEBECE9BF7608AB0 /* Assets.xcassets in Resources */,
 				791578974B743DA0254C1C7D /* LaunchScreen.storyboard in Resources */,
+				62EF81B8444ADA0B485D7097 /* PrivacyInfo.xcprivacy in Resources */,
 				1AD6556550ED393E3F7996F6 /* assets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

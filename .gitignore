@@ -10,6 +10,8 @@ dist/
 spikes/out/
 spikes/native-bench/bench
 apps/editor/src-tauri/target
+# made by apps/editor/scripts/store-screenshots.mjs (npm run store:screenshots), for the stores
+apps/editor/store/screenshots/
 *.log
 .DS_Store
 

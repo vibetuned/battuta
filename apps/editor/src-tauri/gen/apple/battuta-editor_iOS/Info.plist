@@ -65,5 +65,7 @@
 	</array>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>battuta connects to your Bluetooth MIDI instrument to hear what you play.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>

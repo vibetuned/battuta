@@ -4,7 +4,7 @@
  * Protocol:
  *   {type:"init"}                      -> {type:"ready", version}
  *   {type:"render", id, xml}           -> {type:"tile", id, svg, renderMs}
- *   {type:"renderPages", id, xml}      -> {type:"page", id, index, svg}…
+ *   {type:"renderPages", id, xml, optionsJson?} -> {type:"page", id, index, svg}…
  *                                         then {type:"pagesDone", id, pageCount}
  * Renders are serialized per worker; parallelism comes from the pool.
  */
@@ -60,13 +60,15 @@ let toolkit: VerovioToolkit | null = null;
 // next ensureMode call to re-apply its option set.
 let mode: "tile" | "page" | "timemap" = "tile";
 let tileExtra = "{}"; // JSON of the current per-document tile option overrides
+let pageExtra = "{}"; // JSON of the page view's overrides (a phone's narrower page)
 
 function ensureMode(m: "tile" | "page", extraJson = "{}") {
   if (!toolkit) throw new Error("message before init");
-  if (mode !== m || (m === "tile" && extraJson !== tileExtra)) {
-    toolkit.setOptions(m === "tile" ? { ...TILE_OPTIONS, ...JSON.parse(extraJson) } : PAGE_OPTIONS);
+  if (mode !== m || extraJson !== (m === "tile" ? tileExtra : pageExtra)) {
+    toolkit.setOptions({ ...(m === "tile" ? TILE_OPTIONS : PAGE_OPTIONS), ...JSON.parse(extraJson) });
     mode = m;
     if (m === "tile") tileExtra = extraJson;
+    else pageExtra = extraJson;
   }
 }
 
@@ -93,7 +95,7 @@ self.onmessage = async (e: MessageEvent) => {
       self.postMessage({ type: "tile", id: msg.id, error: String(err), svg: "", renderMs: 0 });
     }
   } else if (msg.type === "renderPages") {
-    ensureMode("page");
+    ensureMode("page", msg.optionsJson ?? "{}");
     toolkit!.loadData(msg.xml);
     const pageCount = toolkit!.getPageCount();
     for (let p = 1; p <= pageCount; p++) {

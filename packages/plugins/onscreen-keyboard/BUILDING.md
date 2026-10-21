@@ -587,6 +587,15 @@ you.**
   was idempotent then and is a toggle now; it failed the moment the
   semantics came back, which is the test doing its job. When a command's
   meaning changes, re-read the tests that call it twice.
+- **One octave on a phone, through an inline style.** (Phase 10, M4,
+  2026-10-21 — the user: on a phone two octaves left the keys too thin.)
+  Each octave became a block of its own so LAYOUT_CSS can hide the upper
+  one on a touch screen whose shorter side is under 600 px; the first cut
+  laid the block out inline (`display: flex` in its `style`), and the
+  phone's `display: none` lost to it — an inline declaration beats any
+  stylesheet rule without `!important`, media query or not. The block's
+  layout lives in LAYOUT_CSS now. With one octave the rail's top went from
+  6 to 7, so a phone still reaches C7–B7.
 
 ## 8. Recipe
 

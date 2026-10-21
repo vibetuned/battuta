@@ -27,6 +27,29 @@ export interface RenderHooks {
   cancelled?: () => boolean;
 }
 
+/**
+ * What pdf.js (6.4) calls with no fallback, checked before it loads: on a
+ * system without one of them a PDF fails half-way — `Promise.try` carries
+ * every message to the worker, `Math.sumPrecise` rebuilds embedded fonts.
+ * Safari has them all from 26.2 (MDN and caniuse, checked 2026-10-21), so
+ * an older iPhone or iPad says so rather than failing; the PDF's pages as
+ * images need none of them. Empty where PDFs work.
+ */
+export function pdfMissing(): string[] {
+  const has = (owner: object, name: string): boolean => typeof (owner as Record<string, unknown>)[name] === "function";
+  const needs: [string, boolean][] = [
+    ["Promise.withResolvers", has(Promise, "withResolvers")],
+    ["Promise.try", has(Promise, "try")],
+    ["URL.parse", has(URL, "parse")],
+    ["Uint8Array.fromBase64", has(Uint8Array, "fromBase64")],
+    ["Math.sumPrecise", has(Math, "sumPrecise")],
+  ];
+  return needs.filter(([, ok]) => !ok).map(([name]) => name);
+}
+
+/** What the panel says where `pdfMissing()` is not empty. */
+export const PDF_NEEDS = "Reading a PDF needs iOS / iPadOS 26.2 or later on an iPhone or iPad (a current browser elsewhere); the PDF's pages as images work on this one.";
+
 let workerStarted = false;
 
 export async function renderPdf(bytes: ArrayBuffer, hooks: RenderHooks = {}): Promise<RenderedPage[]> {

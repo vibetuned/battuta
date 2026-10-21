@@ -73,6 +73,9 @@ None. The 📄 is a header button.
 - Show the clef and key at a row's start above its header cell.
 - Detect systems or barlines by itself: a drawing is the user's.
 - Handle repeats specially: a measure is one tile and one scan.
+- Read a PDF on an iPhone or iPad before iOS / iPadOS 26.2: pdf.js calls
+  what older systems lack, so the panel says so instead (the PDF's pages
+  as images work there).
 
 ## Guide
 

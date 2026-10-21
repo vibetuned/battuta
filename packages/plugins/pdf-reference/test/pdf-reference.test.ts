@@ -15,8 +15,12 @@ import { manifest, COMMAND_TOGGLE, EXPORT_ANNOTATIONS, OVERLAY_ID, PANEL_ID } fr
 import type { PdfActions, PdfState, PickedFile } from "../src/Panel";
 
 const rendered = vi.hoisted(() => ({ released: [] as string[] }));
+const support = vi.hoisted(() => ({ missing: [] as string[] }));
 vi.mock("../src/pdf", () => ({
   RENDER_SCALE: 254 / 72,
+  // what the system lacks for pdf.js: nothing, unless a test says otherwise
+  pdfMissing: () => support.missing,
+  PDF_NEEDS: "Reading a PDF needs iOS / iPadOS 26.2 or later",
   renderPdf: vi.fn(async (_bytes: ArrayBuffer, hooks: { progress?: (d: number, t: number) => void } = {}) => {
     hooks.progress?.(0, 2);
     hooks.progress?.(2, 2);
@@ -397,5 +401,23 @@ describe("staves, zoom and pages as images", () => {
     await flush();
     expect(f.state().fileName).toBe("piece.pdf");
     expect(f.state().notes).toEqual(["scan_page1.png not used: a PDF was chosen too"]);
+  });
+
+  it("on a system pdf.js cannot run on, a PDF says what it needs and is not read; its pages as images are", async () => {
+    support.missing = ["Promise.try"];
+    try {
+      const f = await opened();
+      f.actions().load([file("piece.pdf")]);
+      await flush();
+      expect(f.state().status).toBe("error");
+      expect(f.state().error).toMatch(/needs iOS \/ iPadOS 26\.2/);
+      expect(f.state().pages).toEqual([]);
+      f.actions().load([file("scan_page1.png")]);
+      await flush();
+      expect(f.state().status).toBe("ready");
+      expect(f.state().error).toBeNull();
+    } finally {
+      support.missing = [];
+    }
   });
 });

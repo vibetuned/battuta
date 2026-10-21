@@ -12,6 +12,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "budget": "node scripts/check-budget.mjs",
+    "licences": "node scripts/licences.mjs",
+    "store:screenshots": "node scripts/store-screenshots.mjs",
     "keymap:snapshot": "UPDATE_KEYMAP_SNAPSHOT=1 vitest run test/keymap-snapshot.test.ts"
   },
   "dependencies": {

@@ -149,6 +149,15 @@ again to find the drawing (30 checks in all).
 - **A fixed band height.** Every scan fitted to its tile's width keeps the
   barlines over each other; a fixed height would fit narrow and wide
   measures differently. The host takes the row's tallest instead.
+- **"iPadOS 17.4", for pdf.js.** Phase 10 first had the app's floor
+  against pdf.js as `Promise.withResolvers` alone — Safari 17.4. Read
+  through (2026-10-21), pdf.js 6.4 also calls, with no fallback,
+  `Promise.try` (every worker message), `URL.parse`,
+  `Uint8Array.fromBase64` and `Math.sumPrecise` (rebuilding embedded
+  fonts): all in Safari from 26.2. The user's choice was a message rather
+  than a fix, so `pdfMissing()` checks those five before pdf.js loads and
+  the panel names iOS / iPadOS 26.2; the legacy build of pdf.js, which
+  polyfills them, is what a fix would take.
 
 ## 8. Recipe
 

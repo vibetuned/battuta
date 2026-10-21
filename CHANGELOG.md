@@ -11,6 +11,108 @@ below, and changes since the last tag gather under *Unreleased*.
 
 ## Unreleased
 
+- **Phase 10, M4 — one octave on a phone (2026-10-21).** The user, after
+  the screenshots: "the virtual keyboard will only show 1 octave in phones
+  as the keys are to thin". The piano's octaves are blocks of their own
+  now, and the keyboard's CSS hides the upper one on a touch screen whose
+  shorter side is under 600 px (the host's phone width) — upright and
+  sideways alike, never on a tablet: a white key goes from 16 to 33 px on
+  an iPhone upright and from 20 to 41 px sideways; tablets and the desktop
+  keep 14 keys. A plugin reads no window, so the switch is a media query,
+  as the portrait layout is; its first cut lost to the block's inline
+  `display` (the layout moved into the stylesheet). The rail's top went
+  from 6 to 7, so a phone still reaches C7–B7. Tests: the keyboard's 48
+  and its e2e 34, the plugin rules 18; the store screenshots made again.
+- **Phase 10, M4 — the store screenshots; the PDF reference's floor
+  (2026-10-21).** The user: "yes please write the script", publishing from
+  Xcode and Android Studio themselves once main is pushed and tagged; for
+  the PDF reference before the system it needs, a message rather than a
+  fix; the notes' touch hit-testing later, as a plugin; the phones' edit
+  view to be decided from the screenshots; Android's missing 🌣 glyph
+  stays. **`npm run store:screenshots`** (`apps/editor/scripts/
+  store-screenshots.mjs`, after the docs' shots): the editor's dev server
+  driven by Playwright, each set seen as its device sees the app — the
+  shell's marker, a touch screen (the on-screen keyboard up by itself),
+  its width — at the stores' sizes: iPhone 6.9″ upright 1320 × 2868, iPad
+  13″ sideways 2752 × 2064, an Android phone upright 1080 × 1920, an
+  Android tablet sideways 2560 × 1440; five scenes each (writing at the
+  caret in input mode, page view playing, a block selected, the Chopin
+  PDF's scans over the empty measures to transcribe, the folder view on
+  battuta's folder — its list staged through the shell's own commands, as
+  in the docs), then Google Play's feature graphic (1024 × 500, the logo,
+  the line the site leads with and a page-view system) and icon
+  (512 × 512); no image has an alpha channel. Into
+  `apps/editor/store/screenshots/`, git-ignored. **The PDF reference's
+  floor was not 17.4:** read through, pdf.js 6.4 calls with no fallback
+  `Promise.try` (every worker message), `URL.parse`,
+  `Uint8Array.fromBase64` and `Math.sumPrecise` as well as
+  `Promise.withResolvers` — Safari has them all from 26.2 (MDN, caniuse).
+  So `pdfMissing()` checks the five before pdf.js loads; where one is
+  missing the panel says, once, "Reading a PDF needs iOS / iPadOS 26.2 or
+  later on an iPhone or iPad (a current browser elsewhere); the PDF's
+  pages as images work on this one", and a PDF loaded anyway stops with
+  that sentence instead of failing half-way. Checked: the e2e's Chromium
+  (151) and the Galaxy Tab's WebView (155) have all five; a page with
+  `Promise.try` deleted shows the message and refuses the PDF. Tests:
+  editor 156, plugins 320 (the check's own, and the refusal in the
+  lifecycle suite), the PDF reference e2e 41.
+- **Phase 10, M4 begins — the iPhone, the store listings and the stores'
+  questions (2026-10-20).** "yes let's also build Iphone and don't forget
+  the store listing (metadata description) and the store questions" —
+  which settles M4's open question: **universal**. **The iPhone:** the
+  Xcode project already held it (XcodeGen's default device family, `1,2`
+  in the built app); Tauri builds for the simulator only with the runtime
+  of Xcode's own SDK, so iOS 27.1's was installed, and the app ran on an
+  iPhone 18 Pro — in portrait, and in landscape through a landscape-only
+  copy of the app (Xcode 27 has no Simulator window to rotate). What a
+  phone needed: **the side insets** — held sideways, a phone has its
+  camera housing on one side; the page, header, context bar, bottom and
+  side areas and the zoom column keep clear of `safe-area-inset-left` /
+  `-right` (`SAFE_LEFT`, `SAFE_RIGHT`, 0 everywhere else); **the side
+  panel over the score** under 600 px (`useNarrowScreen`, host/slots) —
+  pushed, a portrait phone kept about 100 px of music beside the folder
+  view and the row overflowed the screen; tablets, and a phone held
+  sideways, keep the push; **the page view's narrow page**, M2's third
+  item to the user's spec — under 768 px Verovio lays out a page the
+  view's width at the desktop's staff size (`pageWidth` from the measured
+  width, side margins 50, `adjustPageHeight`): two measures a system on an
+  iPhone instead of an A4 page shrunk to a third; the SVG export keeps A4.
+  **The stores**, after midi-stroke's pair: `apps/editor/store/listing.md`
+  (names, the description with Verovio's credit, the URLs, the privacy
+  answers, the screenshot sizes) and `questions.md` (every form of App
+  Store Connect and the Play Console answered from what the app does —
+  no account, no data, no network; Bluetooth only for a MIDI instrument —
+  with the keywords and tags). The privacy page covers the phone and
+  tablet apps, and says what the files guide now says too: deleting the
+  app deletes battuta's own folder. `ITSAppUsesNonExemptEncryption =
+  false` in `Info.ios.plist`; Apple's privacy manifest
+  (`PrivacyInfo.xcprivacy`): no tracking, nothing collected, and reasons
+  for the two required-reason APIs the binary imports (`nm -u`: the user
+  defaults, CA92.1; the stat family, C617.1 and 3B52.1) — added to the
+  Xcode project by XcodeGen run with `Externals/` emptied, or it lists the
+  Rust library as a resource. **The licence notice:** battuta menu →
+  *about battuta — credits and licences*: Verovio's credit with the LGPL
+  v3 and the GPL v3 it builds on (the npm package ships no licence file;
+  both texts from gnu.org, `apps/editor/licences/`), the piano samples
+  (the Salamander Grand Piano V3, Alexander Holm, CC BY 3.0 — credited
+  nowhere until now), Noto Music, and all 368 components the app ships —
+  12 npm packages read from a real build's module graph, workers
+  included, and 354 crates the shell links on its six targets (normal
+  dependencies only) — each with its own licence texts. `npm run licences
+  -w @battuta/editor` writes `src/licences.json`, loaded only when the box
+  opens (771 kB, 106 kB gzipped); a test fails when a shipped dependency
+  is missing from it. **Android release signing** from
+  `gen/android/keystore.properties` (git-ignored), as in midi-stroke; a
+  release build — R8-minified — signed with the debug key ran on the
+  Galaxy Tab: it started with its data kept, saw both MIDI devices, and
+  its share sheet reached the native plugin; the debug build went back
+  after. Verified: editor 156, core 246, api 20, plugins 318; the 13
+  browser suites (580 checks); the desktop smoke 15/15; Android 15/15;
+  the iPad build carries the key and the manifest and renders. Initial
+  chunk 386.9 kB of 390.6. Seen and left: on a phone every tile row keeps
+  the tiles' top margin (100 units, which aligns staves under fermatas
+  and ottavas), so a one-staff score shows about two rows a screen; and
+  Android has no glyph for the menu's 🌣.
 - **Phase 10, M3 verified (2026-10-20).** The user tested Bluetooth MIDI
   pairing on both tablets ("both working") — the ROLI Piano 49 shows in
   Android's MIDI service as a Bluetooth device battuta holds open — and
