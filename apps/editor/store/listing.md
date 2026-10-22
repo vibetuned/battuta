@@ -66,8 +66,27 @@ first, Google Play's in brackets.
 `https://battuta.vibetuned.com/reference/privacy/`
 ([`privacy.mdx`](../../../docs/src/content/docs/reference/privacy.mdx)).
 
-The App Store's promotional text, keywords and *What's New*, and Google Play's
-tags and release notes: [questions.md](questions.md).
+The App Store's promotional text and keywords, and Google Play's tags:
+[questions.md](questions.md); the release notes: below.
+
+## Release notes
+
+**Google Play** — the release's *Release notes* box (Play Console → the
+release → *Release notes*), 500 characters per language, between language
+tags, pasted as is:
+
+```
+<en-US>
+battuta on Android: write, edit and play MEI scores by touch or with a MIDI instrument over USB or Bluetooth, keep them in battuta's folder or any folder you pick, and share them anywhere. Free and open source, with no account and no tracking.
+</en-US>
+```
+
+**App Store** — *What's New in This Version* is not asked for an app's
+first version; from the next one on:
+
+> battuta on iPhone and iPad: write, edit and play MEI scores by touch or
+> with a MIDI instrument over USB or Bluetooth, with your scores in the Files
+> app.
 
 ## Privacy answers
 

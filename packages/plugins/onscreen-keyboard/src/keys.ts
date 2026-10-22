@@ -155,6 +155,7 @@ const SHORT: Record<string, string> = {
   accent: "acc >",
   marcato: "marc ^",
   staccatissimo: "stacc ▾",
+  tenuto: "ten –",
   fermata: "ferm 𝄐",
   coda: "coda",
   ornament: "ornam",

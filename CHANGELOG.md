@@ -11,6 +11,56 @@ below, and changes since the last tag gather under *Unreleased*.
 
 ## Unreleased
 
+- **Tenuto (2026-10-22).** The user: "a small thing we forgot, the tenuto
+  keyboard shortcut". battuta read tenuto (`@artic="ten"`) and played it
+  full length since the playback work, but nothing wrote one. Now `=`
+  toggles it on the target — a line, and the same key on
+  QWERTY and AZERTY (`-` is AZERTY's unshifted digit-6 key, the duration
+  row in input mode, and numpad − deletes a measure) — in or out of input
+  mode, like marcato and staccatissimo, beside whatever articulations the
+  note already has. The on-screen keyboard shows it as *ten –* in its marks
+  group (generated from the keymap; its caption added). The keymap
+  snapshot gained the row in both layouts and nothing else; the marks
+  guide, its key table and its figure have it. Tests: editor 156, the
+  keyboard's 48, phase 5's e2e 224 (= adds a tenuto beside marcato and
+  staccatissimo, Verovio draws SMuFL's tenuto, = again takes it off), the
+  keyboard's e2e 34.
+- **Phase 10, M4 — midi-stroke's Xcode and Android Studio fixes, applied
+  (2026-10-22).** The user: "in my last commit in midi-stroke I fix some
+  issues with android studio and xcode can you check if we have the same
+  issues here". All of them were here (midi-stroke 5b43383, read, not
+  touched). **Xcode** (`gen/apple/project.yml`, the project regenerated
+  with `Externals/` emptied for the run, the Tauri-merged `Info.plist`
+  kept): the *Build Rust Code* step puts `/opt/homebrew/bin` first on its
+  PATH — Xcode opened from the Dock has macOS's default one, and `npm` is
+  not on it; `Externals/` is `buildPhase: none` — linked, never copied into
+  the app (Tauri's template made the Rust library a resource whenever
+  XcodeGen ran after a build: yesterday's manifest was added by working
+  around it by hand); the scheme is declared for its archive name,
+  *battuta* in the Organizer, keeping the target's name the Tauri CLI
+  builds by. Release builds need rustup's `llvm-tools` — swift-rs makes the
+  plugin's Swift entry point visible again with it, or an Archive fails on
+  *Undefined symbols: _init_plugin_battuta_mobile* — already installed on
+  this Mac by the midi-stroke fix, now in the README's requirements.
+  **Android** (`gen/android`): the Android Gradle Plugin 8.11.0 → 8.13.2
+  (and in `buildSrc`), Gradle 8.14.3 → 8.14.5 by the wrapper's own task,
+  the Gradle daemon pinned to JDK 21 (`updateDaemonJvm`, Adoptium, fetched
+  through the foojay resolver in `settings.gradle`) — Android Studio's own
+  Java 25 is too new for Gradle 8.14; the *universal* flavour the default,
+  so Android Studio opens on all four ABIs, not 32-bit *arm*. The wrapper
+  files and the daemon's JVM file came out byte-identical to
+  midi-stroke's. One more, found in that commit: Android Studio's signed
+  bundle lands in `app/universal/release/`, which git did not ignore there
+  (a 43 MB `.aab` went into midi-stroke's commit); here `app/.gitignore`
+  covers the flavour folders, `*.aab` and `*.apk`. **The store drafts**
+  took that commit's corrections too: *What's New* is not asked for a first
+  version, and Play's release notes go between language tags — both in
+  `listing.md`'s new *Release notes*. Verified: the Gradle project
+  configures from Android Studio's Java 25; Android debug and release
+  APKs; an iOS release build links and runs on the iPad (no `libapp.a`
+  inside, 13 MB), and the debug build put back after renders there. The
+  Galaxy Tab was not connected, so the Android device suite did not run;
+  Xcode started from the Dock is the user's to try.
 - **Phase 10, M4 — one octave on a phone (2026-10-21).** The user, after
   the screenshots: "the virtual keyboard will only show 1 octave in phones
   as the keys are to thin". The piano's octaves are blocks of their own

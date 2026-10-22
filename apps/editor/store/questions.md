@@ -109,7 +109,7 @@ Vibetuned's other apps). Notes:
 | Promotional text (170) | Write music the way you write text: a caret, a selection, undo that always lands, and an MEI file that stays yours. Free and open source, with no account and no tracking. |
 | Description | [listing.md](listing.md) — with the Verovio credit |
 | Keywords (100) | see *Tags and keywords* below |
-| What's New | battuta on iPhone and iPad: write, edit and play MEI scores by touch or with a MIDI instrument over USB or Bluetooth, with your scores in the Files app. |
+| What's New | Not asked for a first version; later ones: [listing.md](listing.md#release-notes) |
 | Screenshots | iPhone 6.9″ and iPad 13″ ([listing.md](listing.md#screenshots)) |
 
 ## Google Play Console
@@ -173,8 +173,7 @@ nothing in the app uses it.
 
 ### Release notes
 
-> battuta on Android: write, edit and play MEI scores by touch or with a MIDI
-> instrument over USB or Bluetooth.
+In [listing.md](listing.md#release-notes), ready to paste in Play's format.
 
 ## Tags and keywords
 

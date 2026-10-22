@@ -126,6 +126,7 @@
    </AnalyzeAction>
    <ArchiveAction
       buildConfiguration = "release"
+      customArchiveName = "battuta"
       revealArchiveInOrganizer = "YES">
    </ArchiveAction>
 </Scheme>

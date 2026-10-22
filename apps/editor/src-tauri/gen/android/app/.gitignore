@@ -4,3 +4,12 @@
 /tauri.build.gradle.kts
 /proguard-tauri.pro
 /tauri.properties
+# Android Studio's Generate Signed App Bundle or APK writes beside the module,
+# in <flavour>/release/ — never committed
+/universal/
+/arm64/
+/arm/
+/x86/
+/x86_64/
+*.aab
+*.apk

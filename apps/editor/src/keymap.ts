@@ -51,6 +51,10 @@ export const defaultKeymap = (layout: Layout): Record<string, KeyBinding> => {
     marcato: { keys: az ? ["."] : [":", ">"], shift: true, label: "marcato", group: "marks" },
     // staccatissimo = the staccato key shifted: shift+, is "?" on AZERTY, "<" on QWERTY.
     staccatissimo: { keys: az ? ["?"] : ["<"], label: "staccatissimo", group: "marks" },
+    // tenuto = "=", a line, and the same key on both layouts: "-" is AZERTY's
+    // unshifted digit-6 key (the duration row in input mode), and numpad −
+    // deletes a measure.
+    tenuto: { keys: ["="], label: "tenuto", group: "marks" },
     fermata: { keys: ["h"], label: "fermata", group: "marks" },
     coda: { keys: ["o"], label: "coda → To Coda → segno → fine → D.S. → D.C.", group: "marks" },
     ornament: { keys: ["w"], label: "ornament cycle (arpeggio/tremolo/trill/mordent)", group: "marks" },

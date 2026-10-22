@@ -60,13 +60,17 @@ instead. On a chord it opens the per-note picker.
 
 ## Articulations
 
-<KeymapTable ids={["staccato", "accent", "marcato", "staccatissimo", "fermata"]} />
+<KeymapTable ids={["staccato", "accent", "marcato", "staccatissimo", "tenuto", "fermata"]} />
 
-<Figure name="articulations" caption="Staccato, accent, marcato, staccatissimo." />
+<Figure name="articulations" caption="Staccato, accent, marcato, staccatissimo, tenuto." />
 
 Marcato is the accent key shifted, and staccatissimo is the staccato key shifted —
 so there are two keys to remember, not four. (On AZERTY the shifted characters
-differ but the physical keys are the same.)
+differ but the physical keys are the same.) Tenuto has a key of its own,
+<kbd>=</kbd> — a line, and the same key on QWERTY and AZERTY. Like the
+others it toggles, and a note can carry several: a tenuto beside a staccato is
+a portato. Playback holds a tenuto note for its full value; beside a staccato
+the staccato wins, so a portato plays short.
 
 <kbd>h</kbd> puts a fermata over the target.
 

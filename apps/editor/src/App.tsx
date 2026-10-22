@@ -1865,11 +1865,12 @@ export default function App() {
       }),
       // Single markings (tester round). Same target rule as the dot.
       // marcato: the accent key SHIFTED · staccatissimo: the staccato key
-      // shifted · simile slash: the ù/' key replaces one beat.
+      // shifted · tenuto: "=" · simile slash: the ù/' key replaces one beat.
       ...(
         [
           ["marcato", (t: string) => session.toggleArtic([t], "marc"), "marcato"],
           ["staccatissimo", (t: string) => session.toggleArtic([t], "stacciss"), "staccatissimo"],
+          ["tenuto", (t: string) => session.toggleArtic([t], "ten"), "tenuto"],
           ["fermata", (t: string) => session.toggleMark(t, "fermata"), "fermata"],
           ["coda", (t: string) => session.toggleMark(t, "coda"), "coda"],
           ["simile", (t: string) => session.simile(t), "simile"],

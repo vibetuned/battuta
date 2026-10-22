@@ -31,7 +31,12 @@ targets:
     sources:
       - path: Sources
       - path: Assets.xcassets
+      # The Rust library a build leaves here is linked (libapp.a under
+      # dependencies, found through LIBRARY_SEARCH_PATHS), never copied into
+      # the app as a resource — as Vibetuned's midi-stroke found, XcodeGen run
+      # after a build otherwise lists it as one (phase 10, M4).
       - path: Externals
+        buildPhase: none
       - path: battuta-editor_iOS
       - path: assets
         buildPhase: resources
@@ -56,10 +61,6 @@ targets:
         CFBundleVersion: "1.2.0"
     entitlements:
       path: battuta-editor_iOS/battuta-editor_iOS.entitlements
-    scheme:
-      environmentVariables:
-        RUST_BACKTRACE: full
-        RUST_LOG: info
     settings:
       base:
         ENABLE_BITCODE: false
@@ -81,9 +82,40 @@ targets:
       - sdk: UIKit.framework
       - sdk: WebKit.framework
     preBuildScripts:
-      - script: npm run -- tauri ios xcode-script -v --platform ${PLATFORM_DISPLAY_NAME:?} --sdk-root ${SDKROOT:?} --framework-search-paths "${FRAMEWORK_SEARCH_PATHS:?}" --header-search-paths "${HEADER_SEARCH_PATHS:?}" --gcc-preprocessor-definitions "${GCC_PREPROCESSOR_DEFINITIONS:-}" --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?}
+      - script: |
+          # Xcode started from the Dock or Finder gets macOS's default PATH, without Homebrew's npm and node.
+          export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+          npm run -- tauri ios xcode-script -v --platform ${PLATFORM_DISPLAY_NAME:?} --sdk-root ${SDKROOT:?} --framework-search-paths "${FRAMEWORK_SEARCH_PATHS:?}" --header-search-paths "${HEADER_SEARCH_PATHS:?}" --gcc-preprocessor-definitions "${GCC_PREPROCESSOR_DEFINITIONS:-}" --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?}
         name: Build Rust Code
         basedOnDependencyAnalysis: false
         outputFiles:
           - $(SRCROOT)/Externals/x86_64/${CONFIGURATION}/libapp.a
           - $(SRCROOT)/Externals/arm64/${CONFIGURATION}/libapp.a
+# The target's scheme, declared here for its archive name (a target's own
+# `scheme:` has none): Xcode's Organizer lists archives under it. The scheme
+# keeps the target's name, which the Tauri CLI builds by.
+schemes:
+  battuta-editor_iOS:
+    build:
+      targets:
+        battuta-editor_iOS: all
+    run:
+      config: debug
+      environmentVariables:
+        RUST_BACKTRACE: full
+        RUST_LOG: info
+    test:
+      config: debug
+      environmentVariables:
+        RUST_BACKTRACE: full
+        RUST_LOG: info
+    profile:
+      config: release
+      environmentVariables:
+        RUST_BACKTRACE: full
+        RUST_LOG: info
+    analyze:
+      config: debug
+    archive:
+      config: release
+      customArchiveName: battuta

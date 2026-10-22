@@ -115,10 +115,16 @@ npm run ios -- build --debug --target aarch64-sim         # the simulator (an iP
 
 `scripts/mobile.sh` finds Android's SDK and NDK where Android Studio puts
 them and a JDK 21 (Android Studio's bundled Java 25 is too new for the
-generated Gradle), for these commands only. iOS signs with the Vibetuned
-team; it needs Xcode, CocoaPods and the Rust targets `aarch64-apple-ios`
-and `aarch64-apple-ios-sim` (Android: `aarch64-linux-android` and the
-other three). `node spikes/verify-android.mjs` drives the debug APK on a
+generated Gradle), for these commands only; Android Studio itself gets its
+JDK 21 from `gradle/gradle-daemon-jvm.properties`, fetched by the foojay
+resolver when the machine has none. iOS signs with the Vibetuned team; it
+needs Xcode, CocoaPods, the Rust targets `aarch64-apple-ios` and
+`aarch64-apple-ios-sim` (Android: `aarch64-linux-android` and the other
+three), and rustup's `llvm-tools` (`rustup component add llvm-tools`):
+Xcode 27 hides the native plugin's Swift entry points in release builds and
+swift-rs makes them visible again with its `llvm-objcopy` — without it an
+Archive fails on *Undefined symbols: _init_plugin_battuta_mobile* while
+debug builds work (found in Vibetuned's midi-stroke). `node spikes/verify-android.mjs` drives the debug APK on a
 connected tablet over the WebView's DevTools socket; on an iPad, debug
 builds append the shell's probe lines to `shell.log` in the app's data
 folder, which `xcrun devicectl device copy from` fetches. A simulator
@@ -137,7 +143,18 @@ Organizer's **Distribute App → App Store Connect**; in Android Studio,
 upload key, the *universalRelease* variant. (A release build from the
 command line signs with the upload key named in
 `src-tauri/gen/android/keystore.properties` — `keyAlias`, `password`,
-`storeFile`; kept out of git, unsigned without it.) The listings' texts
+`storeFile`; kept out of git, unsigned without it.) What midi-stroke's
+release taught, applied here (2026-10-22): the Xcode project's *Build Rust
+Code* step puts Homebrew's `/opt/homebrew/bin` first on its PATH — Xcode
+opened from the Dock or Finder has only macOS's default one ("npm: command
+not found"); `Externals/`, where each build leaves the Rust library, is
+linked and never copied into the app (`buildPhase: none` — Tauri's template
+made it a resource whenever XcodeGen ran after a build); the archives are
+named *battuta* in the Organizer while the scheme keeps the target's name,
+which the Tauri CLI builds by; Android Studio opens on the *universal*
+flavour (all four ABIs, as the CLI builds) instead of 32-bit *arm*; and the
+signed bundle Android Studio writes beside the module
+(`app/universal/release/`) is ignored by git. The listings' texts
 and every question the two stores ask, answered:
 [`apps/editor/store/`](apps/editor/store/); their screenshots, feature
 graphic and Play icon: `npm run store:screenshots`.

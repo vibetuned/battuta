@@ -212,15 +212,16 @@ const FIGURES = [
   // --- marks -------------------------------------------------------------
   {
     name: "articulations",
-    alt: "Staccato, accent, marcato and staccatissimo on four notes",
+    alt: "Staccato, accent, marcato, staccatissimo and tenuto on five notes",
     mei: mei({
-      body: m(
-        1,
-        staff(
+      body:
+        m(
           1,
-          `${note("c5/4", 'artic="stacc"')}${note("c5/4", 'artic="acc"')}${note("c5/4", 'artic="marc"')}${note("c5/4", 'artic="stacciss"')}`,
-        ),
-      ),
+          staff(
+            1,
+            `${note("c5/4", 'artic="stacc"')}${note("c5/4", 'artic="acc"')}${note("c5/4", 'artic="marc"')}${note("c5/4", 'artic="stacciss"')}`,
+          ),
+        ) + m(2, staff(1, `${note("c5/4", 'artic="ten"')}${rest("4")}${rest("2")}`)),
     }),
   },
   {

@@ -555,6 +555,15 @@ check(`shift+accent adds a marcato (artic="${(await m1state()).artic}")`, (await
 await page.keyboard.press("Shift+Comma"); // shift+, = staccatissimo
 await page.waitForFunction(() => JSON.stringify(window.__SESSION__.score.measures[0]).includes("stacciss"), null, { timeout: 5000 });
 check(`shift+staccato adds a staccatissimo (artic="${(await m1state()).artic}")`, (await m1state()).artic.includes("stacciss"));
+await page.keyboard.press("="); // = is tenuto, on both layouts
+await page.waitForFunction(() => /\bten\b/.test(window.__SESSION__.score.measures[0] && JSON.stringify(window.__SESSION__.score.measures[0])), null, { timeout: 5000 });
+check(`= adds a tenuto beside them (artic="${(await m1state()).artic}")`, (await m1state()).artic.split(" ").includes("ten") && (await m1state()).artic.includes("marc"));
+// SMuFL's tenuto, above (E4A4) or below (E4A5) the note
+await page.waitForFunction(() => /E4A[45]/.test(document.querySelector('.tile[data-index="0"]')?.innerHTML ?? ""), null, { timeout: 15000 });
+check("…and Verovio draws it", true);
+await page.keyboard.press("=");
+await page.waitForFunction(() => !(window.__SESSION__.score.measures[0] && JSON.stringify(window.__SESSION__.score.measures[0])).match(/"artic":"[^"]*\bten\b/), null, { timeout: 5000 });
+check(`= again takes the tenuto off, the others stay (artic="${(await m1state()).artic}")`, !(await m1state()).artic.split(" ").includes("ten") && (await m1state()).artic.includes("stacciss"));
 await page.keyboard.press("."); // unshifted dot still dots
 await page.waitForFunction(() => { const s = JSON.stringify(window.__SESSION__.score.measures[0]); return s.includes('"dots":"1"'); }, null, { timeout: 5000 });
 check("the unshifted dot still means dot", (await m1state()).dots === "1");

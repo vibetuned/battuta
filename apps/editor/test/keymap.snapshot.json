@@ -197,6 +197,11 @@
       ],
       "locked": true
     },
+    "tenuto": {
+      "keys": [
+        "="
+      ]
+    },
     "tie": {
       "keys": [
         "t"
@@ -411,6 +416,11 @@
         "⌃s ⌃o ⌃z ⌃y ⌃c ⌃v ⌃± ⌃0"
       ],
       "locked": true
+    },
+    "tenuto": {
+      "keys": [
+        "="
+      ]
     },
     "tie": {
       "keys": [
