@@ -11,6 +11,26 @@ below, and changes since the last tag gather under *Unreleased*.
 
 ## Unreleased
 
+Nothing since 1.2.0.
+
+## 1.2.0 — 2026-10-29 (Phase 10 — iPhone, iPad and Android)
+
+battuta on tablets and phones from the same shell — the iPad and Android
+tablets first, then the iPhone and Android phones — with its files in a
+folder of its own or any folder picked, a share sheet, MIDI by USB and
+Bluetooth (and the iPad's virtual source), an on-screen keyboard made for
+touch, the about box with every notice, and the stores' listings,
+questionnaires and screenshots; the plan, milestone by milestone, is in
+[PLANNING.md](PLANNING.md) (Phase 10). Before it, since 1.0.0: the PDF
+reference — the start of the facsimile — the folder view writing files,
+sounding accidentals in the file (`@accid.ges`), MIDI spelled by the key,
+ties between chords, and tenuto.
+
+Every package — application, shell, core, docs, `@battuta/api` and the nine
+plugins — has carried 1.2.0 since 2026-10-11 (the user: "don't hesitate to
+make a new version"), each plugin's `engines` range staying at the api it
+needs; 1.1.0 was never tagged, and what it added ships here.
+
 - **The PDF reference's drawing: zoom below 100%, systems resized by their
   corners (2026-10-29).** The user, using the two-finger pan: "we don't
   have negative zoom in this plugin this is needed specially in
@@ -627,11 +647,6 @@ below, and changes since the last tag gather under *Unreleased*.
   drawing back on reload). The Chopin example (PDF and its two page files,
   650 kB) moved to `fixtures/pdf-reference/`, un-ignored with a `!` line
   in `.gitignore`; the e2e and the shell probe read it there.
-
-Everything below is to ship as **1.2.0**: every package — application,
-shell, core, docs, `@battuta/api` and the nine plugins — was aligned at
-1.2.0 on 2026-10-11 (the user: "don't hesitate to make a new version"),
-each plugin's `engines` range staying at the api it needs.
 
 - **The PDF reference — the start of the facsimile (2026-10-11).**
   `packages/plugins/pdf-reference`: load a score's PDF with the OMR

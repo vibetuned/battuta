@@ -75,6 +75,10 @@ jobs:
             rm -rf site/apt
             exit 0
           fi
+          # apt-ftparchive is apt-utils', which ubuntu-latest's 26.04 image no
+          # longer ships (24.04's did: the step broke when the image moved,
+          # 2026-10-29). The package lists are the raster tools step's.
+          sudo apt-get install -y --no-install-recommends apt-utils
           gpg --batch --import <<< "$APT_GPG_PRIVATE_KEY"
           cd site/apt
           mkdir -p dists/stable/main/binary-amd64

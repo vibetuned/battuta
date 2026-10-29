@@ -11,26 +11,61 @@ A user-facing digest. The full engineering record — every phase, every fix, ev
 probed Verovio behaviour — lives in
 [CHANGELOG.md](https://github.com/vibetuned/battuta/blob/main/CHANGELOG.md).
 
-## 1.2.0 — unreleased
+## 1.2.0 — 2026-10-29
 
 ### New
 
+- **battuta on iPhone, iPad and Android**: the same editor as an app for
+  tablets and phones. Your scores live in battuta's own folder (the Files
+  app on iPhone and iPad) or in any folder you pick; **share…** sends a score
+  anywhere. A MIDI instrument plugs in by USB or pairs by Bluetooth from the
+  MIDI list, and on the iPad other music apps hear battuta's playback.
+  [Files →](../../guide/files/#on-a-tablet-or-a-phone)
+- **The on-screen keyboard, made for touch**: a ⌫ always in reach under the
+  ×, two lines on a screen held upright, one octave on a phone so the keys
+  stay wide enough to play. [On-screen keyboard →](../../guide/virtual-keyboard/)
+- **The context bar folds** into **⋯** when the window is too narrow for all
+  of it, and on a phone the page view lays out pages as wide as the screen.
+  [Tour →](../../tour/)
 - **PDF reference** (📄): load a score's PDF with its OMR annotation files
   and each measure's scan stands above its tile in edit view, with the
   caret's system in a panel that follows it — matched by id, or in order.
   On a PDF — or its pages as images — without annotation files, draw
-  the systems, click the barlines and split the staves yourself, zoomed as
-  close as you need; the drawing is kept and exports as annotation files. The first step of the facsimile. [PDF reference →](../../guide/pdf-reference/)
+  the systems, click the barlines and split the staves yourself, zoomed
+  from a quarter of the panel's width up to four times; drag a system's
+  corners to resize it, and on a touch screen move the page with two
+  fingers. The drawing is kept and exports as annotation files. The first
+  step of the facsimile. On iPhone and iPad, reading a PDF needs iOS /
+  iPadOS 26.2; the pages as images work everywhere.
+  [PDF reference →](../../guide/pdf-reference/)
+- **Tenuto** on <kbd>=</kbd>, beside the other articulations.
+  [Marks →](../../guide/marks/#articulations)
+- **About battuta** in the battuta menu: who made it, Verovio's credit, and
+  the licence of every component the app ships.
 - **The folder view renames and creates**: ✎ or <kbd>F2</kbd> renames a
   score or a folder in place (an open tab follows its file); **+ score**
   and **+ folder** create in the marked folder, a new score opening at
   once. [Folder view →](../../guide/folder-view/)
 
+### Changed
+
+- **Accidentals are saved as they sound.** Every note now carries what it
+  sounds under the key signature and the measure's accidentals
+  (`@accid.ges`), so other MEI readers hear what battuta plays; a score's
+  `<accid>` elements stay elements. [Note entry →](../../guide/note-entry/)
+- **MIDI input is spelled by the key**: under one flat, B♭ arrives as the
+  key's B and B as B♮; a white key is never spelled as a sharp of the note
+  below.
+- **Chords tie**: <kbd>t</kbd> ties two chords pitch by pitch.
+- The bottom panel starts where the folder view ends, and the zoom popover
+  opens over it.
+
 ### For plugin authors
 
 - `@battuta/api` **1.2.0**: the workspace's writes (`rename`,
-  `createFolder`, `createFile` — create-only), a **band** on the overlays
-  point (room above every tile) and `ctx.query.measureIds()`.
+  `createFolder`, `createFile` — create-only) and `home()` (battuta's own
+  folder on a tablet or a phone), a **band** on the overlays point (room
+  above every tile) and `ctx.query.measureIds()`.
   [Writing a plugin →](../writing-a-plugin/)
 
 ## 1.0.0 — 2026-09-18

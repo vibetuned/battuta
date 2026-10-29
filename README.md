@@ -15,24 +15,35 @@ it. Verovio does all notation rendering — battuta never draws notation.
 
 ## Status
 
-**1.0.0 released (2026-09-18).** The first stable version. The editor is
-a **host**: tiles, caret, selection, reversible commands with
-byte-identical undo, note entry, copy/paste with the duration validator,
-context editing, the keymap and the score on disk — and around it, eight
-plugins on declared extension points, loaded only when something they
-declared happens: the reflection cycle, the on-screen keyboard, the
-lyrics and harmony lanes, playback (a sampled piano or your MIDI
-devices, and the playback-MIDI export), the format converters (every
-format Verovio reads and writes), a folder view with live file watching
-(desktop), and the pitch reference — a recording's pitch traced over the
-score, with a playhead that follows the caret and plays the take or the
-written notes. `@battuta/api` 1.0.0 is the contract, and every package —
-application, core, api, plugins — carries the one number; every plugin ships a
-README (how to use it) and a BUILDING (how it was built). Packaged for
-Linux (deb + AppImage, apt repository), macOS (signed and notarized
-universal dmg, Homebrew cask) and Windows (NSIS installer, winget).
+**1.2.0 released (2026-10-29): battuta on iPhone, iPad and Android.** The
+same shell builds for tablets and phones — files in battuta's own folder or
+any folder picked, a share sheet, MIDI by USB and Bluetooth, an on-screen
+keyboard made for touch, every notice in the about box — with the App Store
+and Google Play listings ready ([`apps/editor/store/`](apps/editor/store/)).
+Since 1.0.0 too: the PDF reference (the start of the facsimile), the folder
+view writing files, sounding accidentals written into the file
+(`@accid.ges`), MIDI spelled by the key, ties between chords and tenuto.
+`@battuta/api` 1.2.0 is the contract, and every package carries the one
+number.
 
-Phases 0–9 are done; the full record, phase by phase, lives in
+**1.0.0 (2026-09-18)** was the first stable version. The editor is a
+**host**: tiles, caret, selection, reversible commands with byte-identical
+undo, note entry, copy/paste with the duration validator, context editing,
+the keymap and the score on disk — and around it, nine plugins on declared
+extension points, loaded only when something they declared happens: the
+reflection cycle, the on-screen keyboard, the lyrics and harmony lanes,
+playback (a sampled piano or your MIDI devices, and the playback-MIDI
+export), the format converters (every format Verovio reads and writes), a
+folder view with live file watching (desktop), the pitch reference — a
+recording's pitch traced over the score, with a playhead that follows the
+caret and plays the take or the written notes — and, since 1.2.0, the PDF
+reference. Every plugin ships a README (how to use it) and a BUILDING (how
+it was built). Packaged for Linux (deb + AppImage, apt repository), macOS
+(signed and notarized universal dmg, Homebrew cask) and Windows (NSIS
+installer, winget).
+
+Phases 0–10 are done — Phase 10's store uploads follow the 1.2.0 tag; the
+full record, phase by phase, lives in
 [CHANGELOG.md](CHANGELOG.md). Next: the second overlay plugins — the
 piano-roll reference layer and OMR correction — planned against API
 surface only in [PLANNING.md](PLANNING.md).
