@@ -22,7 +22,9 @@ import android.os.ParcelUuid
 import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
 import android.util.Base64
+import android.graphics.RectF
 import android.webkit.MimeTypeMap
+import android.webkit.WebView
 import android.widget.ArrayAdapter
 import app.tauri.PermissionState
 import androidx.activity.result.ActivityResult
@@ -33,6 +35,7 @@ import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.Permission
 import app.tauri.annotation.PermissionCallback
 import app.tauri.annotation.TauriPlugin
+import app.tauri.plugin.Channel
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSArray
 import app.tauri.plugin.JSObject
@@ -46,6 +49,17 @@ private val MIDI_SERVICE: UUID = UUID.fromString("03B80E5A-EDE8-4B33-A751-6CE34E
 
 /** The share sheet's own provider class (the app declares a FileProvider of its own). */
 class BattutaShareProvider : FileProvider()
+
+@InvokeArg
+class CaptureArgs {
+    var on: Boolean = false
+    lateinit var channel: Channel
+}
+
+@InvokeArg
+class AreaArgs {
+    var rects: Array<DoubleArray> = arrayOf()
+}
 
 @InvokeArg
 class ShareArgs {
@@ -111,6 +125,46 @@ class RenameArgs {
 )
 class BattutaMobilePlugin(private val activity: Activity) : Plugin(activity) {
     private val main = Handler(Looper.getMainLooper())
+
+    /** The page's WebView, handed over by Tauri; the stylus is captured on it. */
+    private var webView: WebView? = null
+    private var stylus: StylusCapture? = null
+    /** Where the pen writes, as the page last said — kept here too, for a capture made after it. */
+    private var stylusArea: List<RectF> = emptyList()
+
+    override fun load(webView: WebView) {
+        this.webView = webView
+    }
+
+    // --- the stylus (1.3.0): capture on or off, the events down the channel ---
+
+    @Command
+    fun stylusCapture(invoke: Invoke) {
+        val args = invoke.parseArgs(CaptureArgs::class.java)
+        main.post {
+            val view = webView
+            if (view == null) {
+                invoke.reject("no WebView to capture the stylus on")
+                return@post
+            }
+            val capture = stylus ?: StylusCapture(view, args.channel).also { stylus = it }
+            capture.update(args.channel)
+            capture.area = stylusArea
+            capture.set(args.on)
+            invoke.resolve()
+        }
+    }
+
+    @Command
+    fun stylusArea(invoke: Invoke) {
+        val args = invoke.parseArgs(AreaArgs::class.java)
+        val rects = args.rects.filter { it.size == 4 }.map { RectF(it[0].toFloat(), it[1].toFloat(), (it[0] + it[2]).toFloat(), (it[1] + it[3]).toFloat()) }
+        main.post {
+            stylusArea = rects
+            stylus?.area = rects
+            invoke.resolve()
+        }
+    }
 
     /** Bluetooth MIDI connections: held open while the app is — closing one unpairs it. */
     private val bluetooth = ArrayList<MidiDevice>()

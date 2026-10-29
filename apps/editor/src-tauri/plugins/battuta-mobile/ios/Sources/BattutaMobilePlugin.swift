@@ -14,6 +14,15 @@ class PathArgs: Decodable {
   let path: String
 }
 
+class CaptureArgs: Decodable {
+  let on: Bool
+  let channel: Channel
+}
+
+class AreaArgs: Decodable {
+  let rects: [[Double]]
+}
+
 /// battuta's native iPadOS services (phase 10, M1): the share sheet, and
 /// folders the user picks.
 ///
@@ -27,6 +36,46 @@ class BattutaMobilePlugin: Plugin, UIDocumentPickerDelegate {
   /// Scopes started this session: held until the app ends.
   private var held: [URL] = []
   private var pickInvoke: Invoke?
+  /// The page's WebView, handed over by Tauri; the stylus is captured on it.
+  private weak var webview: WKWebView?
+
+  public override func load(webview: WKWebView) {
+    self.webview = webview
+  }
+
+  // MARK: the stylus (1.3.0): capture on or off, the events down the channel
+
+  private var stylus: StylusCapture?
+  /// Where the pen writes, as the page last said — kept here too, for a capture made after it.
+  private var stylusArea: [CGRect] = []
+
+  @objc public func stylusCapture(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(CaptureArgs.self)
+    DispatchQueue.main.async {
+      guard let view = self.webview else {
+        invoke.reject("no WebView to capture the stylus on")
+        return
+      }
+      if let stylus = self.stylus {
+        stylus.update(args.channel)
+      } else {
+        self.stylus = StylusCapture(view: view, channel: args.channel)
+      }
+      self.stylus?.area = self.stylusArea
+      self.stylus?.set(on: args.on)
+      invoke.resolve()
+    }
+  }
+
+  @objc public func stylusArea(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(AreaArgs.self)
+    let rects = args.rects.filter { $0.count == 4 }.map { CGRect(x: $0[0], y: $0[1], width: $0[2], height: $0[3]) }
+    DispatchQueue.main.async {
+      self.stylusArea = rects
+      self.stylus?.area = rects
+      invoke.resolve()
+    }
+  }
 
   // MARK: the share sheet
 

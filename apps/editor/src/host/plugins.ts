@@ -22,6 +22,7 @@ import { manifest as pdfReference } from "@battuta/plugin-pdf-reference/manifest
 import { manifest as pitchReference } from "@battuta/plugin-pitch-reference/manifest";
 import { manifest as playback } from "@battuta/plugin-playback/manifest";
 import { manifest as reflection } from "@battuta/plugin-reflection/manifest";
+import { manifest as stylus } from "@battuta/plugin-stylus/manifest";
 
 export const BUILTIN_PLUGINS: readonly PluginEntry[] = [
   { manifest: reflection, load: () => import("@battuta/plugin-reflection") },
@@ -33,4 +34,5 @@ export const BUILTIN_PLUGINS: readonly PluginEntry[] = [
   { manifest: folderView, load: () => import("@battuta/plugin-folder-view") },
   { manifest: pitchReference, load: () => import("@battuta/plugin-pitch-reference") },
   { manifest: pdfReference, load: () => import("@battuta/plugin-pdf-reference") },
+  { manifest: stylus, load: () => import("@battuta/plugin-stylus") },
 ];

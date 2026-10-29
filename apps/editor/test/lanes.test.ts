@@ -158,7 +158,7 @@ describe("opening and closing", () => {
     doc.values.set("e0", "hel");
     doc.values.set("e2", "lo");
     store.register(lyricsLike(doc));
-    const editor = createStore<EditorState>({ caret: null, selection: [], block: null, view: "tiles", entryMode: false });
+    const editor = createStore<EditorState>({ caret: null, selection: [], block: null, view: "tiles", entryMode: false, entryDur: "4", entryDots: 0 });
     const document = createStore<{ id: string; name: string; dirty: boolean; version: number; measureCount: number; staffCount: number; title: string; tempo: number | null } | null>(null);
     store.watch(editor, document);
     store.open("lyrics");

@@ -32,6 +32,63 @@ fn js_log(_app: tauri::AppHandle, msg: String) {
     }
 }
 
+/// The stylus probe's page half (1.3.0; debug builds on mobile): the page's
+/// own pen pointer events, summarised a line per stroke and per hover. Step 0
+/// compared them with the native side's; with capture on it checks that the
+/// page gets no pen at all. To logcat through the console on Android, to
+/// `shell.log` through `js_log` on iOS.
+#[cfg(all(mobile, debug_assertions))]
+const STYLUS_PAGE_PROBE: &str = r#"(() => {
+  if (window.__STYLUS_PAGE_PROBE__) return;
+  window.__STYLUS_PAGE_PROBE__ = true;
+  const inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
+  const log = (m) => {
+    const line = '[stylus-page] ' + new Date().toISOString().slice(11, 23) + ' ' + m;
+    console.info(line);
+    if (inv) inv('js_log', { msg: line }).catch(() => undefined);
+  };
+  const deg = (r) => (r === undefined ? '-' : Math.round((r * 180) / Math.PI));
+  const desc = (e) => `at ${e.clientX.toFixed(1)},${e.clientY.toFixed(1)} pressure ${e.pressure.toFixed(2)} tilt ${e.tiltX},${e.tiltY} twist ${e.twist} altitude ${deg(e.altitudeAngle)} azimuth ${deg(e.azimuthAngle)} buttons ${e.buttons} button ${e.button}`;
+  let s = null;
+  let hover = null;
+  document.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'pen') return;
+    if (hover) { log(`hover ends (touch) after ${(e.timeStamp - hover.t).toFixed(0)} ms: ${hover.n} moves`); hover = null; }
+    s = { t: e.timeStamp, n: 0, c: 0, p: 0, x: e.clientX, y: e.clientY, travel: 0, lo: e.pressure, hi: e.pressure };
+    log('down ' + desc(e));
+  }, true);
+  document.addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'pen') return;
+    if (s) {
+      s.n++;
+      s.c += e.getCoalescedEvents ? e.getCoalescedEvents().length : 1;
+      s.p += e.getPredictedEvents ? e.getPredictedEvents().length : 0;
+      s.travel += Math.hypot(e.clientX - s.x, e.clientY - s.y);
+      s.x = e.clientX; s.y = e.clientY;
+      s.lo = Math.min(s.lo, e.pressure); s.hi = Math.max(s.hi, e.pressure);
+    } else {
+      if (!hover) { hover = { t: e.timeStamp, n: 0 }; log('hover begins ' + desc(e)); }
+      hover.n++;
+    }
+  }, true);
+  const end = (kind) => (e) => {
+    if (e.pointerType !== 'pen' || !s) return;
+    const ms = e.timeStamp - s.t;
+    log(`${kind} after ${ms.toFixed(0)} ms: ${s.n} moves, ${s.c} coalesced (${((s.c * 1000) / Math.max(ms, 1)).toFixed(0)} Hz), ${s.p} predicted; travel ${s.travel.toFixed(0)} px; pressure ${s.lo.toFixed(2)}–${s.hi.toFixed(2)}; ` + desc(e));
+    s = null;
+  };
+  document.addEventListener('pointerup', end('up'), true);
+  document.addEventListener('pointercancel', end('CANCELLED'), true);
+  document.addEventListener('pointerleave', (e) => {
+    if (e.pointerType !== 'pen' || e.target !== document.documentElement || !hover || s) return;
+    log(`hover ends after ${(e.timeStamp - hover.t).toFixed(0)} ms: ${hover.n} moves`);
+    hover = null;
+  }, true);
+  document.addEventListener('contextmenu', (e) => log(`contextmenu (a long press?) pointerType ${e.pointerType || '-'}`), true);
+  const P = typeof PointerEvent !== 'undefined' ? PointerEvent.prototype : {};
+  log(`page probe on: getCoalescedEvents ${'getCoalescedEvents' in P}, getPredictedEvents ${'getPredictedEvents' in P}, altitudeAngle ${'altitudeAngle' in P}`);
+})();"#;
+
 /// IPC benchmark: persist results and exit (used by headless bench runs).
 #[tauri::command]
 fn bench_report(report: String) {
@@ -274,6 +331,31 @@ async fn workspace_home(app: tauri::AppHandle, ws: tauri::State<'_, Workspace>) 
 async fn midi_bluetooth(app: tauri::AppHandle) -> Result<(), String> {
     use tauri_plugin_battuta_mobile::BattutaMobileExt;
     app.battuta_mobile().bluetooth_midi()
+}
+
+/// The stylus (1.3.0, phase 11): capture on or off. While on, an Apple
+/// Pencil or S Pen stroke that begins on the score (`stylus_area`) is
+/// battuta's — the page never sees it, fingers still scroll — and every event the native side sends (strokes per frame,
+/// hold, hover, buttons) reaches the page as a `stylus` event, for
+/// `host/stylus.tsx`. Async: the native side answers on the UI thread.
+#[cfg(mobile)]
+#[tauri::command]
+async fn stylus_capture(app: tauri::AppHandle, on: bool) -> Result<(), String> {
+    use tauri::Emitter;
+    use tauri_plugin_battuta_mobile::BattutaMobileExt;
+    let page = app.clone();
+    app.battuta_mobile().stylus_capture(on, move |event| {
+        let _ = page.emit("stylus", event);
+    })
+}
+
+/// The stylus (1.3.0): the score's area, where the pen writes — the page
+/// keeps it current while capture is on.
+#[cfg(mobile)]
+#[tauri::command]
+async fn stylus_area(app: tauri::AppHandle, rects: Vec<[f64; 4]>) -> Result<(), String> {
+    use tauri_plugin_battuta_mobile::BattutaMobileExt;
+    app.battuta_mobile().stylus_area(rects)
 }
 
 /// The system share sheet (tablets): AirDrop, Mail, another app.
@@ -811,7 +893,8 @@ pub fn run() {
             }
             // What shell this is, set before the page's first script: the
             // frontend takes the browser's paths for what mobile lacks.
-            let shell = format!("window.__BATTUTA_SHELL__ = {{ platform: {:?}, mobile: {} }};", std::env::consts::OS, cfg!(mobile));
+            // `debug`: a debug build — the page shows its stylus readout (1.3.0).
+            let shell = format!("window.__BATTUTA_SHELL__ = {{ platform: {:?}, mobile: {}, debug: {} }};", std::env::consts::OS, cfg!(mobile), cfg!(debug_assertions));
             let builder = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::default())
                 .initialization_script(&shell)
                 .incognito(ephemeral);
@@ -838,6 +921,12 @@ pub fn run() {
             // the UI thread, and url() waits on that same thread — wry gives
             // up after 10 s, then aborts the app when the answer arrives late.
             eprintln!("[shell] page loaded: {}", payload.url());
+            // The stylus probe's page half (1.3.0 — debug builds on a tablet or
+            // a phone only): every pen event the page itself still receives, a
+            // line per stroke (iOS: shell.log; Android: logcat). With capture
+            // on it should log nothing: the pen is battuta's, not the page's.
+            #[cfg(all(mobile, debug_assertions))]
+            let _ = webview.eval(STYLUS_PAGE_PROBE);
             // Headless shell self-test: exercise the save command end to end.
             if let Ok(test_file) = std::env::var("BATTUTA_SHELL_TEST_FILE") {
                 let js = format!(
@@ -1103,12 +1192,12 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool {
 /// The iPad answers MIDI too (CoreMIDI, M3): its WebKit has no Web MIDI.
 #[cfg(target_os = "ios")]
 fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool {
-    tauri::generate_handler![bench_echo, bench_report, js_log, save_score, file_mtime, initial_score, share_file, midi_open_outputs, midi_close_outputs, midi_send, midi_bluetooth, workspace_home, workspace_pick_folder, workspace_open_folder, workspace_read_dir, workspace_read_file, workspace_rename, workspace_create_folder, workspace_create_file]
+    tauri::generate_handler![bench_echo, bench_report, js_log, save_score, file_mtime, initial_score, share_file, midi_open_outputs, midi_close_outputs, midi_send, midi_bluetooth, workspace_home, workspace_pick_folder, workspace_open_folder, workspace_read_dir, workspace_read_file, workspace_rename, workspace_create_folder, workspace_create_file, stylus_capture, stylus_area]
 }
 /// Android's WebView has Web MIDI: the page talks to the devices itself.
 #[cfg(target_os = "android")]
 fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool {
-    tauri::generate_handler![bench_echo, bench_report, js_log, save_score, file_mtime, initial_score, share_file, midi_bluetooth, workspace_home, workspace_pick_folder, workspace_open_folder, workspace_read_dir, workspace_read_file, workspace_rename, workspace_create_folder, workspace_create_file]
+    tauri::generate_handler![bench_echo, bench_report, js_log, save_score, file_mtime, initial_score, share_file, midi_bluetooth, workspace_home, workspace_pick_folder, workspace_open_folder, workspace_read_dir, workspace_read_file, workspace_rename, workspace_create_folder, workspace_create_file, stylus_capture, stylus_area]
 }
 
 #[cfg(test)]

@@ -9,7 +9,7 @@
  * built-in plugins unless the URL says ?plugins=off); `createHost` is
  * exported for tests, which pass memory-backed settings and storage.
  */
-import { API_VERSION, DisposableStore, type ActionsService, type ActivationEvent, type BlockSelection, type CommandMessage, type DocumentInfo, type DocumentQueries, type EditorState, type HostCapability, type KeymapEntry, type PitchEvent, type PluginContext, type PluginEntry, type PluginManifest, type Store, type SylValue, type HarmKind, type NotationFacts, type Timemap, type ViewMode, type ViewService, type CaretPosition } from "@battuta/api";
+import { API_VERSION, DisposableStore, toDisposable, type ActionsService, type Disposable, type StylusService, type ActivationEvent, type BlockSelection, type CommandMessage, type DocumentInfo, type DocumentQueries, type EditorState, type HostCapability, type KeymapEntry, type PitchEvent, type PluginContext, type PluginEntry, type PluginManifest, type Store, type SylValue, type HarmKind, type NotationFacts, type Timemap, type ViewMode, type ViewService, type CaretPosition } from "@battuta/api";
 import { isHarmText, type Command } from "@battuta/core";
 import { toCommand } from "./messages";
 import { keyMatches, type Layout } from "../keymap";
@@ -18,7 +18,8 @@ import { KeymapStore } from "./keymapStore";
 import { SlotStore, PanelStore } from "./slots";
 import { CommandTable, PluginRegistry, type KeyLike } from "./registry";
 export type { KeyLike } from "./registry";
-import { confirmDialog } from "./shell";
+import { confirmDialog, shellPlatform, tauriInvoke } from "./shell";
+import type { ScoreLookups } from "./stylus";
 import { createStore, mapStore, type WritableStore } from "./store";
 import { ActionTable } from "./actions";
 import { isPluginEnabled, memorySettings, pluginSettings, pluginStorage, setPluginEnabled, webSettings, webStorage, type Notice, type SettingsIO, type StorageLike } from "./services";
@@ -30,10 +31,10 @@ import { HostAudioService } from "./audio";
 import { FormatStore } from "./formats";
 import { HostWorkspaceService, detectWorkspaceBridge, type WorkspaceAdapter } from "./workspace";
 
-/** Capabilities this host offers: `midi` since slice 3, `audio` since 7a, `workspace` since 9a (every build offers it; `ctx.workspace.available` says whether the shell is there). */
-export const OFFERED_CAPABILITIES: readonly HostCapability[] = ["midi", "audio", "workspace"];
+/** Capabilities this host offers: `midi` since slice 3, `audio` since 7a, `workspace` since 9a (every build offers it; `ctx.workspace.available` says whether the shell is there), `stylus` since 1.3.0 (likewise: `ctx.stylus.available` in the iOS and Android shells). */
+export const OFFERED_CAPABILITIES: readonly HostCapability[] = ["midi", "audio", "workspace", "stylus"];
 
-const IDLE_EDITOR: EditorState = { caret: null, selection: [], block: null, view: "tiles", entryMode: false };
+const IDLE_EDITOR: EditorState = { caret: null, selection: [], block: null, view: "tiles", entryMode: false, entryDur: "4", entryDots: 0 };
 
 
 /**
@@ -109,6 +110,10 @@ export interface Host {
   bindView(adapter: ViewAdapter | null): void;
   /** The App installs how a path opens (through its one open path); null while it cannot. */
   bindWorkspace(adapter: WorkspaceAdapter | null): void;
+  /** The App installs the active score's lookups the stylus reads the page with; null while no document is open. */
+  bindStylus(lookups: ScoreLookups | null): void;
+  /** The App installs what sets the input's note length (`ctx.setEntryLength`); null while it cannot. */
+  bindEntryLength(set: ((dur: string, dots: number) => void) | null): void;
   /** Commands as data: the message becomes a core command here, never in a plugin. */
   execute(message: CommandMessage): void;
   /** Plugin keybindings: called by the App's key handler AFTER the core dispatcher falls through. */
@@ -208,6 +213,12 @@ export function createHost(options: HostOptions = {}): Host {
     measureIds: () => adapter?.measureIds() ?? [],
   };
   let viewAdapter: ViewAdapter | null = null;
+  let entryLength: ((dur: string, dots: number) => void) | null = null;
+  const setEntryLength = (dur: string, dots = 0): void => {
+    if (!["1", "2", "4", "8", "16", "32", "64"].includes(dur)) throw new Error(`setEntryLength: dur must be one of 1, 2, 4, 8, 16, 32, 64 (got ${JSON.stringify(dur)})`);
+    if (!Number.isInteger(dots) || dots < 0 || dots > 2) throw new Error(`setEntryLength: dots must be 0, 1 or 2 (got ${JSON.stringify(dots)})`);
+    entryLength?.(dur, dots);
+  };
   const view: ViewService = {
     highlight: (cue) => viewAdapter?.highlight(cue),
     clearHighlight: () => viewAdapter?.clearHighlight(),
@@ -222,6 +233,48 @@ export function createHost(options: HostOptions = {}): Host {
   });
   lanes.watch(editor, document);
 
+  // ctx.stylus (1.3.0): the service lives in ./stylus, fetched the first
+  // time a plugin uses it in a shell that has a stylus — never on a desktop.
+  let stylusLookups: ScoreLookups | null = null;
+  let stylusModule: Promise<import("./stylus").StylusService> | null = null;
+  const stylusImpl = () =>
+    (stylusModule ??= import("./stylus").then((m) => {
+      m.stylusService.lookups = () => stylusLookups;
+      return m.stylusService;
+    }));
+  const stylusAvailable = (): boolean => shellPlatform()?.mobile === true && tauriInvoke() !== null;
+  /** One plugin's ctx.stylus: its claim on capture goes when it deactivates. */
+  const stylusFor = (pluginId: string, subscriptions: DisposableStore): StylusService => {
+    let claimed = false;
+    return {
+      get available() {
+        return stylusAvailable();
+      },
+      capture: (on) => {
+        if (!stylusAvailable()) return Promise.resolve();
+        if (on && !claimed) {
+          claimed = true;
+          subscriptions.add(toDisposable(() => void stylusImpl().then((s) => s.claim(pluginId, false))));
+        }
+        return stylusImpl().then((s) => s.claim(pluginId, on));
+      },
+      on: (listener) => {
+        let live = true;
+        let off: Disposable | null = null;
+        if (stylusAvailable())
+          void stylusImpl().then((s) => {
+            if (live) off = s.on(listener);
+          });
+        return subscriptions.add(
+          toDisposable(() => {
+            live = false;
+            off?.dispose();
+          }),
+        );
+      },
+    };
+  };
+
   const createContext = (manifest: PluginManifest, subscriptions: DisposableStore, activatedBy: ActivationEvent | null): PluginContext => ({
     manifest,
     apiVersion: options.apiVersion ?? API_VERSION,
@@ -231,6 +284,7 @@ export function createHost(options: HostOptions = {}): Host {
     editor,
     query,
     execute,
+    setEntryLength,
     registerCommand: (id, handler) => subscriptions.add(commands.setHandler(id, manifest.id, handler)),
     notice,
     confirm,
@@ -252,6 +306,7 @@ export function createHost(options: HostOptions = {}): Host {
     audio,
     view,
     workspace,
+    stylus: stylusFor(manifest.id, subscriptions),
     formats: {
       registerExport: (id, produce) => {
         if (!manifest.contributes?.exports?.some((x) => x.id === id)) throw new Error(`plugin ${manifest.id} did not declare export ${id} in its manifest`);
@@ -365,6 +420,12 @@ export function createHost(options: HostOptions = {}): Host {
       viewAdapter = next;
     },
     bindWorkspace: (next) => workspace.bind(next),
+    bindStylus: (next) => {
+      stylusLookups = next;
+    },
+    bindEntryLength: (next) => {
+      entryLength = next;
+    },
     execute,
     dispatchKey,
     fire: (event) => registry.fire(event),
@@ -416,4 +477,4 @@ export type { MidiBackend } from "./midi";
 export { MidiSink, NOTE_ON, NOTE_OFF } from "./midiSink";
 export { ActionTable, rule, gate, modal, isMod } from "./actions";
 export type { ActionStep, ActionRule, KeyEvent, Outcome } from "./actions";
-export { confirmDialog, tauriInvoke, onTablet } from "./shell";
+export { confirmDialog, tauriInvoke, onTablet, shellPlatform } from "./shell";

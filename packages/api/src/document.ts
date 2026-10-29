@@ -31,6 +31,14 @@ export interface EditorState {
   readonly block: BlockSelection | null;
   readonly view: ViewMode;
   readonly entryMode: boolean;
+  /**
+   * The input's note length — what digits 1–7 pick and the dot adds: the
+   * written duration ("1" whole, "2" half, "4" quarter … "64") and its
+   * dots. Kept while input mode is off. Added 1.3.0 for the stylus, whose
+   * taps write it; `ctx.setEntryLength` sets it.
+   */
+  readonly entryDur: string;
+  readonly entryDots: number;
 }
 
 /**

@@ -48,8 +48,27 @@ export interface SetHarmMessage {
   text: string;
 }
 
-export type CommandMessage = SetPitchesMessage | SetSylMessage | SetHarmMessage;
+/**
+ * Enter a note at an event, as the keyboard does in entry mode (1.3.0, the
+ * stylus): overwrite — the event (note, chord, rest or a measure rest)
+ * becomes a note of this pitch and written duration; a shorter one leaves
+ * rests for the rest of the time, a longer one takes the following events
+ * of its layer. Refused when it would cross a beam, tuplet or barline.
+ * The key signature supplies the accidental. One undo step; labels itself.
+ */
+export interface EnterNoteMessage {
+  type: "core.enterNote";
+  eventId: string;
+  pname: string;
+  oct: number;
+  /** Written duration: "1" whole, "2" half, "4" quarter … "64". */
+  dur: string;
+  /** Dots: 0 (the default), 1 or 2. */
+  dots?: number;
+}
+
+export type CommandMessage = SetPitchesMessage | SetSylMessage | SetHarmMessage | EnterNoteMessage;
 
 export type CommandMessageType = CommandMessage["type"];
 
-export const COMMAND_MESSAGE_TYPES: readonly CommandMessageType[] = ["core.setPitches", "core.setSyl", "core.setHarm"];
+export const COMMAND_MESSAGE_TYPES: readonly CommandMessageType[] = ["core.setPitches", "core.setSyl", "core.setHarm", "core.enterNote"];

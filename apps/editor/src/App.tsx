@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
 import { RenderPool, type TileResult } from "./render/renderPool";
 import { keyMatches, type Keymap, type Layout } from "./keymap";
-import { host, useStore, Slot, Panels, SIDE_PANEL_WIDTH, SAFE_TOP, SAFE_BOTTOM, SAFE_LEFT, SAFE_RIGHT, useNarrowScreen, LaneInput, laneFace, TileOverlays, TileBands, rowBandHeights, confirmDialog, tauriInvoke, onTablet, blockOfEvents, rule, gate, modal, isMod, type ActionStep, type KeyEvent, type Outcome, type OverlayStore } from "./host";
+import { host, useStore, Slot, Panels, SIDE_PANEL_WIDTH, SAFE_TOP, SAFE_BOTTOM, SAFE_LEFT, SAFE_RIGHT, useNarrowScreen, shellPlatform, LaneInput, laneFace, TileOverlays, TileBands, rowBandHeights, confirmDialog, tauriInvoke, onTablet, blockOfEvents, rule, gate, modal, isMod, type ActionStep, type KeyEvent, type Outcome, type OverlayStore } from "./host";
 import { ShortcutEditor } from "./ShortcutEditor";
 // The about box and its notices load when it opens (phase 10, M4).
 const About = lazy(() => import("./About").then((m) => ({ default: m.About })));
@@ -384,7 +384,7 @@ function TileGrid({ session, version, pool, zoom, overlays, onRendered, onSettle
   const staffNOf = useCallback((id: string) => session.staffRefById.get(id)?.staffN, [session]);
   const contextOf = useCallback((measureIndex: number, n: number) => session.contexts[measureIndex]?.get(n), [session]);
   const aligned = (t: TileState, rowTop: number, rowBoxH: number, index?: number) => (
-    <div style={{ width: t.w * zoom, height: rowBoxH, overflow: "hidden", position: "relative" }}>
+    <div data-tile-frame style={{ width: t.w * zoom, height: rowBoxH, overflow: "hidden", position: "relative" }}>
       <div style={{ position: "absolute", top: `${(rowTop - t.staffTop) * zoom}px`, width: t.w * zoom, height: t.h * zoom }} dangerouslySetInnerHTML={{ __html: t.svg }} />
       {/* The overlays point (slice 10a): plugins draw over the tile here — above the SVG, below the caret — and nothing is mounted while no overlay is registered. A header cell has no index and no layer. */}
       {index !== undefined && <TileOverlays store={overlays} measureIndex={index} measureId={session.score.measures[index]?.attrs["xml:id"] ?? null} layoutKey={`${t.displayKey}|${zoom}|${rowTop}|${rowBoxH}`} staffNOf={staffNOf} contextOf={contextOf} />}
@@ -642,6 +642,11 @@ export default function App() {
 
   const active = docs.find((d) => d.id === activeId) ?? null;
   const session = active?.session ?? null;
+  // The stylus (1.3.0): the lookups it reads the page with — staff ids and contexts of the active score.
+  useEffect(() => {
+    host.bindStylus(session ? { staffNOf: (id) => session.staffRefById.get(id)?.staffN, contextOf: (mi, n) => session.contexts[mi]?.get(n) } : null);
+    return () => host.bindStylus(null);
+  }, [session]);
 
   useEffect(() => {
     const p = new RenderPool();
@@ -1495,8 +1500,16 @@ export default function App() {
     };
   }, []);
   useEffect(() => {
-    host.editor.set({ caret, selection, block, view, entryMode });
-  }, [caret, selection, block, view, entryMode]);
+    host.editor.set({ caret, selection, block, view, entryMode, entryDur, entryDots });
+  }, [caret, selection, block, view, entryMode, entryDur, entryDots]);
+  // ctx.setEntryLength (1.3.0): the input's note length, as a digit sets it.
+  useEffect(() => {
+    host.bindEntryLength((dur, dots) => {
+      setEntryDur(dur);
+      setEntryDots(dots);
+    });
+    return () => host.bindEntryLength(null);
+  }, []);
   useEffect(() => {
     if (!session) {
       host.bindSession(null);

@@ -17,7 +17,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { API_VERSION, definePlugin, type PluginContext, type PluginEntry, type PluginManifest, type DocumentInfo } from "@battuta/api";
-import { SetHarmCommand, SetPitchesCommand, SetSylCommand } from "@battuta/core";
+import { SetHarmCommand, SetPitchesCommand, SetSylCommand, buildEventIndex, buildScore, findAll, type CoreElement } from "@battuta/core";
 import { createHost, memorySettings, toCommand, HostAudioService, type SessionAdapter } from "../src/host";
 import { memoryStorage } from "../src/host/services";
 import { dimsDeclared } from "../src/host/slots";
@@ -297,6 +297,49 @@ describe("commands as data", () => {
     expect((cmd as SetPitchesCommand).label).toBe("inversion");
     targets[0]!.pitches[0]!.pname = "z"; // a plugin mutating its message afterwards changes nothing inside the command
     expect(JSON.stringify(cmd)).not.toContain('"z"');
+  });
+
+  it("maps core.enterNote to the keyboard's overwrite entry, reading the measure's capacity off the document, and undoes it whole", () => {
+    // One staff in 3/4; a measure rest, entered over by a half note: a quarter rest is left.
+    const el = (tag: string, attrs: Record<string, string> = {}, ...children: CoreElement[]): CoreElement => ({ tag, attrs, children });
+    const root = el("music", {}, el("body", {}, el("mdiv", {}, el("score", {}, el("scoreDef", { "meter.count": "3", "meter.unit": "4" }, el("staffGrp", {}, el("staffDef", { n: "1", lines: "5", "clef.shape": "G", "clef.line": "2" }))), el("section", {}, el("measure", { n: "1", "xml:id": "m1" }, el("staff", { n: "1" }, el("layer", { n: "1" }, el("mRest", { "xml:id": "mr1" })))))))));
+    const score = buildScore(root);
+    const ctx = () => ({ score, index: buildEventIndex(score) });
+    const events = () => findAll(score.measures[0]!, "layer")[0]!.children.map((c) => (typeof c === "string" ? c : `${c.tag}${c.attrs["pname"] ?? ""}${c.attrs["oct"] ?? ""}:${c.attrs["dur"] ?? ""}`));
+    const cmd = toCommand({ type: "core.enterNote", eventId: "mr1", pname: "g", oct: 4, dur: "2" });
+    expect(cmd.label).toBe("enter note g2");
+    cmd.apply(ctx());
+    expect(events()).toEqual(["noteg4:2", "rest:4"]);
+    cmd.revert(ctx());
+    expect(events()).toEqual(["mRest:"]);
+    cmd.apply(ctx()); // redo
+    expect(events()).toEqual(["noteg4:2", "rest:4"]);
+    expect(() => toCommand({ type: "core.enterNote", eventId: "nope", pname: "g", oct: 4, dur: "4" }).apply(ctx())).toThrow(/no event "nope"/);
+  });
+
+  it("refuses a core.enterNote that is not a note it can write, and labels a dotted one", () => {
+    expect(() => toCommand({ type: "core.enterNote", eventId: "r1", pname: "h", oct: 4, dur: "4" })).toThrow(/pname must be a letter a–g/);
+    expect(() => toCommand({ type: "core.enterNote", eventId: "r1", pname: "g", oct: 4.5, dur: "4" })).toThrow(/oct must be an integer 0–9/);
+    expect(() => toCommand({ type: "core.enterNote", eventId: "r1", pname: "g", oct: 4, dur: "3" })).toThrow(/dur must be one of 1, 2, 4, 8, 16, 32, 64/);
+    expect(() => toCommand({ type: "core.enterNote", eventId: "r1", pname: "g", oct: 4, dur: "4", dots: 3 })).toThrow(/dots must be 0, 1 or 2/);
+    expect(toCommand({ type: "core.enterNote", eventId: "r1", pname: "g", oct: 4, dur: "4", dots: 1 }).label).toBe("enter note g4.");
+  });
+
+  it("ctx.setEntryLength reaches the App's input length, checked at the door; the mirror starts at a plain quarter", () => {
+    const host = makeHost([]);
+    expect(host.editor.get()).toMatchObject({ entryDur: "4", entryDots: 0 });
+    let ctx: PluginContext | null = null;
+    host.registry.register({ manifest: { id: "t.len", name: "t", version: "1.0.0", engines: { battuta: "^1.3.1" }, activationEvents: ["onStartup"] }, load: async () => definePlugin({ activate: (c) => void (ctx = c) }) });
+    return host.fire("onStartup").then(() => {
+      const set: string[] = [];
+      ctx!.setEntryLength("8", 1); // nothing bound yet: no effect, no error
+      host.bindEntryLength((dur, dots) => set.push(`${dur}/${dots}`));
+      ctx!.setEntryLength("2");
+      ctx!.setEntryLength("16", 2);
+      expect(set).toEqual(["2/0", "16/2"]);
+      expect(() => ctx!.setEntryLength("3")).toThrow(/dur must be one of/);
+      expect(() => ctx!.setEntryLength("4", 3)).toThrow(/dots must be 0, 1 or 2/);
+    });
   });
 
   it("refuses a message type the host has not published", () => {

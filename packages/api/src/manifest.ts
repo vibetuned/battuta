@@ -35,9 +35,9 @@ export const ACTIVATION_EVENT_PREFIXES = ["onStartup", "onCommand:", "onLane:", 
  * the host refuses to register a plugin needing one it does not offer.
  * Grows as host services are lifted (`midi` lands in slice 3).
  */
-export type HostCapability = "midi" | "workspace" | "audio";
+export type HostCapability = "midi" | "workspace" | "audio" | "stylus";
 
-export const HOST_CAPABILITIES: readonly HostCapability[] = ["midi", "workspace", "audio"];
+export const HOST_CAPABILITIES: readonly HostCapability[] = ["midi", "workspace", "audio", "stylus"];
 
 /**
  * UI slots a plugin may place an item in. `header` is the first header row

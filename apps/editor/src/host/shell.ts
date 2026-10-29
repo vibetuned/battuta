@@ -4,10 +4,10 @@
  * these; nothing else talks to __TAURI__ for dialogs.
  */
 /** The shell the page runs in, as it said before the page loaded (lib.rs);
- * null in a browser. */
-export const shellPlatform = (): { platform: string; mobile: boolean } | null => {
+ * null in a browser. `debug`: a debug build of the shell (1.3.0). */
+export const shellPlatform = (): { platform: string; mobile: boolean; debug?: boolean } | null => {
   if (typeof window === "undefined") return null;
-  return (window as unknown as { __BATTUTA_SHELL__?: { platform: string; mobile: boolean } }).__BATTUTA_SHELL__ ?? null;
+  return (window as unknown as { __BATTUTA_SHELL__?: { platform: string; mobile: boolean; debug?: boolean } }).__BATTUTA_SHELL__ ?? null;
 };
 
 /** The shell's bridge — files by path, folders, and (on desktop) native

@@ -28,6 +28,7 @@
     "@battuta/plugin-pitch-reference": "*",
     "@battuta/plugin-playback": "*",
     "@battuta/plugin-reflection": "*",
+    "@battuta/plugin-stylus": "*",
     "@tauri-apps/plugin-dialog": "^2.8.3",
     "@tauri-apps/plugin-fs": "^2.7.1",
     "react": "^18.3.0",

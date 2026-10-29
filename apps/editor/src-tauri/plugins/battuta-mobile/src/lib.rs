@@ -18,11 +18,15 @@
 //!   unchanged, and this plugin lists, reads, writes, creates and renames
 //!   by such paths, walking the tree name by name.
 //!
-//! The page never calls this plugin: the shell does, from the workspace
-//! and share commands it already answers (`lib.rs`), so the page's API
-//! does not change with the platform.
+//! - **The stylus** (1.3.0, phase 11) — the Apple Pencil and the S Pen,
+//!   captured natively while the page asks for it (`stylus_capture`).
+//!
+//! The page never calls this plugin: the shell does, from the workspace,
+//! share and stylus commands it already answers (`lib.rs`), so the page's
+//! API does not change with the platform.
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tauri::{
+    ipc::{Channel, InvokeResponseBody},
     plugin::{Builder, PluginApi, PluginHandle, TauriPlugin},
     AppHandle, Manager, Runtime,
 };
@@ -74,8 +78,9 @@ struct MtimeOut {
 struct SharedOut {
     completed: bool,
 }
-#[derive(Deserialize)]
-struct Nothing {}
+/// The answer of a command that returns nothing: a bare `resolve()` sends
+/// `null` on both platforms, `resolve([:])` an empty object — either will do.
+type Nothing = serde::de::IgnoredAny;
 
 fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
@@ -102,6 +107,43 @@ impl<R: Runtime> BattutaMobile<R> {
     /// when the view is shown; the instrument arrives as a MIDI device.
     pub fn bluetooth_midi(&self) -> Result<(), String> {
         self.call::<Nothing>("bluetoothMidi", ()).map(|_| ())
+    }
+
+    /// The stylus (1.3.0, phase 11): capture on or off. While on, every
+    /// Apple Pencil or S Pen stroke that begins inside the score's area
+    /// (`stylus_area`) is battuta's — the page never sees it; elsewhere the
+    /// pen taps like a finger, and fingers still scroll, zoom and tap — and its events (strokes batched
+    /// per frame, a hold, hover, the Pencil's squeeze and double-tap, the S
+    /// Pen's side button: `StylusCapture.swift` / `StylusCapture.kt` say what
+    /// each carries) reach `events` as JSON objects, from the native side's
+    /// thread. Each call hands the native side a new channel; the last one
+    /// given is the one it sends to.
+    pub fn stylus_capture<F: Fn(serde_json::Value) + Send + Sync + 'static>(&self, on: bool, events: F) -> Result<(), String> {
+        #[derive(Serialize)]
+        struct Args {
+            on: bool,
+            channel: Channel,
+        }
+        let channel = Channel::new(move |body| {
+            if let InvokeResponseBody::Json(json) = body {
+                if let Ok(event) = serde_json::from_str(&json) {
+                    events(event);
+                }
+            }
+            Ok(())
+        });
+        self.call::<Nothing>("stylusCapture", Args { on, channel }).map(|_| ())
+    }
+
+    /// Where the pen writes: the score's area as page rectangles `[x, y,
+    /// width, height]` (CSS pixels — the WebView's points and dp). A stroke
+    /// that begins outside them is the page's. None until the page says.
+    pub fn stylus_area(&self, rects: Vec<[f64; 4]>) -> Result<(), String> {
+        #[derive(Serialize)]
+        struct Args {
+            rects: Vec<[f64; 4]>,
+        }
+        self.call::<Nothing>("stylusArea", Args { rects }).map(|_| ())
     }
 
     /// The system folder picker. iPadOS: a path, its scope started and a

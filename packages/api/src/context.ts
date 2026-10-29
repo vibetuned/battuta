@@ -22,6 +22,7 @@ import type { ViewService } from "./view.js";
 import type { OverlaysService } from "./overlays.js";
 import type { FormatsService } from "./formats.js";
 import type { WorkspaceService } from "./workspace.js";
+import type { StylusService } from "./stylus.js";
 import type { LanesService } from "./lanes.js";
 
 /** A value with change notification. `subscribe` fires on every change with the new value. */
@@ -84,6 +85,14 @@ export interface PluginContext {
   readonly query: DocumentQueries;
   /** Runs a command message against the active document as one undo step. Throws when no document is open. */
   execute(message: CommandMessage): void;
+  /**
+   * Set the input's note length (`editor`'s `entryDur` / `entryDots`), as
+   * typing a digit does in input mode, without entering anything or
+   * turning input mode on. Throws on a duration other than "1" … "64" or
+   * dots other than 0–2. Added 1.3.0: a length the stylus cross chose
+   * becomes the input's.
+   */
+  setEntryLength(dur: string, dots?: number): void;
   /** Provides the handler for one of the plugin's declared commands; keybindings reach it through here. */
   registerCommand(id: string, handler: CommandHandler): Disposable;
   /** Bottom-right toast, same as the host's own notices. */
@@ -119,6 +128,8 @@ export interface PluginContext {
   readonly formats: FormatsService;
   /** The folders the user opened, read-only and scoped (capability "workspace"); unavailable in a browser. */
   readonly workspace: WorkspaceService;
+  /** The Apple Pencil and the S Pen on the score (capability "stylus"); available in the iOS and Android shells only. */
+  readonly stylus: StylusService;
   /** Disposed on deactivate. Add every subscription here; the host disposes what it handed out itself. */
   readonly subscriptions: DisposableStore;
 }

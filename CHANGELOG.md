@@ -11,7 +11,88 @@ below, and changes since the last tag gather under *Unreleased*.
 
 ## Unreleased
 
-Nothing since 1.2.0.
+The stylus, for 1.3.0 (Phase 11): battuta's first native plugin, in three
+parts as the user set them out on 2026-10-29. First, notes added with the
+pen, a held pen popping a cross at its tip (left–right the duration,
+top–bottom the pitch). Second, ABC music written by hand with ML Kit and
+PencilKit. Third, a glyph classifier of battuta's own. Its first slice is
+the bridge they all stand on.
+
+- **Native capture first, in 1.3.0 (2026-10-29).** The user's choices: the
+  shell's native code captures the stylus and hands it to the core, rather
+  than the page reading pen pointer events; and it ships in 1.3.0, after
+  1.2.0's store release. The native code lives in the shell's
+  `battuta-mobile` crate. Plugins stay TypeScript and will reach the stylus
+  through `@battuta/api` 1.3.0 (`ctx.stylus`, still to be designed with
+  the user).
+- **The pen writes, fingers scroll (2026-10-29).** The user's rule: while
+  capture is on, every stylus touch is battuta's and the page never sees
+  the pen; fingers still scroll, zoom and tap. A probe on both reference
+  tablets (iPad Air M4 with an Apple Pencil Pro, Galaxy Tab S8 Ultra with
+  an S Pen) showed why the capture has to be native. On Android the
+  WebView turned a drawn line into a scroll after 57 ms and a long press
+  into a context menu, and gave the page about 100 samples a second
+  against the pen's 575. The Pencil's roll and squeeze, the hover height
+  and the S Pen's side button reach native code only.
+- **Slice 1 — the bridge (2026-10-29). CLOSED.** `StylusCapture.swift`
+  (a Pencil-only gesture recognizer) and `StylusCapture.kt` (a touch
+  listener taking every gesture the S Pen begins) send what the pen does
+  down a Tauri channel, and the shell re-emits it as `stylus` events:
+  strokes, their samples batched once per screen frame (page pixels, ms,
+  pressure, altitude, azimuth, roll); a hold, the tip within 8 px of where
+  it landed for 0.5 s (a held pen wobbles, so never path length); hover
+  with its height; the buttons. A new host module, `host/stylus.tsx` (the
+  user approved it), reads a point against the score — the tile under it,
+  the nearest staff, the pitch from that staff's lines and the clef in
+  force — and in debug builds a readout follows the pen. On iPadOS the
+  recognizer stops the Pencil from scrolling, but WebKit still hands the
+  page its strokes, so the page also stops pen events itself while capture
+  is on (`shieldFromPen`). Checked on both tablets by the user: the pen
+  neither scrolls nor taps the page (the on-screen keyboard included),
+  fingers do both, and every gesture reached the readout. While capture is
+  on the pen presses no control at all, so when capture turns on is a
+  question for the plugin API.
+- **Part 1's design, and `@battuta/api` 1.3.0 (2026-10-29).** The user's
+  four answers. The pen writes only on the score; everywhere else (the
+  toolbar, the panels, the on-screen keyboard, a menu open over the score)
+  it taps like a finger. A tap writes the pitch under the pen at the
+  duration last chosen with the cross, a quarter until one is. A held
+  cross previews the note, which is written once, on lift: one undo step.
+  And the API gains `ctx.stylus`, the `core.enterNote` message and the
+  `"stylus"` capability as a ceiling, nothing else. `core.enterNote` maps
+  onto core's existing entry command (`ReplaceEntryCommand` in the unbeam
+  wrap, the keyboard's own), so core is unchanged; the new plugin is
+  `packages/plugins/stylus`.
+- **The pen writes the input's length (2026-10-29).** After trying part 1
+  on the Galaxy tablet the user changed the tap's length: not the last one
+  the cross chose but the input's, the one digits pick, dots included;
+  and the cross's length becomes the input's, as a digit would make it.
+  So `@battuta/api` 1.3.1 (the user approved each): `ctx.editor`'s
+  `entryDur` and `entryDots`, `core.enterNote`'s `dots`, and
+  `ctx.setEntryLength`.
+- **The Pencil's lift, found (2026-10-29).** On the iPad the cross stayed
+  up and no note was written. The `[stylus]` lines in the debug log showed
+  every stroke's down and every hold, and never a lift. The shield's
+  `preventDefault()` on the Pencil's `touchstart` makes WebKit fail every
+  native gesture recognizer that waits on its own, the shell's Pencil
+  recognizer included. So the shield now only stops the pen's events, and
+  prevents just the mouse events and click a tap becomes. A recognizer
+  reset with the Pencil still down now ends the stroke as a cancel. On the
+  way, the iOS side stopped dropping an event silently: a NaN in a sample
+  made Tauri's JSON encoder throw, and `try?` lost it. Checked by the user
+  on both tablets.
+- **The cross at the touch (2026-10-29).** Waiting half a second for the
+  hold was too slow (the user, after trying it on both tablets), so the
+  cross comes up as the pen lands, and a tap is a lift where it landed.
+  Every stroke on a staff now steers the cross, so handwriting (part 2)
+  will need a mode of its own.
+- **Fixed: native commands that answer nothing failed (2026-10-29).**
+  `resolve()` with no data sends `null` from Swift and from Kotlin, and the
+  plugin's Rust side refused it ("invalid type: null, expected struct
+  Nothing"). The stylus capture reported that error each time it turned
+  on, and so did Bluetooth MIDI pairing, shipped in 1.2.0, in a notice
+  once its sheet had opened, on the iPad and on Android. The Rust side now
+  takes `null` or an empty object.
 
 ## 1.2.0 — 2026-10-29 (Phase 10 — iPhone, iPad and Android)
 

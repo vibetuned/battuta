@@ -1,4 +1,4 @@
-// @battuta/api 1.2.0 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
+// @battuta/api 1.3.1 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
 
 // ---- ../dist/.tsbuildinfo
 {"version":"5.9.3"}
@@ -116,6 +116,7 @@ import type { ViewService } from "./view.js";
 import type { OverlaysService } from "./overlays.js";
 import type { FormatsService } from "./formats.js";
 import type { WorkspaceService } from "./workspace.js";
+import type { StylusService } from "./stylus.js";
 import type { LanesService } from "./lanes.js";
 /** A value with change notification. `subscribe` fires on every change with the new value. */
 export interface Store<T> {
@@ -170,6 +171,14 @@ export interface PluginContext {
     readonly query: DocumentQueries;
     /** Runs a command message against the active document as one undo step. Throws when no document is open. */
     execute(message: CommandMessage): void;
+    /**
+     * Set the input's note length (`editor`'s `entryDur` / `entryDots`), as
+     * typing a digit does in input mode, without entering anything or
+     * turning input mode on. Throws on a duration other than "1" … "64" or
+     * dots other than 0–2. Added 1.3.0: a length the stylus cross chose
+     * becomes the input's.
+     */
+    setEntryLength(dur: string, dots?: number): void;
     /** Provides the handler for one of the plugin's declared commands; keybindings reach it through here. */
     registerCommand(id: string, handler: CommandHandler): Disposable;
     /** Bottom-right toast, same as the host's own notices. */
@@ -209,6 +218,8 @@ export interface PluginContext {
     readonly formats: FormatsService;
     /** The folders the user opened, read-only and scoped (capability "workspace"); unavailable in a browser. */
     readonly workspace: WorkspaceService;
+    /** The Apple Pencil and the S Pen on the score (capability "stylus"); available in the iOS and Android shells only. */
+    readonly stylus: StylusService;
     /** Disposed on deactivate. Add every subscription here; the host disposes what it handed out itself. */
     readonly subscriptions: DisposableStore;
 }
@@ -286,6 +297,14 @@ export interface EditorState {
     readonly block: BlockSelection | null;
     readonly view: ViewMode;
     readonly entryMode: boolean;
+    /**
+     * The input's note length — what digits 1–7 pick and the dot adds: the
+     * written duration ("1" whole, "2" half, "4" quarter … "64") and its
+     * dots. Kept while input mode is off. Added 1.3.0 for the stylus, whose
+     * taps write it; `ctx.setEntryLength` sets it.
+     */
+    readonly entryDur: string;
+    readonly entryDots: number;
 }
 /**
  * The active document, as a snapshot. `version` bumps on every executed
@@ -465,7 +484,7 @@ export interface FormatsService {
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export declare const API_VERSION = "1.2.0";
+export declare const API_VERSION = "1.3.1";
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";
 export type { Disposable } from "./disposable.js";
@@ -479,7 +498,8 @@ export type { HighlightCue, ViewService } from "./view.js";
 export type { OverlayBox, OverlayStaff, TileOverlayProps, OverlaySpec, OverlaysService, BandCell, OverlayBand } from "./overlays.js";
 export type { ExportContribution, ExportFile, ExportPayload, ImportContribution, ImportFile, FormatsService } from "./formats.js";
 export type { DirEntry, WatchEvent, WatchEventKind, WorkspaceService } from "./workspace.js";
-export type { SetPitchesMessage, SetSylMessage, SetHarmMessage, CommandMessage, CommandMessageType } from "./messages.js";
+export type { StylusSample, StylusScorePoint, StylusEvent, StylusService } from "./stylus.js";
+export type { SetPitchesMessage, SetSylMessage, SetHarmMessage, EnterNoteMessage, CommandMessage, CommandMessageType } from "./messages.js";
 export { COMMAND_MESSAGE_TYPES } from "./messages.js";
 export type { MidiPort, MidiNoteEvent, MidiVirtualInput, MidiOutputs, MidiService } from "./midi.js";
 export type { KeymapEntry, ActionsService } from "./actions.js";
@@ -620,7 +640,7 @@ export declare const ACTIVATION_EVENT_PREFIXES: readonly ["onStartup", "onComman
  * the host refuses to register a plugin needing one it does not offer.
  * Grows as host services are lifted (`midi` lands in slice 3).
  */
-export type HostCapability = "midi" | "workspace" | "audio";
+export type HostCapability = "midi" | "workspace" | "audio" | "stylus";
 export declare const HOST_CAPABILITIES: readonly HostCapability[];
 /**
  * UI slots a plugin may place an item in. `header` is the first header row
@@ -766,7 +786,25 @@ export interface SetHarmMessage {
     kind: HarmKind;
     text: string;
 }
-export type CommandMessage = SetPitchesMessage | SetSylMessage | SetHarmMessage;
+/**
+ * Enter a note at an event, as the keyboard does in entry mode (1.3.0, the
+ * stylus): overwrite — the event (note, chord, rest or a measure rest)
+ * becomes a note of this pitch and written duration; a shorter one leaves
+ * rests for the rest of the time, a longer one takes the following events
+ * of its layer. Refused when it would cross a beam, tuplet or barline.
+ * The key signature supplies the accidental. One undo step; labels itself.
+ */
+export interface EnterNoteMessage {
+    type: "core.enterNote";
+    eventId: string;
+    pname: string;
+    oct: number;
+    /** Written duration: "1" whole, "2" half, "4" quarter … "64". */
+    dur: string;
+    /** Dots: 0 (the default), 1 or 2. */
+    dots?: number;
+}
+export type CommandMessage = SetPitchesMessage | SetSylMessage | SetHarmMessage | EnterNoteMessage;
 export type CommandMessageType = CommandMessage["type"];
 export declare const COMMAND_MESSAGE_TYPES: readonly CommandMessageType[];
 
@@ -963,6 +1001,92 @@ export interface Version {
 export declare function parseVersion(v: string): Version | null;
 /** True when `version` lies inside `range` (all space-separated comparators must hold). */
 export declare function satisfiesEngine(range: string, version: string): boolean;
+
+// ---- stylus.d.ts
+/**
+ * The stylus host service (capability "stylus", 1.3.0, 2026-10-29): the
+ * Apple Pencil and the S Pen, captured natively by the iOS and Android
+ * shells and handed to a plugin already read against the score.
+ *
+ * While capture is on, the pen writes ON THE SCORE and nowhere else (the
+ * user's rule): a stroke that begins over the measures in edit view is the
+ * plugin's, and the page never sees it; a stroke that begins anywhere else
+ * — the toolbar, a panel, the on-screen keyboard, a menu open over the
+ * score — taps like a finger. Fingers always scroll, zoom and tap.
+ *
+ * Every event carries `at`: where it falls on the score — the measure, the
+ * nearest staff, the event (note, chord or rest) nearest the pen on that
+ * staff, the height as steps above the staff's bottom line and the pitch
+ * there under the clef in force, and the point in the tile's own pixels,
+ * the frame the overlays point draws in. Null off the measures.
+ */
+import type { Disposable } from "./disposable.js";
+import type { Pitch } from "./document.js";
+/** One sample: page pixels, ms, pressure 0–1, altitude and azimuth in radians, roll (radians) where the pen reports it. */
+export type StylusSample = readonly [x: number, y: number, t: number, pressure: number, altitude: number, azimuth: number, roll: number | null];
+/** A page point read against the score in edit view. */
+export interface StylusScorePoint {
+    /** 0-based index of the measure under the point. */
+    measureIndex: number;
+    /** The staff nearest the point in that measure. */
+    staffN: number;
+    /** The event on that staff nearest the point across — what `core.enterNote` writes over; null on an empty staff. */
+    eventId: string | null;
+    /** Steps above the staff's bottom line: 0 the line, 1 the space above it, negative below. */
+    step: number;
+    /** The written pitch at that step under the clef in force — letter and octave; the key signature supplies its accidental. Null under a clef that names none. */
+    pitch: Pitch | null;
+    /** The point in the tile's own pixels — `TileOverlayProps`' frame, for drawing there. */
+    tile: {
+        x: number;
+        y: number;
+    };
+}
+export type StylusEvent = 
+/** A stroke: samples batched once per screen frame, `down` first; `at` is its last sample's place. `predicted` are the system's guesses ahead (iPadOS). */
+{
+    type: "stroke";
+    phase: "down" | "move" | "up" | "cancel";
+    id: number;
+    samples: readonly StylusSample[];
+    predicted: readonly StylusSample[];
+    at: StylusScorePoint | null;
+}
+/** The pen held still where stroke `id` landed — within 8 px for half a second. Sent once; the stroke's `up` ends it. */
+ | {
+    type: "hold";
+    id: number;
+    x: number;
+    y: number;
+    at: StylusScorePoint | null;
+}
+/** The pen above the glass, height 0–1. */
+ | {
+    type: "hover";
+    phase: "enter" | "move" | "leave";
+    x: number;
+    y: number;
+    height: number;
+    at: StylusScorePoint | null;
+}
+/** The Pencil Pro's squeeze (down, up) and double-tap (tap); the S Pen's side button (down, up). Where the pen was, when the system says. */
+ | {
+    type: "button";
+    button: "squeeze" | "doubleTap" | "side";
+    phase: "down" | "up" | "tap";
+    x: number | null;
+    y: number | null;
+    height: number | null;
+    at: StylusScorePoint | null;
+};
+export interface StylusService {
+    /** True in the iOS and Android shells, which capture the stylus; false on the desktop and in a browser — do nothing there. */
+    readonly available: boolean;
+    /** Take the pen's strokes on the score (on) or give them back (off). Off again when the plugin deactivates. */
+    capture(on: boolean): Promise<void>;
+    /** Every event while capture is on; the disposable unsubscribes. */
+    on(listener: (event: StylusEvent) => void): Disposable;
+}
 
 // ---- view.d.ts
 /**
