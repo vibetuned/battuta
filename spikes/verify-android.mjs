@@ -86,12 +86,18 @@ let runFile = null;
 
 try {
   const page = browser.contexts()[0].pages()[0];
-  // every tile rendered — the first SVG alone says the worker started, not that it finished
-  await page.waitForFunction(() => window.__SESSION__ && [...document.querySelectorAll(".tile")].every((t) => t.querySelector("svg")), null, { timeout: 30000 });
+  // every tile rendered — the first SVG alone says the worker started, not that it finished.
+  // Counted in the same breath as the wait: a separate count afterwards once caught the
+  // tiles mid-redraw (0 svg in 4 tiles, on a Pixel 9 Pro, 2026-10-29) with all of them drawn.
+  const tiles = await (
+    await page.waitForFunction(() => {
+      const all = [...document.querySelectorAll(".tile")];
+      return window.__SESSION__ && all.length > 0 && all.every((t) => t.querySelector("svg")) ? { tiles: all.length, svg: document.querySelectorAll(".tile svg").length } : false;
+    }, null, { timeout: 30000 })
+  ).jsonValue();
 
   const shell = await page.evaluate(() => window.__BATTUTA_SHELL__ ?? null);
   check(`the shell says what it is before the page runs (${JSON.stringify(shell)})`, shell?.platform === "android" && shell.mobile === true);
-  const tiles = await page.evaluate(() => ({ tiles: document.querySelectorAll(".tile").length, svg: document.querySelectorAll(".tile svg").length }));
   check(`Verovio renders in the WebView (${tiles.svg} svg in ${tiles.tiles} tiles)`, tiles.tiles > 0 && tiles.svg >= tiles.tiles);
   // M1: battuta's own folder — the platform's home, no dialog (pickFolder
   // is the system's folder picker on a tablet: a user's gesture, not this run's).

@@ -11,12 +11,18 @@
 
 | | App Store | Google Play |
 |---|---|---|
-| Name (30 max) | battuta | battuta |
-| Subtitle (30 max) / short description (80 max) | Music notation editor (MEI) | Write and edit sheet music in MEI. Free, open source, offline, no account. |
+| Name (30 max) | battuta: Score Editor | battuta |
+| Subtitle (30 max) / short description (80 max) | Music notation in MEI | Write and edit sheet music in MEI. Free, open source, offline, no account. |
 | Category | Music (secondary: Education) | Music & Audio |
 | Price | Free, no in-app purchases | Free, no in-app purchases, no ads |
 
-battuta is lower-case everywhere, as on the website and in the app.
+battuta is lower-case everywhere, as on the website and in the app. On the
+App Store the name is **battuta: Score Editor**: "battuta" alone was taken
+there (2026-10-29), and App Store names are unique — the words after the
+colon are also the ones its search weighs most. The name under the icon
+stays *battuta*. Google Play allows the plain name, and its listing went to
+review with it. With *Score Editor* in the name, the subtitle names the
+notation and the format instead of repeating it.
 
 ## Full description
 

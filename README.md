@@ -163,9 +163,12 @@ linked and never copied into the app (`buildPhase: none` — Tauri's template
 made it a resource whenever XcodeGen ran after a build); the archives are
 named *battuta* in the Organizer while the scheme keeps the target's name,
 which the Tauri CLI builds by; Android Studio opens on the *universal*
-flavour (all four ABIs, as the CLI builds) instead of 32-bit *arm*; and the
+flavour (all four ABIs, as the CLI builds) instead of 32-bit *arm*; the
 signed bundle Android Studio writes beside the module
-(`app/universal/release/`) is ignored by git. The listings' texts
+(`app/universal/release/`) is ignored by git; and the 64-bit Android
+libraries are linked for **16 KB pages**, which Google Play requires of apps
+targeting Android 15 and later (`src-tauri/build.rs`: NDK 27 links for 4 KB,
+and the Tauri CLI's own `RUSTFLAGS` would override a `.cargo/config.toml`). The listings' texts
 and every question the two stores ask, answered:
 [`apps/editor/store/`](apps/editor/store/); their screenshots, feature
 graphic and Play icon: `npm run store:screenshots`.
@@ -184,6 +187,9 @@ icons, generate into a scratch folder and copy only the mobile sets:
 ```sh
 cd apps/editor && npx tauri icon src-tauri/icons/mobile/icons.json -o /tmp/battuta-icons
 cp /tmp/battuta-icons/ios/*.png src-tauri/gen/apple/Assets.xcassets/AppIcon.appiconset/
+# the App Store refuses an icon with an alpha channel, even an opaque one:
+# flatten them onto the white background, RGB only (ImageMagick)
+for f in src-tauri/gen/apple/Assets.xcassets/AppIcon.appiconset/*.png; do magick "$f" -background "#ffffff" -alpha remove -alpha off "PNG24:$f"; done
 # android/mipmap-*, mipmap-anydpi-v26 and values/ic_launcher_background.xml
 # go to src-tauri/gen/android/app/src/main/res/ the same way
 ```

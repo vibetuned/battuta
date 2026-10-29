@@ -30,7 +30,7 @@
 
 | Field | Answer |
 |---|---|
-| Name / subtitle | battuta / Music notation editor (MEI) |
+| Name / subtitle | battuta: Score Editor / Music notation in MEI (*battuta* alone was taken; the icon's name stays battuta) |
 | Bundle ID | `com.vibetuned.battuta` (one for every platform) |
 | Primary category / secondary | Music / Education |
 | Content rights — *does the app contain, show or access third-party content?* | **Yes** — and *do you have the rights?* **Yes**: open licences (LGPL, CC BY, OFL, Apache, MIT and the like), credited in the app |
@@ -178,14 +178,15 @@ In [listing.md](listing.md#release-notes), ready to paste in Play's format.
 ## Tags and keywords
 
 **App Store keywords** (100 characters, comma-separated, no spaces after
-commas; the name and the category count already, so they are left out):
+commas; the name, the subtitle and the category count already, so *score*,
+*editor*, *music*, *notation* and *MEI* are left out):
 
 ```
-notation,sheet music,score,composer,MEI,MusicXML,midi,piano,transcription,arranging,engraving
+sheet music,composer,composition,MusicXML,midi,piano,transcription,arranging,engraving,lyrics,chords
 ```
 
-Other words worth rotating in: `composition`, `music theory`, `lyrics`,
-`chords`, `roman numerals`, `transpose`, `ABC`, `Humdrum`.
+Other words worth rotating in: `music theory`, `roman numerals`,
+`transpose`, `ABC`, `Humdrum`, `keyboard`.
 
 **Google Play tags** — Play offers a fixed list per category; pick the five
 closest to:

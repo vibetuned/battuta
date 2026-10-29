@@ -31,6 +31,39 @@ plugins — has carried 1.2.0 since 2026-10-11 (the user: "don't hesitate to
 make a new version"), each plugin's `engines` range staying at the api it
 needs; 1.1.0 was never tagged, and what it added ships here.
 
+- **The App Store name: battuta: Score Editor (2026-10-29).** "battuta"
+  alone was taken on the App Store, whose names are unique (the user: "the
+  battuta name was stolen"). The listing is **battuta: Score Editor** — the
+  user's choice — its subtitle *Music notation in MEI*, and the keywords
+  drop the words the name and subtitle now carry; the name under the icon
+  stays battuta, and Google Play, already in review, keeps *battuta*
+  (`apps/editor/store/`).
+- **The iOS icons without an alpha channel (2026-10-29).** The upload to
+  App Store Connect stopped on "Invalid large app icon … can't be
+  transparent or contain an alpha channel": `tauri icon` writes RGBA PNGs,
+  and the logo's are opaque (alpha 254–255) but still carry the channel.
+  All 18 icons in `AppIcon.appiconset` are flattened onto the icon's white
+  (`#ffffff`) as RGB PNGs (ImageMagick), the picture unchanged; the
+  README's icon recipe gains the step, so a regeneration does not bring
+  the channel back.
+- **Android's 16 KB pages; the site's apt repository on Ubuntu 26.04
+  (2026-10-29).** Building the release in Android Studio, the user met
+  "Some libraries have LOAD segments not aligned at 16 KB boundaries":
+  Google Play requires 64-bit native libraries aligned for 16 KB pages of
+  apps targeting Android 15 and later, and NDK 27 links Rust's
+  `libbattuta_lib.so` for 4 KB (`llvm-readelf -l`: every LOAD at 0x1000).
+  `src-tauri/build.rs` now asks the linker for `-z max-page-size=16384` on
+  64-bit Android, as Vibetuned's midi-stroke does — in `build.rs`, not a
+  `.cargo/config.toml`, because the Tauri CLI sets its own `RUSTFLAGS`,
+  which would override it; desktop, iOS and 32-bit Android link as before.
+  Rebuilt: arm64-v8a and x86_64 at 0x4000; the device suite 15/15 on a
+  Pixel 9 Pro (Android 17), the first phone it ran on. Its render check
+  now counts the tiles inside its wait: a separate count afterwards once
+  caught them mid-redraw ("0 svg in 4 tiles", every later check passing on
+  those same tiles). And the pages workflow's apt
+  repository step broke when `ubuntu-latest` moved from 24.04 to 26.04,
+  whose image no longer ships `apt-ftparchive`: the step installs
+  `apt-utils` itself now.
 - **The PDF reference's drawing: zoom below 100%, systems resized by their
   corners (2026-10-29).** The user, using the two-finger pan: "we don't
   have negative zoom in this plugin this is needed specially in
