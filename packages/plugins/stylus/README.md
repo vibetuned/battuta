@@ -17,7 +17,16 @@ the iPad and Android tablets.
   typed the digit — the next note and the keyboard use it. A **tap** is a
   lift where you touched: the note as the cross first showed it.
 
-The key signature supplies the accidental. Every note is one undo step.
+**Chords.** Squeeze the Apple Pencil Pro, or press the S Pen's side
+button, then touch above or below a note: the cross says "chord", follows
+the pitch only, and lifting adds that pitch to the note — or to the
+chord it already is — at its own length. A press arms just the next
+stroke; press again before touching to disarm it. Holding the S Pen's
+button as the tip lands works too. A chord can't be built on a rest, and
+a pitch the chord already has is refused.
+
+The key signature supplies the accidental. Every note is one undo step,
+and the caret goes to the note you wrote — or to the chord it joined.
 
 The pen writes **only on the score**: everywhere else — the toolbar, the
 panels, the on-screen keyboard, a menu open over the score — it taps like
@@ -44,9 +53,9 @@ The length is the editor's own input length; the plugin keeps none.
 
 ## What it does not do
 
-- **No accidentals, chords or rests** yet: a tap on a note replaces it,
-  and the cross sets a duration and a staff step, keeping the input's
-  dots, nothing more.
+- **No accidentals or rests** yet: a tap on a note replaces it, and the
+  cross sets a duration and a staff step, keeping the input's dots,
+  nothing more.
 - **No handwriting.** Every stroke on a staff steers the cross; reading
   written music is the plugin's later parts.
 - **Not in page view**, where there are no measure tiles to write on.

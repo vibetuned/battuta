@@ -86,6 +86,23 @@ the bridge they all stand on.
   cross comes up as the pen lands, and a tap is a lift where it landed.
   Every stroke on a staff now steers the cross, so handwriting (part 2)
   will need a mode of its own.
+- **Chords with the pen, and `@battuta/api` 1.3.2 (2026-10-29).** The
+  user's request: the Pencil Pro's squeeze or the S Pen's side button "as
+  a shift". The user's choices: a press arms the next stroke (a second
+  press disarms it), and that stroke's pitch joins the note under the pen,
+  at its length. The API gains `core.addChordNote`, which maps to the
+  keyboard's chord command (`AddChordNoteCommand`, Shift + a letter).
+- **The caret goes to the pen's note (2026-10-29, `@battuta/api` 1.3.3).**
+  The user: "the caret should move to the added or edited note". The host
+  now puts the caret on what `core.enterNote` or `core.addChordNote` wrote
+  (the note, or the chord it joined), for any plugin, as keyboard entry
+  leaves it where it looks. There's no new API member; the two messages'
+  documentation says so, hence the patch bump. The bundle is now exactly at
+  its ceiling (390.6 kB): trimmed to fit, not raised.
+- **No text selection outside the score (2026-10-29).** On the iPad a long
+  press or a double tap with a finger selected a button's label. Only
+  `main` was unselectable; now the whole page is, except fields and the
+  texts meant to be copied (an error, a notice, the about box's addresses).
 - **Fixed: native commands that answer nothing failed (2026-10-29).**
   `resolve()` with no data sends `null` from Swift and from Kotlin, and the
   plugin's Rust side refused it ("invalid type: null, expected struct

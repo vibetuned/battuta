@@ -13,12 +13,13 @@ export const manifest: PluginManifest = {
   id: "battuta.stylus",
   name: "Stylus",
   version: "1.3.0",
-  description: "Write notes with the Apple Pencil or the S Pen: touch a staff and a cross at the tip shows the note — the pitch under the pen, the input's length; drag right for longer, left for shorter, up and down for the pitch, and lift to write it (a tap writes it as it is). A length you drag to becomes the input's. On the iPad and Android tablets.",
+  description: "Write notes with the Apple Pencil or the S Pen: touch a staff, drag the cross at the tip to set the length (across) and the pitch (up, down), lift to write. Squeeze, or press the side button, to add to a chord. iPad and Android tablets.",
   // ^1.3.0 carries `ctx.stylus`, the capability and `core.enterNote`; 1.3.1
   // the input's length (`editor.entryDur` / `entryDots`, `setEntryLength`)
-  // and `core.enterNote`'s dots — all added for this plugin, approved by the
+  // and `core.enterNote`'s dots; 1.3.2 `core.addChordNote`; 1.3.3 the caret
+  // going to what those two wrote — all for this plugin, approved by the
   // user on 2026-10-29.
-  engines: { battuta: "^1.3.1" },
+  engines: { battuta: "^1.3.3" },
   activationEvents: [
     // A tablet: the only devices with a stylus the shell captures. On any
     // other touch device `ctx.stylus.available` is false and the plugin

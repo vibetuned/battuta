@@ -18,7 +18,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { API_VERSION, definePlugin, type PluginContext, type PluginEntry, type PluginManifest, type DocumentInfo } from "@battuta/api";
 import { SetHarmCommand, SetPitchesCommand, SetSylCommand, buildEventIndex, buildScore, findAll, type CoreElement } from "@battuta/core";
-import { createHost, memorySettings, toCommand, HostAudioService, type SessionAdapter } from "../src/host";
+import { createHost, memorySettings, toCommand, writtenBy, HostAudioService, type SessionAdapter } from "../src/host";
 import { memoryStorage } from "../src/host/services";
 import { dimsDeclared } from "../src/host/slots";
 
@@ -308,8 +308,12 @@ describe("commands as data", () => {
     const events = () => findAll(score.measures[0]!, "layer")[0]!.children.map((c) => (typeof c === "string" ? c : `${c.tag}${c.attrs["pname"] ?? ""}${c.attrs["oct"] ?? ""}:${c.attrs["dur"] ?? ""}`));
     const cmd = toCommand({ type: "core.enterNote", eventId: "mr1", pname: "g", oct: 4, dur: "2" });
     expect(cmd.label).toBe("enter note g2");
+    expect(writtenBy(cmd)).toBeNull(); // not run yet
     cmd.apply(ctx());
     expect(events()).toEqual(["noteg4:2", "rest:4"]);
+    // The caret goes to the note it wrote.
+    const entered = findAll(score.measures[0]!, "note")[0]!;
+    expect(writtenBy(cmd)).toBe(entered.attrs["xml:id"]);
     cmd.revert(ctx());
     expect(events()).toEqual(["mRest:"]);
     cmd.apply(ctx()); // redo
@@ -323,6 +327,26 @@ describe("commands as data", () => {
     expect(() => toCommand({ type: "core.enterNote", eventId: "r1", pname: "g", oct: 4, dur: "3" })).toThrow(/dur must be one of 1, 2, 4, 8, 16, 32, 64/);
     expect(() => toCommand({ type: "core.enterNote", eventId: "r1", pname: "g", oct: 4, dur: "4", dots: 3 })).toThrow(/dots must be 0, 1 or 2/);
     expect(toCommand({ type: "core.enterNote", eventId: "r1", pname: "g", oct: 4, dur: "4", dots: 1 }).label).toBe("enter note g4.");
+  });
+
+  it("maps core.addChordNote to the keyboard's chord command: a note becomes a chord, a rest is refused; and refuses a pitch it cannot write", () => {
+    const el = (tag: string, attrs: Record<string, string> = {}, ...children: CoreElement[]): CoreElement => ({ tag, attrs, children });
+    const root = el("music", {}, el("body", {}, el("mdiv", {}, el("score", {}, el("scoreDef", { "meter.count": "2", "meter.unit": "4" }, el("staffGrp", {}, el("staffDef", { n: "1", lines: "5", "clef.shape": "G", "clef.line": "2" }))), el("section", {}, el("measure", { n: "1", "xml:id": "m1" }, el("staff", { n: "1" }, el("layer", { n: "1" }, el("note", { "xml:id": "n1", pname: "c", oct: "4", dur: "4" }), el("rest", { "xml:id": "r1", dur: "4" })))))))));
+    const score = buildScore(root);
+    const ctx = () => ({ score, index: buildEventIndex(score) });
+    const cmd = toCommand({ type: "core.addChordNote", eventId: "n1", pname: "e", oct: 4 });
+    expect(cmd.label).toBe("chord +e4");
+    cmd.apply(ctx());
+    const chord = findAll(score.measures[0]!, "chord")[0]!;
+    expect(chord.attrs["dur"]).toBe("4");
+    expect(writtenBy(cmd)).toBe(chord.attrs["xml:id"]); // the caret goes to the chord
+    expect(writtenBy(toCommand({ type: "core.setHarm", eventId: "n1", kind: "chord", text: "C" }))).toBeNull();
+    expect(findAll(chord, "note").map((n) => `${n.attrs["pname"]}${n.attrs["oct"]}`)).toEqual(["c4", "e4"]);
+    cmd.revert(ctx());
+    expect(findAll(score.measures[0]!, "chord")).toEqual([]);
+    expect(() => toCommand({ type: "core.addChordNote", eventId: "r1", pname: "e", oct: 4 }).apply(ctx())).toThrow(/only build chords on notes/);
+    expect(() => toCommand({ type: "core.addChordNote", eventId: "n1", pname: "x", oct: 4 })).toThrow(/pname must be a letter a–g/);
+    expect(() => toCommand({ type: "core.addChordNote", eventId: "n1", pname: "e", oct: -1 })).toThrow(/oct must be an integer 0–9/);
   });
 
   it("ctx.setEntryLength reaches the App's input length, checked at the door; the mirror starts at a plain quarter", () => {

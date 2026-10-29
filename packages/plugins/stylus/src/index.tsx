@@ -22,13 +22,13 @@ export default definePlugin({
       const { entryDur, entryDots } = ctx.editor.get();
       const step = next(gesture.get(), e, lengthOf(entryDur, entryDots));
       gesture.set(step.gesture);
-      if (!step.enter) return;
+      if (!step.write) return;
       try {
-        ctx.execute(step.enter);
+        ctx.execute(step.write);
         // The cross's length becomes the input's, as a digit would make it.
         if (step.length) ctx.setEntryLength(step.length.dur, step.length.dots);
       } catch (err) {
-        ctx.notice(`entry refused: ${err instanceof Error ? err.message : String(err)}`);
+        ctx.notice(`${step.write.type === "core.addChordNote" ? "chord" : "entry"} refused: ${err instanceof Error ? err.message : String(err)}`);
       }
     });
     // On for as long as the plugin is: the host gives the pen back to the

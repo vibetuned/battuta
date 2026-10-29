@@ -23,6 +23,7 @@ const point = (x: number, y: number, step: number, over: Partial<StylusScorePoin
 const sample = (x: number, y: number): StylusSample => [x, y, 0, 0.5, 1, 0, null];
 const stroke = (phase: "down" | "move" | "up" | "cancel", id: number, x: number, y: number, at: StylusScorePoint | null): StylusEvent => ({ type: "stroke", phase, id, samples: [sample(x, y)], predicted: [], at });
 const hold = (id: number, x: number, y: number): StylusEvent => ({ type: "hold", id, x, y, at: null });
+const press = (button: "squeeze" | "side" | "doubleTap", phase: "down" | "up" | "tap" = "down"): StylusEvent => ({ type: "button", button, phase, x: null, y: null, height: null, at: null });
 const down = stroke("down", 1, 150, 250, point(150, 250, 4));
 
 /** Run events through the gesture from idle at an input length; the last state, every note written, every length set. */
@@ -33,7 +34,7 @@ function run(events: StylusEvent[], input: Length = { dur: "4", dots: 0 }) {
   for (const e of events) {
     const s = next(g, e, input);
     g = s.gesture;
-    if (s.enter) written.push(s.enter);
+    if (s.write) written.push(s.write);
     if (s.length) lengths.push(s.length);
   }
   return { g, written, lengths };
@@ -46,9 +47,9 @@ describe("the cross", () => {
   });
 
   it("does not come up off a staff event or a pitch", () => {
-    expect(run([stroke("down", 1, 150, 250, null)]).g).toEqual({ kind: "ignored", id: 1 });
-    expect(run([stroke("down", 1, 150, 250, point(150, 250, 4, { eventId: null }))]).g).toEqual({ kind: "ignored", id: 1 });
-    expect(run([stroke("down", 1, 150, 250, point(150, 250, 4, { pitch: null }))]).g).toEqual({ kind: "ignored", id: 1 });
+    expect(run([stroke("down", 1, 150, 250, null)]).g).toEqual({ kind: "ignored", id: 1, armed: false });
+    expect(run([stroke("down", 1, 150, 250, point(150, 250, 4, { eventId: null }))]).g).toEqual({ kind: "ignored", id: 1, armed: false });
+    expect(run([stroke("down", 1, 150, 250, point(150, 250, 4, { pitch: null }))]).g).toEqual({ kind: "ignored", id: 1, armed: false });
     expect(run([stroke("down", 1, 150, 250, null), stroke("up", 1, 150, 250, null)]).written).toEqual([]);
   });
 
@@ -116,5 +117,31 @@ describe("the input's length", () => {
     expect(lengthOf("breve", 0)).toEqual({ dur: "4", dots: 0 });
     expect(lengthOf("2", 5)).toEqual({ dur: "2", dots: 0 });
     expect([lengthName({ dur: "4", dots: 0 }), lengthName({ dur: "2", dots: 1 }), lengthName({ dur: "8", dots: 2 })]).toEqual(["quarter", "dotted half", "double-dotted eighth"]);
+  });
+});
+
+describe("a chord", () => {
+  it("is armed by the squeeze or the side button, and disarmed by a second press; the double-tap and the release do nothing", () => {
+    expect(run([press("squeeze")]).g).toEqual({ kind: "idle", armed: true });
+    expect(run([press("side")]).g).toEqual({ kind: "idle", armed: true });
+    expect(run([press("squeeze"), press("squeeze", "up"), press("squeeze")]).g).toEqual({ kind: "idle", armed: false });
+    expect(run([press("doubleTap", "tap")]).g).toEqual(IDLE);
+  });
+
+  it("makes the next stroke add the pitch under the pen to the note it lands on, at that note's length — and only that stroke", () => {
+    const chord = run([press("squeeze"), down, stroke("move", 1, 150 + 3 * STEP_X, 235, point(150 + 3 * STEP_X, 235, 7))]);
+    expect(chord.g).toMatchObject({ kind: "cross", chord: true, choice: { dur: "4", step: 7 } }); // across changes nothing
+    const lifted = run([press("squeeze"), down, stroke("move", 1, 150, 235, point(150, 235, 7)), stroke("up", 1, 150, 235, null), stroke("down", 2, 150, 250, point(150, 250, 4)), stroke("up", 2, 150, 250, null)]);
+    expect(lifted.written).toEqual([
+      { type: "core.addChordNote", eventId: "n1", pname: "e", oct: 5 },
+      { type: "core.enterNote", eventId: "n1", pname: "b", oct: 4, dur: "4" },
+    ]);
+    expect(lifted.lengths).toEqual([]);
+  });
+
+  it("arms the stroke on the glass when pressed during it (the S Pen's button held as it lands), and waits past a stroke that landed off a staff", () => {
+    expect(run([down, press("side"), stroke("up", 1, 150, 250, null)]).written).toEqual([{ type: "core.addChordNote", eventId: "n1", pname: "b", oct: 4 }]);
+    const past = run([press("squeeze"), stroke("down", 5, 10, 10, null), stroke("up", 5, 10, 10, null), down, stroke("up", 1, 150, 250, null)]);
+    expect(past.written).toEqual([{ type: "core.addChordNote", eventId: "n1", pname: "b", oct: 4 }]);
   });
 });

@@ -1,8 +1,9 @@
 /**
  * The cross at the tip, on the host's overlays point: drawn over the tile
  * the pen landed on while it is down. Four arms — left shorter, right
- * longer, up and down the pitch — a ghost notehead where the note will
- * go, and what lifting the pen writes, in words. Draw-only, like every
+ * longer, up and down the pitch; only the last two for a chord, whose
+ * length is the note's — a ghost notehead where the note will go, and what
+ * lifting the pen writes, in words. Draw-only, like every
  * overlay: the pen is captured, so nothing here needs pointer events.
  */
 import type { CSSProperties } from "react";
@@ -28,16 +29,22 @@ export function Cross({ tile, state }: { tile: TileOverlayProps; state: Store<Ge
   const { x, y } = g.landing.at.tile;
   const staff = tile.staves.find((s) => s.n === g.landing.at.staffN);
   const headY = staff ? stepY(staff.lines, g.choice.step) : null;
-  const text = `${lengthName(g.choice)} · ${g.choice.pitch.pname.toUpperCase()}${g.choice.pitch.oct}`;
+  const pitch = `${g.choice.pitch.pname.toUpperCase()}${g.choice.pitch.oct}`;
+  const text = g.chord ? `chord + ${pitch}` : `${lengthName(g.choice)} · ${pitch}`;
   const labelLeft = x + ARM + 150 > tile.width ? x - ARM - 4 : x + ARM + 4;
   return (
     <div data-stylus-cross style={LAYER}>
       <svg width={tile.width} height={tile.height} style={{ position: "absolute", left: 0, top: 0, overflow: "visible" }}>
         <g stroke={INK} strokeWidth={2} strokeLinecap="round" fill="none" opacity={0.85}>
-          <line x1={x - ARM} y1={y} x2={x + ARM} y2={y} />
           <line x1={x} y1={y - ARM} x2={x} y2={y + ARM} />
-          <path d={`M${x - ARM + 6},${y - 5} L${x - ARM},${y} L${x - ARM + 6},${y + 5}`} />
-          <path d={`M${x + ARM - 6},${y - 5} L${x + ARM},${y} L${x + ARM - 6},${y + 5}`} />
+          {/* A chord's pitch joins the note's own length: no arms across. */}
+          {!g.chord && (
+            <>
+              <line x1={x - ARM} y1={y} x2={x + ARM} y2={y} />
+              <path d={`M${x - ARM + 6},${y - 5} L${x - ARM},${y} L${x - ARM + 6},${y + 5}`} />
+              <path d={`M${x + ARM - 6},${y - 5} L${x + ARM},${y} L${x + ARM - 6},${y + 5}`} />
+            </>
+          )}
           <path d={`M${x - 5},${y - ARM + 6} L${x},${y - ARM} L${x + 5},${y - ARM + 6}`} />
           <path d={`M${x - 5},${y + ARM - 6} L${x},${y + ARM} L${x + 5},${y + ARM - 6}`} />
         </g>

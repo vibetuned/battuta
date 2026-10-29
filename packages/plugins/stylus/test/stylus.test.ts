@@ -79,9 +79,16 @@ describe("the stylus plugin", () => {
     expect(f.lengths).toEqual(["8."]);
   });
 
-  it("reports a refused entry as a notice", () => {
+  it("adds to a chord after a squeeze", () => {
+    const f = fixture(true);
+    f.pen({ type: "button", button: "squeeze", phase: "down", x: null, y: null, height: null, at: null }, stroke("down", 1, 150, at(6)), stroke("up", 1, 150, at(6)));
+    expect(f.executed).toEqual([{ type: "core.addChordNote", eventId: "r1", pname: "d", oct: 5 }]);
+  });
+
+  it("reports a refused entry or chord as a notice", () => {
     const f = fixture(true, true);
     f.pen(stroke("down", 1, 150, at(4)), stroke("up", 1, 150, at(4)));
-    expect(f.notices).toEqual(["entry refused: entry crosses a beam/tuplet/measure boundary"]);
+    f.pen({ type: "button", button: "side", phase: "down", x: null, y: null, height: null, at: null }, stroke("down", 2, 150, at(4)), stroke("up", 2, 150, at(4)));
+    expect(f.notices).toEqual(["entry refused: entry crosses a beam/tuplet/measure boundary", "chord refused: entry crosses a beam/tuplet/measure boundary"]);
   });
 });

@@ -27,13 +27,14 @@ reads each against the score. The user's decisions for this part
 | What does the cross's length do to the input's? | **It becomes the input's**, as a digit would make it. |
 | When is a held note written? | **On lift**: the cross previews, one undo step. |
 | When does the cross come up? | First on the shell's hold (half a second still); after trying it, the user: **at the touch** — the hold was too slow. |
+| Chords? | Asked for by the user after trying it: the squeeze or the side button **as a shift**. A press **arms the next stroke** (again: disarms), and the pitch joins **the note under the pen**. |
 | What may the API gain? | `ctx.stylus`, the `core.enterNote` message and the `"stylus"` capability — **and nothing else** (1.3.0); then, for the input's length, `editor.entryDur` / `entryDots`, `core.enterNote`'s `dots` and `ctx.setEntryLength` (1.3.1). |
 
 ## 2. Manifest
 
 ```
 id                battuta.stylus
-engines.battuta   ^1.3.1
+engines.battuta   ^1.3.3
 capabilities      stylus
 activation        onPointer:coarse
 contributes       nothing
@@ -63,6 +64,14 @@ approved:
   `entryDots`, which a tap writes and the cross starts from;
   `core.enterNote`'s `dots`; and `ctx.setEntryLength(dur, dots)`, which a
   lifted cross calls, as a digit sets the length in input mode.
+- **`core.addChordNote`** (1.3.2) — `{ eventId, pname, oct }`, the
+  keyboard's chord command (Shift + a letter): a note becomes a chord, a
+  chord grows; refused on a rest and for a pitch it has.
+- **The caret** (1.3.3) — not a call: the host puts it on what
+  `core.enterNote` or `core.addChordNote` wrote (the user, 2026-10-29: "the
+  caret should move to the added or edited note"), so any plugin writing
+  notes leaves the caret where the keyboard would look for it. No new API
+  member; the two messages' documentation says so.
 
 Used as they were: `ctx.overlays` (the cross), `ctx.execute`,
 `ctx.notice`.
@@ -71,13 +80,16 @@ Used as they were: `ctx.overlays` (the cross), `ctx.execute`,
 
 One signal, the gesture (`gesture.ts`): idle, cross (the pen is on a
 staff and the cross is up, with the choice), or ignored (a stroke that
-landed off a staff and writes nothing). The note length is not the plugin's: it is the editor's input
+landed off a staff and writes nothing) — idle and ignored carry the
+squeeze's arming to the next stroke, the cross whether it is a chord. The note length is not the plugin's: it is the editor's input
 length, read on every event and set when a cross is lifted.
 
 ## 5. Command messages
 
 `core.enterNote`, once per stroke that lands on a staff, when the pen
-lifts — with `dots` when the length has them. Refused when the note would cross a beam, tuplet or barline
+lifts — with `dots` when the length has them; `core.addChordNote` instead
+for an armed stroke. A refusal becomes a notice: `entry refused: …` or
+`chord refused: …`. Refused when the note would cross a beam, tuplet or barline
 (core's own rule for entry); the refusal becomes a notice, `entry refused:
 …`, as the keyboard's does.
 
@@ -88,7 +100,9 @@ lifts — with `dots` when the length has them. Refused when the note would cros
   dots kept, the pitch following the pen on the landing's staff and not on
   another staff or row; what a tap and a drag write when the pen lifts,
   the length handed back only when the drag changed it; a cancel; the
-  hold and another stroke's events ignored.
+  hold and another stroke's events ignored; a chord armed and disarmed by
+  the buttons, armed during a stroke, kept past a stroke off a staff, and
+  written as `core.addChordNote` at the note's own length.
 - `test/stylus.test.ts` — the plugin against a fake context: nothing
   without a stylus; capture, the overlay, the messages, the remembered
   duration, a refusal's notice.

@@ -11,7 +11,7 @@
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export const API_VERSION = "1.3.1";
+export const API_VERSION = "1.3.3";
 
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";
@@ -31,7 +31,7 @@ export type { ExportContribution, ExportFile, ExportPayload, ImportContribution,
 export type { DirEntry, WatchEvent, WatchEventKind, WorkspaceService } from "./workspace.js";
 export type { StylusSample, StylusScorePoint, StylusEvent, StylusService } from "./stylus.js";
 
-export type { SetPitchesMessage, SetSylMessage, SetHarmMessage, EnterNoteMessage, CommandMessage, CommandMessageType } from "./messages.js";
+export type { SetPitchesMessage, SetSylMessage, SetHarmMessage, EnterNoteMessage, AddChordNoteMessage, CommandMessage, CommandMessageType } from "./messages.js";
 export { COMMAND_MESSAGE_TYPES } from "./messages.js";
 
 export type { MidiPort, MidiNoteEvent, MidiVirtualInput, MidiOutputs, MidiService } from "./midi.js";

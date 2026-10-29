@@ -1,4 +1,4 @@
-// @battuta/api 1.3.1 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
+// @battuta/api 1.3.3 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
 
 // ---- ../dist/.tsbuildinfo
 {"version":"5.9.3"}
@@ -484,7 +484,7 @@ export interface FormatsService {
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export declare const API_VERSION = "1.3.1";
+export declare const API_VERSION = "1.3.3";
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";
 export type { Disposable } from "./disposable.js";
@@ -499,7 +499,7 @@ export type { OverlayBox, OverlayStaff, TileOverlayProps, OverlaySpec, OverlaysS
 export type { ExportContribution, ExportFile, ExportPayload, ImportContribution, ImportFile, FormatsService } from "./formats.js";
 export type { DirEntry, WatchEvent, WatchEventKind, WorkspaceService } from "./workspace.js";
 export type { StylusSample, StylusScorePoint, StylusEvent, StylusService } from "./stylus.js";
-export type { SetPitchesMessage, SetSylMessage, SetHarmMessage, EnterNoteMessage, CommandMessage, CommandMessageType } from "./messages.js";
+export type { SetPitchesMessage, SetSylMessage, SetHarmMessage, EnterNoteMessage, AddChordNoteMessage, CommandMessage, CommandMessageType } from "./messages.js";
 export { COMMAND_MESSAGE_TYPES } from "./messages.js";
 export type { MidiPort, MidiNoteEvent, MidiVirtualInput, MidiOutputs, MidiService } from "./midi.js";
 export type { KeymapEntry, ActionsService } from "./actions.js";
@@ -793,6 +793,7 @@ export interface SetHarmMessage {
  * rests for the rest of the time, a longer one takes the following events
  * of its layer. Refused when it would cross a beam, tuplet or barline.
  * The key signature supplies the accidental. One undo step; labels itself.
+ * The caret goes to the note it wrote (1.3.3).
  */
 export interface EnterNoteMessage {
     type: "core.enterNote";
@@ -804,7 +805,20 @@ export interface EnterNoteMessage {
     /** Dots: 0 (the default), 1 or 2. */
     dots?: number;
 }
-export type CommandMessage = SetPitchesMessage | SetSylMessage | SetHarmMessage | EnterNoteMessage;
+/**
+ * Add a pitch to a note or a chord, as Shift + a letter does (1.3.2, the
+ * stylus): a note becomes a chord of the two, a chord grows. Refused on a
+ * rest, and for a pitch the chord already has. The key signature supplies
+ * the accidental. One undo step; labels itself. The caret goes to the
+ * chord (1.3.3).
+ */
+export interface AddChordNoteMessage {
+    type: "core.addChordNote";
+    eventId: string;
+    pname: string;
+    oct: number;
+}
+export type CommandMessage = SetPitchesMessage | SetSylMessage | SetHarmMessage | EnterNoteMessage | AddChordNoteMessage;
 export type CommandMessageType = CommandMessage["type"];
 export declare const COMMAND_MESSAGE_TYPES: readonly CommandMessageType[];
 

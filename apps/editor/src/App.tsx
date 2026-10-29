@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
 import { RenderPool, type TileResult } from "./render/renderPool";
 import { keyMatches, type Keymap, type Layout } from "./keymap";
-import { host, useStore, Slot, Panels, SIDE_PANEL_WIDTH, SAFE_TOP, SAFE_BOTTOM, SAFE_LEFT, SAFE_RIGHT, useNarrowScreen, shellPlatform, LaneInput, laneFace, TileOverlays, TileBands, rowBandHeights, confirmDialog, tauriInvoke, onTablet, blockOfEvents, rule, gate, modal, isMod, type ActionStep, type KeyEvent, type Outcome, type OverlayStore } from "./host";
+import { host, useStore, Slot, Panels, SIDE_PANEL_WIDTH, SAFE_TOP, SAFE_BOTTOM, SAFE_LEFT, SAFE_RIGHT, useNarrowScreen, shellPlatform, LaneInput, laneFace, TileOverlays, TileBands, rowBandHeights, confirmDialog, tauriInvoke, onTablet, blockOfEvents, rule, gate, modal, isMod, writtenBy, type ActionStep, type KeyEvent, type Outcome, type OverlayStore } from "./host";
 import { ShortcutEditor } from "./ShortcutEditor";
 // The about box and its notices load when it opens (phase 10, M4).
 const About = lazy(() => import("./About").then((m) => ({ default: m.About })));
@@ -1519,6 +1519,12 @@ export default function App() {
       execute: (cmd) => {
         session.execute(cmd);
         afterCommand(session);
+        // A note a plugin wrote takes the caret (1.3.3, the stylus's notes and chords).
+        const at = session.index.byId.get(writtenBy(cmd) ?? "");
+        if (at) {
+          lastEntered.current = null;
+          setCaret({ measureIndex: at.measureIndex, staffN: at.staffN, layerN: at.layerN, eventIndex: at.eventIndex });
+        }
       },
       pitchEventsIn: (block) => session.blockPitchEvents(block),
       blockOf: (ids) => blockOfEvents(session.index, ids),
@@ -3085,6 +3091,11 @@ export default function App() {
           {"  ·  a–g / 1–9 pick, esc"}
         </div>
       )}
+      {/* body's user-select: the chrome is controls, not text — on a tablet a
+          long press or a double tap selected a button's label (the iPad,
+          2026-10-29). So nothing selects but what is typed and the texts
+          there to be copied: an error, a notice, the about box's addresses.
+          (Said here, not in the CSS: the string ships.) */}
       <style>{`
         /* Musical Unicode fallback: macOS has no system font for the SMP
            Musical Symbols block, so 𝅝 𝅗𝅥 𝅘𝅥𝅯 𝄆 𝄇 𝄐 𝄪 rendered as tofu. The
@@ -3105,6 +3116,8 @@ export default function App() {
            overlay — WebKitGTK needs the prefixed form AND it applied to the
            SVG content itself, not just the container. */
         main, main * { -webkit-user-select: none; user-select: none; }
+        body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+        input, textarea, [contenteditable="true"], [data-error], [data-error] *, [data-notice-toast], [data-notice-toast] * { -webkit-user-select: text; user-select: text; }
         .score-row { display: flex; align-items: flex-start; margin: 10px 0; }
         .tile, .rowhdr { position: relative; flex: none; }
         .tile svg, .rowhdr svg { width: 100%; height: 100%; display: block; }

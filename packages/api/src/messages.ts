@@ -55,6 +55,7 @@ export interface SetHarmMessage {
  * rests for the rest of the time, a longer one takes the following events
  * of its layer. Refused when it would cross a beam, tuplet or barline.
  * The key signature supplies the accidental. One undo step; labels itself.
+ * The caret goes to the note it wrote (1.3.3).
  */
 export interface EnterNoteMessage {
   type: "core.enterNote";
@@ -67,8 +68,22 @@ export interface EnterNoteMessage {
   dots?: number;
 }
 
-export type CommandMessage = SetPitchesMessage | SetSylMessage | SetHarmMessage | EnterNoteMessage;
+/**
+ * Add a pitch to a note or a chord, as Shift + a letter does (1.3.2, the
+ * stylus): a note becomes a chord of the two, a chord grows. Refused on a
+ * rest, and for a pitch the chord already has. The key signature supplies
+ * the accidental. One undo step; labels itself. The caret goes to the
+ * chord (1.3.3).
+ */
+export interface AddChordNoteMessage {
+  type: "core.addChordNote";
+  eventId: string;
+  pname: string;
+  oct: number;
+}
+
+export type CommandMessage = SetPitchesMessage | SetSylMessage | SetHarmMessage | EnterNoteMessage | AddChordNoteMessage;
 
 export type CommandMessageType = CommandMessage["type"];
 
-export const COMMAND_MESSAGE_TYPES: readonly CommandMessageType[] = ["core.setPitches", "core.setSyl", "core.setHarm", "core.enterNote"];
+export const COMMAND_MESSAGE_TYPES: readonly CommandMessageType[] = ["core.setPitches", "core.setSyl", "core.setHarm", "core.enterNote", "core.addChordNote"];

@@ -11,7 +11,7 @@
  */
 import { API_VERSION, DisposableStore, toDisposable, type ActionsService, type Disposable, type StylusService, type ActivationEvent, type BlockSelection, type CommandMessage, type DocumentInfo, type DocumentQueries, type EditorState, type HostCapability, type KeymapEntry, type PitchEvent, type PluginContext, type PluginEntry, type PluginManifest, type Store, type SylValue, type HarmKind, type NotationFacts, type Timemap, type ViewMode, type ViewService, type CaretPosition } from "@battuta/api";
 import { isHarmText, type Command } from "@battuta/core";
-import { toCommand } from "./messages";
+import { checkLength, toCommand } from "./messages";
 import { keyMatches, type Layout } from "../keymap";
 import { detectLayout } from "../settings";
 import { KeymapStore } from "./keymapStore";
@@ -215,8 +215,7 @@ export function createHost(options: HostOptions = {}): Host {
   let viewAdapter: ViewAdapter | null = null;
   let entryLength: ((dur: string, dots: number) => void) | null = null;
   const setEntryLength = (dur: string, dots = 0): void => {
-    if (!["1", "2", "4", "8", "16", "32", "64"].includes(dur)) throw new Error(`setEntryLength: dur must be one of 1, 2, 4, 8, 16, 32, 64 (got ${JSON.stringify(dur)})`);
-    if (!Number.isInteger(dots) || dots < 0 || dots > 2) throw new Error(`setEntryLength: dots must be 0, 1 or 2 (got ${JSON.stringify(dots)})`);
+    checkLength("setEntryLength", dur, dots);
     entryLength?.(dur, dots);
   };
   const view: ViewService = {
@@ -471,7 +470,7 @@ export { HostWorkspaceService, detectWorkspaceBridge } from "./workspace";
 export type { WorkspaceBridge, WorkspaceAdapter } from "./workspace";
 export type { DeclaredExport, DeclaredImport, ExportOption, ImportOption, Producer, Converter } from "./formats";
 export { blockOfEvents } from "./queries";
-export { toCommand } from "./messages";
+export { toCommand, writtenBy } from "./messages";
 export { HostMidiService, webMidiBackend, shellMidiBackend, noMidiBackend, detectMidiBackend, parseNoteMessage } from "./midi";
 export type { MidiBackend } from "./midi";
 export { MidiSink, NOTE_ON, NOTE_OFF } from "./midiSink";

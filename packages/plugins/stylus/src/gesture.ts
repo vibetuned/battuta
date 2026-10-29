@@ -12,9 +12,15 @@
  *   - Lifting writes it, as one undo step; a length the drag changed
  *     becomes the input's, as a digit would make it. A TAP is a lift where
  *     the pen landed: the input's length at the pitch under the pen.
+ *   - The Pencil Pro's squeeze or the S Pen's side button ARMS the next
+ *     stroke (the user, 2026-10-29: "like a shift"): its pitch joins the
+ *     note or chord under the pen instead of writing over it — the cross
+ *     says "chord", follows the pitch only, and the length is the note's
+ *     own. Pressing again before the pen lands disarms; pressing while it
+ *     is down (the S Pen's button held as it touches) arms that stroke.
  *   - A stroke that lands off a staff, or is cancelled, writes nothing.
  */
-import type { EnterNoteMessage, Pitch, StylusEvent, StylusScorePoint } from "@battuta/api";
+import type { AddChordNoteMessage, EnterNoteMessage, Pitch, StylusEvent, StylusScorePoint } from "@battuta/api";
 
 /** Written durations, shortest first: left is shorter, right longer. */
 export const DURATIONS = ["64", "32", "16", "8", "4", "2", "1"] as const;
@@ -52,18 +58,19 @@ export interface Choice extends Length {
 }
 
 export type Gesture =
-  | { kind: "idle" }
-  /** The pen is on a staff: the cross is up, showing what lifting it writes; `from` is the input's duration's index. */
-  | { kind: "cross"; landing: Landing; choice: Choice; from: number }
-  /** A stroke that writes nothing, until it ends. */
-  | { kind: "ignored"; id: number };
+  /** No pen on the score; `armed`: the next stroke joins a chord. */
+  | { kind: "idle"; armed: boolean }
+  /** The pen is on a staff: the cross is up, showing what lifting it writes; `from` is the input's duration's index; `chord`: it joins the note under the pen. */
+  | { kind: "cross"; landing: Landing; choice: Choice; from: number; chord: boolean }
+  /** A stroke that writes nothing, until it ends; the arming waits for the next. */
+  | { kind: "ignored"; id: number; armed: boolean };
 
-export const IDLE: Gesture = { kind: "idle" };
+export const IDLE: Gesture = { kind: "idle", armed: false };
 
 export interface Step {
   gesture: Gesture;
-  /** The note to write, when the pen lifted from the cross. */
-  enter?: EnterNoteMessage;
+  /** What to write, when the pen lifted from the cross: a note, or a pitch joining a chord. */
+  write?: EnterNoteMessage | AddChordNoteMessage;
   /** The input's new length, when the drag changed it. */
   length?: Length;
 }
@@ -87,25 +94,34 @@ export function next(g: Gesture, e: StylusEvent, input: Length): Step {
   if (e.type === "stroke") {
     const sample = e.samples[e.samples.length - 1];
     if (e.phase === "down") {
-      if (!sample || !landed(e.at)) return { gesture: { kind: "ignored", id: e.id } };
+      const armed = g.kind === "idle" && g.armed;
+      if (!sample || !landed(e.at)) return { gesture: { kind: "ignored", id: e.id, armed } };
       const landing = { id: e.id, x: sample[0], y: sample[1], at: e.at };
-      return { gesture: { kind: "cross", landing, choice: { ...input, step: e.at.step, pitch: e.at.pitch }, from: DURATIONS.indexOf(input.dur) } };
+      return { gesture: { kind: "cross", landing, choice: { ...input, step: e.at.step, pitch: e.at.pitch }, from: DURATIONS.indexOf(input.dur), chord: armed } };
     }
     if (strokeOf(g) !== e.id) return { gesture: g };
     if (e.phase === "cancel") return { gesture: IDLE };
     if (g.kind === "cross") {
       let choice = g.choice;
       if (sample) {
-        const steps = Math.round((sample[0] - g.landing.x) / STEP_X);
+        const steps = g.chord ? 0 : Math.round((sample[0] - g.landing.x) / STEP_X);
         const dur = DURATIONS[Math.max(0, Math.min(DURATIONS.length - 1, g.from + steps))]!;
         const at = e.at;
         const onStaff = at !== null && at.pitch !== null && sameStaff(g.landing, at, sample[1]);
         choice = { dur, dots: choice.dots, step: onStaff ? at.step : choice.step, pitch: onStaff ? at.pitch! : choice.pitch };
       }
-      if (e.phase === "up") return { gesture: IDLE, enter: enter(g.landing, choice.pitch, choice), ...(choice.dur !== DURATIONS[g.from] && { length: { dur: choice.dur, dots: choice.dots } }) };
+      if (e.phase === "up") {
+        if (g.chord) return { gesture: IDLE, write: { type: "core.addChordNote", eventId: g.landing.at.eventId, pname: choice.pitch.pname, oct: choice.pitch.oct } };
+        return { gesture: IDLE, write: enter(g.landing, choice.pitch, choice), ...(choice.dur !== DURATIONS[g.from] && { length: { dur: choice.dur, dots: choice.dots } }) };
+      }
       return { gesture: choice.dur === g.choice.dur && choice.step === g.choice.step ? g : { ...g, choice } };
     }
-    return e.phase === "up" ? { gesture: IDLE } : { gesture: g };
+    return e.phase === "up" && g.kind === "ignored" ? { gesture: { kind: "idle", armed: g.armed } } : { gesture: g };
+  }
+  // The squeeze or the side button, pressed: arm the next stroke, or the one on the glass — or disarm.
+  if (e.type === "button" && e.phase === "down" && (e.button === "squeeze" || e.button === "side")) {
+    if (g.kind === "cross") return { gesture: { ...g, chord: !g.chord, choice: g.chord ? g.choice : { ...g.choice, dur: DURATIONS[g.from]!, dots: input.dots } } };
+    return { gesture: { ...g, armed: !g.armed } };
   }
   return { gesture: g };
 }
