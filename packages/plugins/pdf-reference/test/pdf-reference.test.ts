@@ -272,6 +272,16 @@ describe("drawing systems and measures on a PDF without annotation files", () =>
     expect(s.annotations!.measures.map((m) => m.box.x0)).toEqual([100, 700, 1300]);
     expect(s.matching).toMatchObject({ mode: "order", matched: 3 }); // the score's a, b, c
     expect(f.band()!.height(cell(1, "b"))).toBe(100); // 600 wide, 300 tall, at 200 px across
+    // a corner dragged: the right edge in past the second barline, the bottom up — one measure fewer, the scans shorter
+    f.actions().resizeSystem(0, { x0: 100, y0: 200, x1: 1200, y1: 350 });
+    expect(f.state().annotations!.measures.map((m) => [m.box.x0, m.box.x1, m.box.y1])).toEqual([
+      [100, 700, 350],
+      [700, 1200, 350],
+    ]);
+    expect(f.band()!.height(cell(1, "b"))).toBe(60); // 500 wide, 150 tall, at 200 px across
+    f.actions().resizeSystem(0, { x0: 100, y0: 200, x1: 2000, y1: 500 }); // back out: the dropped barline stays dropped
+    expect(f.state().annotations!.measures.map((m) => m.box.x0)).toEqual([100, 700]);
+    f.actions().toggleBarline(1300, 300);
     f.actions().stepEditPage(1);
     f.actions().addSystem({ x0: 100, y0: 200, x1: 1100, y1: 500 });
     expect(f.state().annotations!.measures.map((m) => m.page)).toEqual([1, 1, 1, 2]);
@@ -359,14 +369,17 @@ describe("staves, zoom and pages as images", () => {
     expect(f.state().annotations!.pages[0]!.staves[0]).toEqual([]);
   });
 
-  it("zooms the editor in and out through its steps, and no further", async () => {
+  it("zooms the editor in and out through its steps — below the panel's width too — and no further", async () => {
     const f = await opened();
     f.actions().load([file("piece.pdf")]);
     await flush();
     f.actions().startDrawing();
-    f.actions().zoomEditor(-1);
     expect(f.state().editZoom).toBe(1);
-    for (let i = 0; i < 6; i++) f.actions().zoomEditor(1);
+    f.actions().zoomEditor(-1);
+    expect(f.state().editZoom).toBe(0.75);
+    for (let i = 0; i < 6; i++) f.actions().zoomEditor(-1);
+    expect(f.state().editZoom).toBe(0.25);
+    for (let i = 0; i < 10; i++) f.actions().zoomEditor(1);
     expect(f.state().editZoom).toBe(4);
     f.actions().zoomEditor(-1);
     expect(f.state().editZoom).toBe(3);

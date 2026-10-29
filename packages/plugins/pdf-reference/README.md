@@ -38,11 +38,15 @@ The switch is remembered. It has no keys.
 ## Drawing systems and measures
 
 A PDF without annotation files can be placed by hand: load it alone and
-choose **draw systems and measures**. The page opens in the panel with two
-tools — **▭ systems** (drag a box across a system), **| barlines**
+choose **draw systems and measures**. The page opens in the panel with three
+tools — **▭ systems** (drag a box across a system; drag one of its corners
+to resize it — barlines and splits it leaves out go), **| barlines**
 (click where a barline is; click it again to take it away) and **≡
 staves** (click between two staves to split the system there) — and **−
-+** zoom the page up to four times. Measures are
++** zoom the page from a quarter of the panel's width (most of a page at
+once, for a wide, short panel) up to four times. On a touch screen one finger draws and
+**two fingers move the page** (a mouse wheel or a trackpad scrolls it as
+usual). Measures are
 the stretches between barlines, numbered as they will match the score;
 the **×** at a system's corner removes it; **◀ ▶** turn the pages; **done**
 returns to the strip. The scans follow as you draw. The drawing is kept

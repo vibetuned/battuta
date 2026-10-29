@@ -19,7 +19,7 @@
 import { definePlugin, toDisposable, type ActivationEvent, type CaretPosition, type Disposable, type DocumentInfo, type OverlayBand, type PluginContext, type Store } from "@battuta/api";
 import { COMMAND_TOGGLE, EXPORT_ANNOTATIONS, OVERLAY_ID, PANEL_ID } from "./manifest";
 import { readAnnotations, type AnnotatedMeasure } from "./annotations";
-import { addSystem, annotationsFromDrawing, drawingKey, emptyDrawing, readDrawing, removeSystem, toPageFiles, toggleBarline, toggleSplit, type Drawing } from "./drawing";
+import { addSystem, annotationsFromDrawing, drawingKey, emptyDrawing, readDrawing, removeSystem, resizeSystem, toPageFiles, toggleBarline, toggleSplit, type Drawing } from "./drawing";
 import { isImageName, loadImages, orderImages } from "./images";
 import { ZOOM_STEPS } from "./PageEditor";
 import { bandHeightFor, cropOf, scaleFor } from "./geometry";
@@ -261,10 +261,14 @@ export default definePlugin({
       },
       toggleBarline: (x, y) => applyDrawing(toggleBarline(state.get().drawing ?? emptyDrawing(), state.get().editPage, x, y)),
       removeSystem: (index) => applyDrawing(removeSystem(state.get().drawing ?? emptyDrawing(), state.get().editPage, index)),
+      resizeSystem: (index, box) => {
+        const image = editImage();
+        if (image) applyDrawing(resizeSystem(state.get().drawing ?? emptyDrawing(), state.get().editPage, index, image, box));
+      },
       toggleSplit: (x, y) => applyDrawing(toggleSplit(state.get().drawing ?? emptyDrawing(), state.get().editPage, x, y)),
       zoomEditor: (delta) => {
         const at = ZOOM_STEPS.indexOf(state.get().editZoom as (typeof ZOOM_STEPS)[number]);
-        patch({ editZoom: ZOOM_STEPS[Math.max(0, Math.min(ZOOM_STEPS.length - 1, (at < 0 ? 0 : at) + delta))]! });
+        patch({ editZoom: ZOOM_STEPS[Math.max(0, Math.min(ZOOM_STEPS.length - 1, (at < 0 ? ZOOM_STEPS.indexOf(1) : at) + delta))]! });
       },
       step: (delta) => {
         const all = views();

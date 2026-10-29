@@ -80,6 +80,8 @@ export interface PdfActions {
   toggleBarline(x: number, y: number): void;
   toggleSplit(x: number, y: number): void;
   removeSystem(index: number): void;
+  /** A system's new box, from a corner dragged. */
+  resizeSystem(index: number, box: Box): void;
   /** One zoom step in or out of the drawing editor. */
   zoomEditor(delta: -1 | 1): void;
 }
@@ -123,7 +125,7 @@ export function PdfPanel({ state, actions }: { state: Store<PdfState>; actions: 
     const image = s.pages.find((p) => p.page === s.editPage);
     if (!image) return null;
     const firstMeasure = s.annotations ? s.annotations.measures.filter((m) => m.page < s.editPage).length : 0;
-    return <PageEditor image={image} page={s.drawing?.pages[String(s.editPage)]} tool={s.tool} zoom={s.editZoom} firstMeasure={firstMeasure} onAddSystem={actions.addSystem} onToggleBarline={actions.toggleBarline} onToggleSplit={actions.toggleSplit} onRemoveSystem={actions.removeSystem} />;
+    return <PageEditor image={image} page={s.drawing?.pages[String(s.editPage)]} tool={s.tool} zoom={s.editZoom} firstMeasure={firstMeasure} onAddSystem={actions.addSystem} onToggleBarline={actions.toggleBarline} onToggleSplit={actions.toggleSplit} onRemoveSystem={actions.removeSystem} onResizeSystem={actions.resizeSystem} />;
   };
   const drawn = s.annotations && s.source === "drawn" ? s.annotations : null;
   const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
@@ -254,7 +256,7 @@ export function PdfPanel({ state, actions }: { state: Store<PdfState>; actions: 
       )}
       {s.editing && (
         <div data-pdf-drawing-bar style={ROW}>
-          {toolButton("system", "▭ systems", "drag a box across a system")}
+          {toolButton("system", "▭ systems", "drag a box across a system; drag a system's corner to resize it")}
           {toolButton("barline", "| barlines", "click in a system to put a barline there; click a barline to take it away")}
           {toolButton("staff", "≡ staves", "click in a system between two staves to split it there; click a split to take it away")}
           <button data-pdf-zoom-out style={BTN} title="zoom out" disabled={zoomAt <= 0} onClick={() => actions.zoomEditor(-1)}>
@@ -276,6 +278,9 @@ export function PdfPanel({ state, actions }: { state: Store<PdfState>; actions: 
             ▶
           </button>
           <span data-pdf-drawn>{drawnLine}</span>
+          <span data-pdf-move-hint style={DIM}>
+            two fingers move the page
+          </span>
           <span style={{ flex: 1 }} />
           <button data-pdf-draw-done style={BTN} onClick={actions.stopDrawing}>
             done

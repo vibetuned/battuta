@@ -109,7 +109,15 @@ export (read and drawn) and the export waking the plugin without its
 panel. The e2e §9 draws the Chopin example's first system with a real
 mouse — the example's own boxes as the targets — clicks three barlines,
 takes one away, removes the system by its ×, exports, and loads the PDF
-again to find the drawing (30 checks in all).
+again to find the drawing (30 checks in all). §10b (2026-10-29) touches
+the editor for real — multi-touch through the DevTools protocol, since
+Playwright's touchscreen only taps: two fingers move the zoomed page by
+exactly their drag and draw nothing, with the systems tool and with the
+barlines tool, one finger still draws a system, and a tap on its × takes
+it away. §10c: − goes to a quarter, the page centred and the × still
+24 px; a corner dragged with the mouse resizes the system and drops the
+barline it leaves out; the barline tool shows no corners; a finger on a
+corner resizes too; two fingers, one on a corner, pan and never resize.
 
 ## 7. Dead ends
 
@@ -149,6 +157,17 @@ again to find the drawing (30 checks in all).
 - **A fixed band height.** Every scan fitted to its tile's width keeps the
   barlines over each other; a fixed height would fit narrow and wide
   measures differently. The host takes the row's tallest instead.
+- **The × drawn in the page's units.** It was an SVG circle sized from the
+  page's width, so it shrank with the zoom — about 10 px across on a tablet
+  held sideways at 100%, about 2 px at a quarter. With zoom below 100% and
+  corner handles to grab (2026-10-29), the × and the handles became HTML
+  laid over the page: placed in percent of it, sized in screen pixels.
+- **Panning by each move's delta.** Two-finger panning (2026-10-29) first
+  added every move's change to the box's `scrollLeft`/`scrollTop`; the
+  browser rounds each assignment, so the error grew with the moves — a
+  120 px drag moved the page 128, a 60 px one 56. The pan now sets the
+  scroll from where it began (the box's scroll and the fingers' midpoint,
+  re-taken when a finger joins or lifts).
 - **"iPadOS 17.4", for pdf.js.** Phase 10 first had the app's floor
   against pdf.js as `Promise.withResolvers` alone — Safari 17.4. Read
   through (2026-10-21), pdf.js 6.4 also calls, with no fallback,

@@ -3,11 +3,12 @@
  * clamped, too small a drag ignored, systems kept top to bottom); a click
  * in a system adds a barline or takes the one under it away, never too
  * near an edge; measures are the segments between barlines at the system's
- * height; the drawing becomes the same annotations the page files give,
+ * height; a system's box resized keeps the barlines and splits still
+ * inside it; the drawing becomes the same annotations the page files give,
  * writes back out in their format, and a stored drawing is checked.
  */
 import { describe, it, expect } from "vitest";
-import { addSystem, annotationsFromDrawing, BARLINE_GRAB, emptyDrawing, measuresOf, readDrawing, removeSystem, stavesOf, systemAt, toPageFiles, toggleBarline, toggleSplit } from "../src/drawing";
+import { addSystem, annotationsFromDrawing, BARLINE_GRAB, emptyDrawing, measuresOf, readDrawing, removeSystem, resizeSystem, stavesOf, systemAt, toPageFiles, toggleBarline, toggleSplit } from "../src/drawing";
 import { readAnnotations } from "../src/annotations";
 
 const PAGE = { width: 2100, height: 2970 };
@@ -37,6 +38,27 @@ describe("drawing", () => {
     expect(toggleBarline(d, 1, 105, 250)).toBe(d); // the system's own edge
     expect(toggleBarline(d, 1, 900, 600)).toBe(d); // outside every system
     expect(toggleBarline(d, 2, 900, 250)).toBe(d); // a page with nothing drawn
+  });
+
+  it("a resized system keeps its marks where they are on the page, drops those it leaves out, and stays in order", () => {
+    let d = addSystem(emptyDrawing(), 1, PAGE, sys(100, 400));
+    d = addSystem(d, 1, PAGE, sys(500, 800));
+    d = toggleBarline(d, 1, 500, 250);
+    d = toggleBarline(d, 1, 1500, 250);
+    d = toggleSplit(d, 1, 900, 200);
+    // the first system's right edge pulled in past its second barline, its top up
+    let r = resizeSystem(d, 1, 0, PAGE, { x0: 100, y0: 80, x1: 1200, y1: 400 });
+    expect(r.pages["1"]!.systems[0]).toEqual({ box: { x0: 100, y0: 80, x1: 1200, y1: 400 }, barlines: [500], splits: [200] });
+    // a barline the new edge comes too near goes too
+    expect(resizeSystem(d, 1, 0, PAGE, { x0: 100, y0: 100, x1: 1500 + BARLINE_GRAB - 1, y1: 400 }).pages["1"]!.systems[0]!.barlines).toEqual([500]);
+    // a corner dragged past the opposite edge, and past the page: ordered and clamped; moved below the other system, the order follows
+    r = resizeSystem(d, 1, 0, PAGE, { x0: 2500, y0: 1000, x1: 0, y1: 850 });
+    expect(r.pages["1"]!.systems.map((s) => s.box)).toEqual([sys(500, 800), { x0: 0, y0: 850, x1: 2100, y1: 1000 }]);
+    expect(r.pages["1"]!.systems[1]!.splits).toEqual([]); // its split was left above it
+    // too small, or no such system: nothing changes
+    expect(resizeSystem(d, 1, 0, PAGE, { x0: 100, y0: 100, x1: 110, y1: 400 })).toBe(d);
+    expect(resizeSystem(d, 1, 5, PAGE, sys(100, 400))).toBe(d);
+    expect(resizeSystem(d, 2, 0, PAGE, sys(100, 400))).toBe(d);
   });
 
   it("measures are the segments between barlines, at the system's height", () => {

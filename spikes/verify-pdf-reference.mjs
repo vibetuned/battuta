@@ -212,7 +212,7 @@ try {
   await clickBarlines([firstFour[1][2]]);
   if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT });
   await onScreen(0, 0); // the editor scrolled so the first system, and its ×, are in view
-  await page.locator('[data-pdf-remove-system="0"] circle').click({ force: true });
+  await page.locator('[data-pdf-remove-system="0"]').click({ force: true });
   await page.waitForFunction(() => document.querySelector("[data-pdf-ref]")?.getAttribute("data-pdf-annotated") === "0", null, { timeout: 3000 }).catch(() => undefined);
   check("the system's × removes it, and its scans go", (await attr("data-pdf-annotated")) === "0" && (await page.evaluate(() => document.querySelectorAll("[data-pdf-scan]").length)) === 0);
   await drawSystem();
@@ -263,6 +263,117 @@ try {
   await page.waitForFunction(() => document.querySelector("[data-pdf-current-staff]"), null, { timeout: 5000 }).catch(() => undefined);
   check("a note on the second staff highlights the second staff of its measure in the strip", (await page.evaluate(() => document.querySelector("[data-pdf-current-staff]")?.getAttribute("data-pdf-current-staff"))) === "2");
   if (process.env.SHOT2) await page.screenshot({ path: process.env.SHOT2 });
+
+  // --- 10b. touch: one finger draws, two move the page (2026-10-29) ------------------
+  // User-reported on a tablet: every drag drew, so the zoomed page could not be
+  // moved. Real touches through the DevTools protocol (Playwright's touchscreen
+  // taps with one finger only); each start/move/end carries every finger down.
+  {
+    const cdp = await page.context().newCDPSession(page);
+    const touch = (type, points) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points.map((p, id) => ({ x: Math.round(p.x), y: Math.round(p.y), id })) });
+    const gesture = async (from, by, steps = 8) => {
+      await touch("touchStart", from);
+      for (let i = 1; i <= steps; i++) await touch("touchMove", from.map((p) => ({ x: p.x + (by.x * i) / steps, y: p.y + (by.y * i) / steps })));
+      await touch("touchEnd", []);
+      await page.waitForTimeout(150);
+    };
+    const state = () => page.evaluate(() => {
+      const s = document.querySelector("[data-pdf-editor-scroll]");
+      return { left: Math.round(s.scrollLeft), top: Math.round(s.scrollTop), systems: document.querySelectorAll("[data-pdf-system]").length, barlines: document.querySelectorAll("[data-pdf-barline]").length, dragging: Boolean(document.querySelector("[data-pdf-drag]")) };
+    });
+    await page.locator("[data-pdf-draw]").click();
+    await page.waitForSelector("[data-pdf-editor]", { timeout: 5000 });
+    await page.locator("[data-pdf-zoom-in]").click();
+    await page.locator("[data-pdf-zoom-in]").click(); // 200%: the box scrolls both ways
+    const mid = await page.evaluate(() => {
+      const s = document.querySelector("[data-pdf-editor-scroll]");
+      s.scrollLeft = 300;
+      s.scrollTop = 600;
+      const r = s.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    });
+    check(`the move hint is in the drawing bar ("${await page.evaluate(() => document.querySelector("[data-pdf-move-hint]")?.textContent ?? "")}")`, (await page.locator("[data-pdf-move-hint]").count()) === 1);
+    await page.locator('[data-pdf-tool-button="system"]').click();
+    const s0 = await state();
+    await gesture([{ x: mid.x - 40, y: mid.y }, { x: mid.x + 40, y: mid.y }], { x: -120, y: -90 });
+    const s1 = await state();
+    check(`two fingers move the page (scroll ${s0.left},${s0.top} → ${s1.left},${s1.top}) and draw no system (${s0.systems} → ${s1.systems})`, Math.abs(s1.left - s0.left - 120) <= 3 && Math.abs(s1.top - s0.top - 90) <= 3 && s1.systems === s0.systems && !s1.dragging);
+    await page.locator('[data-pdf-tool-button="barline"]').click();
+    await gesture([{ x: mid.x - 40, y: mid.y }, { x: mid.x + 40, y: mid.y }], { x: 60, y: 40 });
+    const s2 = await state();
+    check(`…with the barline tool too: the page moves back (${s2.left},${s2.top}) and no barline toggles where a finger lifts (${s1.barlines} → ${s2.barlines})`, Math.abs(s1.left - s2.left - 60) <= 3 && Math.abs(s1.top - s2.top - 40) <= 3 && s2.barlines === s1.barlines);
+    await page.locator('[data-pdf-tool-button="system"]').click();
+    await gesture([{ x: mid.x - 150, y: mid.y - 50 }], { x: 300, y: 100 });
+    const s3 = await state();
+    check(`one finger still draws a system (${s2.systems} → ${s3.systems}) and leaves the page where it was`, s3.systems === s2.systems + 1 && s3.left === s2.left && s3.top === s2.top);
+    // its × by a one-finger tap: the drawing as it was
+    const x = await page.evaluate((i) => {
+      const r = document.querySelector(`[data-pdf-remove-system="${i}"]`).getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }, s3.systems - 1);
+    await gesture([x], { x: 0, y: 0 }, 1);
+    check(`…and a tap on its × takes it away (${s3.systems} → ${(await state()).systems})`, (await state()).systems === s2.systems);
+    await page.locator("[data-pdf-zoom-out]").click();
+    await page.locator("[data-pdf-zoom-out]").click();
+    await page.locator("[data-pdf-draw-done]").click();
+
+    // --- 10c. zoom below the panel's width; a system resized by its corners (2026-10-29) ---
+    // The user: "we don't have negative zoom … needed specially in landscape" and
+    // "we cannot resize the systems".
+    await page.locator("[data-pdf-draw]").click();
+    await page.waitForSelector("[data-pdf-editor]", { timeout: 5000 });
+    for (let i = 0; i < 3; i++) await page.locator("[data-pdf-zoom-out]").click();
+    const quarter = await page.evaluate(() => {
+      const box = document.querySelector("[data-pdf-editor-scroll]").getBoundingClientRect();
+      const pg = document.querySelector("[data-pdf-editor-page]").getBoundingClientRect();
+      return { share: Math.round((pg.width / box.width) * 100), left: Math.round(pg.left - box.left), right: Math.round(box.right - pg.right), label: document.querySelector("[data-pdf-zoom-level]").textContent, outOff: document.querySelector("[data-pdf-zoom-out]").disabled };
+    });
+    check(`− goes below the panel's width, to a quarter, the page centred (${JSON.stringify(quarter)})`, Math.abs(quarter.share - 25) <= 1 && Math.abs(quarter.left - quarter.right) <= 2 && quarter.label === "25%" && quarter.outOff);
+    const xSize = await page.evaluate(() => Math.round(document.querySelector('[data-pdf-remove-system="0"]').getBoundingClientRect().width));
+    check(`…and a system's × keeps a finger's size there (${xSize} px)`, xSize >= 22);
+    for (let i = 0; i < 3; i++) await page.locator("[data-pdf-zoom-in]").click();
+    await page.locator('[data-pdf-tool-button="system"]').click();
+    const sys = () => page.evaluate(() => {
+      const r = document.querySelector('[data-pdf-system="0"] rect');
+      return { x0: Math.round(Number(r.getAttribute("x"))), x1: Math.round(Number(r.getAttribute("x")) + Number(r.getAttribute("width"))), barlines: [...document.querySelectorAll('[data-pdf-system="0"] [data-pdf-barline]')].map((l) => Number(l.getAttribute("data-pdf-barline"))) };
+    });
+    /** A page x (its pixels) on screen, at the handle's own height. */
+    const screenX = (x) => page.evaluate((x) => { const r = document.querySelector("[data-pdf-editor]").getBoundingClientRect(); return r.left + (x / 2100) * r.width; }, x);
+    const handle = async (name) => {
+      await page.locator(`[data-pdf-resize="${name}"]`).scrollIntoViewIfNeeded();
+      return page.evaluate((n) => { const r = document.querySelector(`[data-pdf-resize="${n}"]`).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, name);
+    };
+    const before = await sys();
+    const annotated0 = await attr("data-pdf-annotated");
+    check(`the systems tool shows each system's four corners (${await page.locator('[data-pdf-resize^="0:"]').count()})`, (await page.locator('[data-pdf-resize^="0:"]').count()) === 4);
+    // the right edge in, between the second and the third barline: the last measure goes
+    const inX = Math.round((before.barlines[1] + before.barlines[2]) / 2);
+    const se = await handle("0:se");
+    await page.mouse.move(se.x, se.y);
+    await page.mouse.down();
+    await page.mouse.move((se.x + (await screenX(inX))) / 2, se.y, { steps: 4 });
+    await page.mouse.move(await screenX(inX), se.y, { steps: 4 });
+    await page.mouse.up();
+    const after = await sys();
+    check(`dragging a corner resizes the system (right edge ${before.x1} → ${after.x1} for ${inX}), the barline it leaves out goes (${before.barlines.length} → ${after.barlines.length}), the measures follow (${annotated0} → ${await attr("data-pdf-annotated")})`, Math.abs(after.x1 - inX) <= 6 && after.x0 === before.x0 && after.barlines.length === before.barlines.length - 1 && Number(await attr("data-pdf-annotated")) === Number(annotated0) - 1);
+    await page.locator('[data-pdf-tool-button="barline"]').click();
+    check("with the barline tool the corners are gone (a tap in a system is a barline)", (await page.locator("[data-pdf-resize]").count()) === 0);
+    await page.locator('[data-pdf-tool-button="system"]').click();
+    // by a finger: the right edge back out
+    const se2 = await handle("0:se");
+    await gesture([se2], { x: (await screenX(before.x1)) - se2.x, y: 0 });
+    const back = await sys();
+    check(`one finger on a corner resizes too (right edge ${after.x1} → ${back.x1}), the dropped barline staying dropped (${back.barlines.length})`, Math.abs(back.x1 - before.x1) <= 6 && back.barlines.length === after.barlines.length);
+    // two fingers, one of them on a corner: a pan, never a resize
+    const se3 = await handle("0:se");
+    const scroll0 = await state();
+    // (upwards: at 100% the page is the box's width, so only the vertical scroll can move)
+    await gesture([se3, { x: se3.x - 200, y: se3.y }], { x: 0, y: -60 });
+    const panned = await sys();
+    check(`two fingers with one on a corner move the page (scroll top ${scroll0.top} → ${(await state()).top}) and leave the system as it was (${back.x1} → ${panned.x1})`, panned.x1 === back.x1 && Math.abs((await state()).top - scroll0.top - 60) <= 3);
+    await page.locator("[data-pdf-draw-done]").click();
+    await cdp.detach();
+  }
 
   // --- 11. the pages as images, with their annotation files --------------------------
   check(`both pages were kept as PNGs to try (${Object.keys(pagePngs).join(", ")})`, Object.keys(pagePngs).length === 2);

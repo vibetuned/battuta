@@ -11,6 +11,50 @@ below, and changes since the last tag gather under *Unreleased*.
 
 ## Unreleased
 
+- **The PDF reference's drawing: zoom below 100%, systems resized by their
+  corners (2026-10-29).** The user, using the two-finger pan: "we don't
+  have negative zoom in this plugin this is needed specially in
+  landscape" and "we cannot resize the systems". **Zoom:** − now goes on
+  past the panel's width to 75, 50 and 25% — most of a page at once in
+  the wide, short panel of a tablet held sideways — the page centred in
+  the box; the editor still opens at 100%. **Resize:** with the systems
+  tool, each system shows its four corners; dragging one (mouse, pen or
+  one finger) moves that corner's two edges, the box shown as it goes;
+  `drawing.ts`'s new `resizeSystem` keeps the barlines and splits where
+  they are on the page and drops those the new box leaves out or brings
+  too near its edge, clamps to the page, and keeps the systems top to
+  bottom. Other tools show no corners, so a tap in a system is still a
+  barline or a split. A gesture that ever had two fingers resizes nothing,
+  as it draws nothing. **The × and the corners** are HTML over the page,
+  placed in percent of it and sized in screen pixels — the × was an SVG
+  circle in the page's units, about 2 px across at 25% — so a finger hits
+  them at every zoom; the × sits just off its system's corner, clear of
+  the corner's handle. Tests: the plugin's 46 (`resizeSystem`'s rules; the
+  lifecycle resizing a drawn system and the scans following; the zoom steps
+  below 1); the PDF reference e2e 53, its new §10c (− to a quarter,
+  centred, the × still 24 px; a corner dragged by mouse and by finger; no
+  corners with the barline tool; two fingers with one on a corner pan and
+  never resize).
+- **The PDF reference's drawing on a touch screen: two fingers move the
+  page (2026-10-29).** The user, on a tablet: drawing systems or the rest,
+  "we can not scroll to move around the image as we always draw the
+  system … maybe a two finger scroll is better". The editor's page takes
+  every touch (`touch-action: none` — a finger must be able to drag a box),
+  so nothing could move it. Now one finger draws and two move the page:
+  the fingers' midpoint drags the editor's scroll, set from where the pan
+  began (stepping it by each move's delta drifted — the browser rounds
+  every assignment: 120 px moved 128); a gesture that ever had two fingers
+  draws nothing — the box its first finger began is dropped, and the
+  barline, split or × under a lifting finger is left alone. A mouse, its
+  wheel, a trackpad and a pen are as they were; the drawing bar says "two
+  fingers move the page". Plugin code only, element refs and pointer
+  events — no window, no new API. Tests: the plugin's 45 and its rules;
+  the PDF reference e2e 46, its new §10b driving real multi-touch through
+  the DevTools protocol (two fingers move the zoomed page by exactly their
+  drag with the systems and the barlines tool and draw nothing, one finger
+  still draws, a tap on × removes). Installed on both tablets for the user
+  to try with real fingers; the Galaxy Tab's device suite 15/15 — its first
+  run since the Gradle 8.14.5 / AGP 8.13.2 upgrade of 2026-10-22.
 - **Tenuto (2026-10-22).** The user: "a small thing we forgot, the tenuto
   keyboard shortcut". battuta read tenuto (`@artic="ten"`) and played it
   full length since the playback work, but nothing wrote one. Now `=`

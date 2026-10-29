@@ -47,17 +47,41 @@ export const drawingKey = (fileName: string, bytes: number): string => `drawing:
 const withPage = (d: Drawing, page: number, p: DrawnPage): Drawing => ({ pages: { ...d.pages, [String(page)]: p } });
 const pageOf = (d: Drawing, page: number, size: { width: number; height: number }): DrawnPage => d.pages[String(page)] ?? { width: size.width, height: size.height, systems: [] };
 
-/** Add a system from a drag, corners in any order, clamped to the page. Too small a drag changes nothing. */
-export function addSystem(d: Drawing, page: number, size: { width: number; height: number }, drag: Box): Drawing {
+/** A drag's box: corners in any order, clamped to the page — or null when it is too small to be a system. */
+const systemBox = (drag: Box, size: { width: number; height: number }): Box | null => {
   const box: Box = {
     x0: Math.max(0, Math.min(drag.x0, drag.x1)),
     y0: Math.max(0, Math.min(drag.y0, drag.y1)),
     x1: Math.min(size.width, Math.max(drag.x0, drag.x1)),
     y1: Math.min(size.height, Math.max(drag.y0, drag.y1)),
   };
-  if (box.x1 - box.x0 < MIN_SYSTEM || box.y1 - box.y0 < MIN_SYSTEM) return d;
+  return box.x1 - box.x0 < MIN_SYSTEM || box.y1 - box.y0 < MIN_SYSTEM ? null : box;
+};
+
+/** Add a system from a drag, corners in any order, clamped to the page. Too small a drag changes nothing. */
+export function addSystem(d: Drawing, page: number, size: { width: number; height: number }, drag: Box): Drawing {
+  const box = systemBox(drag, size);
+  if (!box) return d;
   const p = pageOf(d, page, size);
   const systems = [...p.systems, { box, barlines: [], splits: [] }].sort((a, b) => a.box.y0 - b.box.y0);
+  return withPage(d, page, { ...p, systems });
+}
+
+/**
+ * A system's box changed — a corner dragged (2026-10-29, the user: "we
+ * cannot resize the systems"). Corners in any order, clamped to the page;
+ * the barlines and splits stay where they are on the page, and the ones
+ * the new box leaves out, or brings too near its edges, go. Too small a
+ * box changes nothing. The systems stay top to bottom.
+ */
+export function resizeSystem(d: Drawing, page: number, index: number, size: { width: number; height: number }, drag: Box): Drawing {
+  const p = d.pages[String(page)];
+  const s = p?.systems[index];
+  const box = systemBox(drag, size);
+  if (!p || !s || !box) return d;
+  const barlines = s.barlines.filter((x) => x - box.x0 > BARLINE_GRAB && box.x1 - x > BARLINE_GRAB);
+  const splits = s.splits.filter((y) => y - box.y0 > BARLINE_GRAB && box.y1 - y > BARLINE_GRAB);
+  const systems = p.systems.map((x, k) => (k === index ? { box, barlines, splits } : x)).sort((a, b) => a.box.y0 - b.box.y0);
   return withPage(d, page, { ...p, systems });
 }
 
