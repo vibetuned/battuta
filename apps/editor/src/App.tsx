@@ -2298,6 +2298,7 @@ export default function App() {
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
       host.actions.dispatchKey(e);
+      host.keyPressed({ key: e.key, code: e.code, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, meta: e.metaKey, action: host.actions.lastKeyAction });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -3174,6 +3175,7 @@ export default function App() {
       </main>
       <Panels store={host.panels} side="bottom" />
       <Panels store={host.panels} side="side" />
+      <Panels store={host.panels} side="float" />
       {/* Above the panels (32): the zoom and MIDI popovers open upward,
           over the bottom panel — under it they were hidden (2026-10-19). */}
       <footer ref={barRef} data-statusbar data-folded={barFolded || undefined} onKeyDown={onBarKey} style={{ position: "fixed", left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", gap: 12, whiteSpace: "nowrap", background: "#1f2733", color: "#aab", fontSize: 12, lineHeight: "20px", padding: `2px calc(10px + ${SAFE_RIGHT}) calc(2px + ${SAFE_BOTTOM}) calc(10px + ${SAFE_LEFT})`, zIndex: 34 }}>

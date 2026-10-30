@@ -181,6 +181,8 @@ export const SIDE_PANEL_WIDTH = 280;
 const SIDE: React.CSSProperties = { position: "fixed", left: 0, top: "var(--battuta-header-h, 83px)", bottom: `var(--battuta-bar-h, calc(24px + ${SAFE_BOTTOM}))`, width: `calc(${SIDE_PANEL_WIDTH}px + ${SAFE_LEFT})`, paddingLeft: SAFE_LEFT, boxSizing: "border-box", zIndex: 32, background: "#fff", borderRight: "1px solid #e3e7ec", overflow: "auto" };
 /** On a phone the side panel lies over the score — and over the bottom area, which keeps the full width. */
 const SIDE_OVER: React.CSSProperties = { ...SIDE, zIndex: 33, boxShadow: "4px 0 16px rgba(0,0,0,.18)" };
+/** The float area (1.3.4): over the window's bottom-left corner, above the bottom area and beside a side panel — to be seen, never touched. */
+const FLOAT: React.CSSProperties = { position: "fixed", bottom: `calc(var(--battuta-bar-h, calc(24px + ${SAFE_BOTTOM})) + var(--battuta-bottom-h, 0px) + 12px)`, zIndex: 31, pointerEvents: "none", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6 };
 
 export function Panels({ store, side }: { store: PanelStore; side: PanelSide }) {
   const all = useStore(store.panels);
@@ -217,7 +219,21 @@ export function Panels({ store, side }: { store: PanelStore; side: PanelSide }) 
   }, [side, panels.length]);
   if (!panels.length) return null;
   return (
-    <aside ref={ref} data-panels={side} style={side === "bottom" ? (sideUp && !narrow ? { ...BOTTOM, left: `calc(${SIDE_PANEL_WIDTH}px + ${SAFE_LEFT})` } : { ...BOTTOM, paddingLeft: SAFE_LEFT }) : narrow ? SIDE_OVER : SIDE}>
+    <aside
+      ref={ref}
+      data-panels={side}
+      style={
+        side === "float"
+          ? { ...FLOAT, left: sideUp && !narrow ? `calc(${SIDE_PANEL_WIDTH + 12}px + ${SAFE_LEFT})` : `calc(12px + ${SAFE_LEFT})` }
+          : side === "bottom"
+            ? sideUp && !narrow
+              ? { ...BOTTOM, left: `calc(${SIDE_PANEL_WIDTH}px + ${SAFE_LEFT})` }
+              : { ...BOTTOM, paddingLeft: SAFE_LEFT }
+            : narrow
+              ? SIDE_OVER
+              : SIDE
+      }
+    >
       {panels.map((p) => (
         <section key={p.id} data-panel={p.id} aria-label={p.title}>
           {p.render()}

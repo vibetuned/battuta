@@ -60,6 +60,12 @@ describe("validateManifest", () => {
     expect(withPatch({ capabilities: ["network"] })).toEqual(['unknown capability "network"']);
   });
 
+  it("takes enabledByDefault as a boolean, when given (1.3.4)", () => {
+    expect(withPatch({ enabledByDefault: false })).toEqual([]);
+    expect(withPatch({ enabledByDefault: true })).toEqual([]);
+    expect(withPatch({ enabledByDefault: "no" })).toEqual(["enabledByDefault must be a boolean"]);
+  });
+
   it("validates declared lanes: id, label, name, place; unique ids", () => {
     const ok = withPatch({ contributes: { lanes: [{ id: "battuta.lyrics.verse1", label: "lyrics (verse 1, l)", name: "lyrics", glyph: "♪", place: "below" }] } });
     expect(ok).toEqual([]);

@@ -13,6 +13,19 @@ const press = (key: string, mods: Partial<KeyEvent> = {}): KeyEvent & { prevente
 };
 
 describe("ActionTable", () => {
+  it("names the action a press ran — a rule's id or a plugin's command — and none for a press that ran nothing (1.3.4, ctx.keys)", () => {
+    const t = new ActionTable({ key: (e) => (e.key === "q" ? "battuta.mine.cmd" : null), run: () => false });
+    t.install([rule("tie", (e) => e.key === "t", () => "handled"), rule("dot", (e) => e.key === ".", () => "declined")]);
+    t.dispatchKey(press("t"));
+    expect(t.lastKeyAction).toBe("tie");
+    t.dispatchKey(press("q"));
+    expect(t.lastKeyAction).toBe("battuta.mine.cmd");
+    t.dispatchKey(press("."));
+    expect(t.lastKeyAction).toBeNull();
+    t.dispatchKey(press("x"));
+    expect(t.lastKeyAction).toBeNull();
+  });
+
   it("runs the first rule whose key AND state match; a later rule with the same key waits its turn", () => {
     const log: string[] = [];
     let selected = 2;
@@ -83,7 +96,7 @@ describe("ActionTable", () => {
   });
 
   it("the plugins are the last resort for a KEY (never with ctrl) and for an id no core rule has — past the same gates", () => {
-    const pluginKey = vi.fn((e: KeyEvent) => e.key === "R");
+    const pluginKey = vi.fn((e: KeyEvent) => (e.key === "R" ? "battuta.reflection.cycle" : null));
     const pluginRun = vi.fn((id: string) => id === "battuta.reflection.cycle");
     let caret = true;
     const t = new ActionTable({ key: pluginKey, run: pluginRun });

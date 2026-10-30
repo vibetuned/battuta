@@ -99,6 +99,31 @@ the bridge they all stand on.
   leaves it where it looks. There's no new API member; the two messages'
   documentation says so, hence the patch bump. The bundle is now exactly at
   its ceiling (390.6 kB): trimmed to fit, not raised.
+- **Screencast keys, a plugin off by default (2026-10-29, `@battuta/api`
+  1.3.4).** The user asked for one "mainly for the desktop, disabled by
+  default, like the Blender add-on", for video demos and screenshots, MIDI
+  included. It shows the keys pressed (modifiers first, with the action
+  each ran: `Ctrl Z · undo`) and the notes played (`♪ C4 E4 G4`) in the
+  window's bottom-left corner, each fading after a few seconds
+  (`packages/plugins/screencast-keys`). The user's choices: keys with their
+  action, and physical keys and MIDI only (not the on-screen keyboard's
+  buttons). The API gains, as approved: `ctx.keys` (each key press the
+  editor's handler takes, as data, with the action it ran; never a key
+  typed into a field), a `float` panel side (over the bottom-left corner,
+  taking no pointer events), and the manifest's `enabledByDefault: false`.
+  Checked in a browser: the keys, their actions, a chord, the fade.
+  Fixed after the user's first try on the desktop (2026-10-30): macOS
+  composes Option+key into another character, so Alt+B showed as "Alt SS"
+  ("ß" upper-cased) and Alt+E as "Alt €". With Alt held, a key that did not
+  come out as a plain letter or digit is now named by its physical key, as
+  the editor's keymap already reads alt bindings; only a–z is upper-cased.
+- **The bundle ceiling raised to 392 kB (2026-10-29), the user's
+  decision.** Measured 401,374 bytes. The host side of the stylus and of
+  the screencast keys sits in the main bundle by design: `ctx.stylus`'s
+  proxy (the service itself stays lazy), the enter-note and chord
+  messages, the input length, the caret on what they wrote, `ctx.keys`,
+  the float area and `enabledByDefault`. Both plugins stay lazy. Trimming
+  came first; `budget.json` says the same.
 - **No text selection outside the score (2026-10-29).** On the iPad a long
   press or a double tap with a finger selected a button's label. Only
   `main` was unselectable; now the whole page is, except fields and the

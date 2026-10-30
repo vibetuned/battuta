@@ -23,6 +23,7 @@ import type { OverlaysService } from "./overlays.js";
 import type { FormatsService } from "./formats.js";
 import type { WorkspaceService } from "./workspace.js";
 import type { StylusService } from "./stylus.js";
+import type { KeysService } from "./keys.js";
 import type { LanesService } from "./lanes.js";
 
 /** A value with change notification. `subscribe` fires on every change with the new value. */
@@ -39,9 +40,14 @@ export interface SlotItem {
   render: () => ReactNode;
 }
 
-export type PanelSide = "bottom" | "side";
+/**
+ * Where a panel goes: the bottom area, the side area, or (1.3.4) `float` —
+ * over the window's bottom-left corner, above the score, with no frame and
+ * no title, taking no click or touch: for what is only to be seen.
+ */
+export type PanelSide = "bottom" | "side" | "float";
 
-/** A panel the host mounts in its bottom or side area while the disposable lives. */
+/** A panel the host mounts in its bottom, side or float area while the disposable lives. */
 export interface PanelSpec {
   id: string;
   side: PanelSide;
@@ -130,6 +136,8 @@ export interface PluginContext {
   readonly workspace: WorkspaceService;
   /** The Apple Pencil and the S Pen on the score (capability "stylus"); available in the iOS and Android shells only. */
   readonly stylus: StylusService;
+  /** Every key press the editor handles, as data, with the action it ran (1.3.4). */
+  readonly keys: KeysService;
   /** Disposed on deactivate. Add every subscription here; the host disposes what it handed out itself. */
   readonly subscriptions: DisposableStore;
 }

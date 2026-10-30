@@ -33,7 +33,8 @@ export function memorySettings(initial: Settings = {}): SettingsIO {
 }
 
 /** A plugin is on unless the user turned it off. */
-export const isPluginEnabled = (io: SettingsIO, id: string): boolean => io.load().plugins?.[id]?.enabled ?? true;
+/** On or off as the user last set it; before that, as its manifest says (`enabledByDefault`, 1.3.4), else on. */
+export const isPluginEnabled = (io: SettingsIO, id: string, byDefault = true): boolean => io.load().plugins?.[id]?.enabled ?? byDefault;
 
 export function setPluginEnabled(io: SettingsIO, id: string, on: boolean): void {
   const all = io.load().plugins ?? {};

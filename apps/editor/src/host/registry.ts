@@ -85,7 +85,8 @@ export interface RegistryDeps {
   apiVersion?: string;
   /** Capabilities this host offers (a manifest requiring another is refused). */
   capabilities: readonly HostCapability[];
-  isEnabled(id: string): boolean;
+  /** `byDefault`: the manifest's `enabledByDefault`, true when it says nothing. */
+  isEnabled(id: string, byDefault: boolean): boolean;
   persistEnabled(id: string, on: boolean): void;
   contributeKeybindings(pluginId: string, bindings: KeybindingContribution[]): Disposable;
   /** Manifest-declared slot items: rendered by the host before the plugin's code loads. */
@@ -151,7 +152,7 @@ export class PluginRegistry implements Store<readonly PluginInfo[]> {
     const rec: PluginRecord = {
       entry,
       state: problems.length ? "failed" : "registered",
-      enabled: this.deps.isEnabled(id),
+      enabled: this.deps.isEnabled(id, m?.enabledByDefault !== false),
       error: problems.length ? problems.join("; ") : null,
       contributions: new DisposableStore(),
       subscriptions: new DisposableStore(),
@@ -239,13 +240,14 @@ export class PluginRegistry implements Store<readonly PluginInfo[]> {
   }
 
   /** A key against the plugins' contributed bindings: runs the owning command. False when none matches. */
-  dispatchKeyFor(keymap: { get(): Record<string, KeyBinding> }, e: KeyLike): boolean {
+  /** A plugin's binding for the key: runs its command and names it; null when no plugin binds the key. */
+  dispatchKeyFor(keymap: { get(): Record<string, KeyBinding> }, e: KeyLike): string | null {
     for (const [id, b] of Object.entries(keymap.get())) {
       if (!b.plugin || !this.deps.keyMatches(b, e)) continue;
       void this.runCommand(id);
-      return true;
+      return id;
     }
-    return false;
+    return null;
   }
 
   /** Run a plugin command by id, loading its owner first if needed. False when no plugin owns it. */

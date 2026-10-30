@@ -134,6 +134,12 @@ export interface PluginManifest {
   activationEvents: ActivationEvent[];
   capabilities?: HostCapability[];
   contributes?: PluginContributions;
+  /**
+   * False: the plugin starts off, until the user turns it on in the Plugins
+   * tab — for a tool only some sessions want (1.3.4: the screencast keys).
+   * Absent or true: on, as every plugin before it.
+   */
+  enabledByDefault?: boolean;
 }
 
 const ID_RE = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/;
@@ -157,6 +163,7 @@ export function validateManifest(input: unknown): string[] {
       }
     }
   }
+  if (m["enabledByDefault"] !== undefined && typeof m["enabledByDefault"] !== "boolean") problems.push("enabledByDefault must be a boolean");
   const caps = m["capabilities"];
   if (caps !== undefined) {
     if (!Array.isArray(caps)) problems.push("capabilities must be an array");

@@ -349,6 +349,32 @@ describe("commands as data", () => {
     expect(() => toCommand({ type: "core.addChordNote", eventId: "n1", pname: "e", oct: -1 })).toThrow(/oct must be an integer 0–9/);
   });
 
+  it("a plugin whose manifest says enabledByDefault: false starts off and wakes once turned on; ctx.keys hears every press; a float panel opens (1.3.4)", async () => {
+    const pressed: string[] = [];
+    let woke = false;
+    const host = makeHost([
+      {
+        manifest: { id: "t.cast", name: "t", version: "1.0.0", engines: { battuta: "^1.3.4" }, activationEvents: ["onStartup"], enabledByDefault: false },
+        load: async () =>
+          definePlugin({
+            activate: (c) => {
+              woke = true;
+              c.keys.on((p) => pressed.push(`${p.ctrl ? "ctrl+" : ""}${p.key}:${p.action}`));
+              c.panels.open({ id: "cast", side: "float", title: "t", render: () => null });
+            },
+          }),
+      },
+    ]);
+    expect(host.registry.get().find((i) => i.id === "t.cast")?.enabled).toBe(false);
+    await host.fireStartupEvents({ coarsePointer: false });
+    expect(woke).toBe(false);
+    await host.registry.setEnabled("t.cast", true);
+    expect(woke).toBe(true);
+    host.keyPressed({ key: "z", code: "KeyZ", ctrl: true, alt: false, shift: false, meta: false, action: "undo" });
+    expect(pressed).toEqual(["ctrl+z:undo"]);
+    expect(host.panels.panels.get().map((p) => [p.id, p.side])).toEqual([["cast", "float"]]);
+  });
+
   it("ctx.setEntryLength reaches the App's input length, checked at the door; the mirror starts at a plain quarter", () => {
     const host = makeHost([]);
     expect(host.editor.get()).toMatchObject({ entryDur: "4", entryDots: 0 });

@@ -1,4 +1,4 @@
-// @battuta/api 1.3.3 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
+// @battuta/api 1.3.4 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
 
 // ---- ../dist/.tsbuildinfo
 {"version":"5.9.3"}
@@ -117,6 +117,7 @@ import type { OverlaysService } from "./overlays.js";
 import type { FormatsService } from "./formats.js";
 import type { WorkspaceService } from "./workspace.js";
 import type { StylusService } from "./stylus.js";
+import type { KeysService } from "./keys.js";
 import type { LanesService } from "./lanes.js";
 /** A value with change notification. `subscribe` fires on every change with the new value. */
 export interface Store<T> {
@@ -130,8 +131,13 @@ export interface SlotItem {
     order?: number;
     render: () => ReactNode;
 }
-export type PanelSide = "bottom" | "side";
-/** A panel the host mounts in its bottom or side area while the disposable lives. */
+/**
+ * Where a panel goes: the bottom area, the side area, or (1.3.4) `float` —
+ * over the window's bottom-left corner, above the score, with no frame and
+ * no title, taking no click or touch: for what is only to be seen.
+ */
+export type PanelSide = "bottom" | "side" | "float";
+/** A panel the host mounts in its bottom, side or float area while the disposable lives. */
 export interface PanelSpec {
     id: string;
     side: PanelSide;
@@ -220,6 +226,8 @@ export interface PluginContext {
     readonly workspace: WorkspaceService;
     /** The Apple Pencil and the S Pen on the score (capability "stylus"); available in the iOS and Android shells only. */
     readonly stylus: StylusService;
+    /** Every key press the editor handles, as data, with the action it ran (1.3.4). */
+    readonly keys: KeysService;
     /** Disposed on deactivate. Add every subscription here; the host disposes what it handed out itself. */
     readonly subscriptions: DisposableStore;
 }
@@ -484,7 +492,7 @@ export interface FormatsService {
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export declare const API_VERSION = "1.3.3";
+export declare const API_VERSION = "1.3.4";
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";
 export type { Disposable } from "./disposable.js";
@@ -499,6 +507,7 @@ export type { OverlayBox, OverlayStaff, TileOverlayProps, OverlaySpec, OverlaysS
 export type { ExportContribution, ExportFile, ExportPayload, ImportContribution, ImportFile, FormatsService } from "./formats.js";
 export type { DirEntry, WatchEvent, WatchEventKind, WorkspaceService } from "./workspace.js";
 export type { StylusSample, StylusScorePoint, StylusEvent, StylusService } from "./stylus.js";
+export type { KeyPress, KeysService } from "./keys.js";
 export type { SetPitchesMessage, SetSylMessage, SetHarmMessage, EnterNoteMessage, AddChordNoteMessage, CommandMessage, CommandMessageType } from "./messages.js";
 export { COMMAND_MESSAGE_TYPES } from "./messages.js";
 export type { MidiPort, MidiNoteEvent, MidiVirtualInput, MidiOutputs, MidiService } from "./midi.js";
@@ -506,6 +515,32 @@ export type { KeymapEntry, ActionsService } from "./actions.js";
 export type { LanePlace, LaneContribution, LaneCommit, LaneCommitResult, LaneSpec, LanesService } from "./lanes.js";
 export type { Store, SlotItem, PanelSide, PanelSpec, SettingsNamespace, StorageNamespace, CommandHandler, PluginContext, PluginModule, PluginEntry } from "./context.js";
 export { definePlugin, resolvePluginModule } from "./context.js";
+
+// ---- keys.d.ts
+/**
+ * Key presses as data (1.3.4, for the screencast keys plugin): every key
+ * the editor's own key handler receives — the physical keyboard, not the
+ * on-screen one, and never a key typed into a text field — with its
+ * modifiers and the action it ran, so a plugin can show what was pressed
+ * without listening to the page itself.
+ */
+import type { Disposable } from "./disposable.js";
+export interface KeyPress {
+    /** `KeyboardEvent.key`: what the key types on the user's layout — "a", "A", "4", "ArrowLeft", "Escape", " " … */
+    key: string;
+    /** `KeyboardEvent.code`: the physical key — "KeyA", "Digit4" … */
+    code: string;
+    ctrl: boolean;
+    alt: boolean;
+    shift: boolean;
+    meta: boolean;
+    /** The action the press ran — a keymap id (`tie`, `undo`, a plugin's command); its label is in `ctx.keymap` — or null when it ran none. */
+    action: string | null;
+}
+export interface KeysService {
+    /** Every key press, after the editor handled it; the disposable unsubscribes. */
+    on(listener: (press: KeyPress) => void): Disposable;
+}
 
 // ---- lanes.d.ts
 /**
@@ -735,6 +770,12 @@ export interface PluginManifest {
     activationEvents: ActivationEvent[];
     capabilities?: HostCapability[];
     contributes?: PluginContributions;
+    /**
+     * False: the plugin starts off, until the user turns it on in the Plugins
+     * tab — for a tool only some sessions want (1.3.4: the screencast keys).
+     * Absent or true: on, as every plugin before it.
+     */
+    enabledByDefault?: boolean;
 }
 /** Every problem with a manifest, in plain words; empty means valid. */
 export declare function validateManifest(input: unknown): string[];

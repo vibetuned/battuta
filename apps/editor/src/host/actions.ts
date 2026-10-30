@@ -84,8 +84,8 @@ export const modal = (active: () => boolean, handle: (e: KeyEvent) => void): Mod
 export const isMod = (e: KeyEvent): boolean => e.ctrlKey || e.metaKey;
 
 export interface PluginFallback {
-  /** A key no core rule took: the plugins' bindings. */
-  key(e: KeyEvent): boolean;
+  /** A key no core rule took: the plugins' bindings. The command it ran, or null. */
+  key(e: KeyEvent): string | null;
   /** An id no core rule has: the plugins' commands. True when a plugin owns it. */
   run(id: string): boolean;
 }
@@ -95,7 +95,10 @@ export class ActionTable {
   /** The rule ids of the installed steps, in dispatch order, once — republished on every install. */
   readonly ruleIds: WritableStore<readonly string[]> = createStore<readonly string[]>([]);
 
-  constructor(private readonly plugins: PluginFallback = { key: () => false, run: () => false }) {}
+  /** The action the last physical press ran — a rule's id or a plugin's command — or null (1.3.4: `ctx.keys`). */
+  lastKeyAction: string | null = null;
+
+  constructor(private readonly plugins: PluginFallback = { key: () => null, run: () => false }) {}
 
   install(steps: readonly ActionStep[]): void {
     this.steps = steps;
@@ -115,6 +118,7 @@ export class ActionTable {
 
   /** A physical press: the steps in order, then the plugins. True when something took the key. */
   dispatchKey(e: KeyEvent): boolean {
+    this.lastKeyAction = null;
     for (const step of this.steps) {
       if (step.kind === "gate") {
         if (step.when()) return true;
@@ -131,10 +135,15 @@ export class ActionTable {
       if (step.when && !step.when()) continue;
       const outcome = step.run();
       if (outcome === "fallthrough") continue;
-      if (outcome === "handled" && step.preventDefault) e.preventDefault();
+      if (outcome === "handled") {
+        this.lastKeyAction = step.id;
+        if (step.preventDefault) e.preventDefault();
+      }
       return true;
     }
-    if (!isMod(e) && this.plugins.key(e)) {
+    const command = isMod(e) ? null : this.plugins.key(e);
+    if (command !== null) {
+      this.lastKeyAction = command;
       e.preventDefault();
       return true;
     }

@@ -9,7 +9,7 @@
  * built-in plugins unless the URL says ?plugins=off); `createHost` is
  * exported for tests, which pass memory-backed settings and storage.
  */
-import { API_VERSION, DisposableStore, toDisposable, type ActionsService, type Disposable, type StylusService, type ActivationEvent, type BlockSelection, type CommandMessage, type DocumentInfo, type DocumentQueries, type EditorState, type HostCapability, type KeymapEntry, type PitchEvent, type PluginContext, type PluginEntry, type PluginManifest, type Store, type SylValue, type HarmKind, type NotationFacts, type Timemap, type ViewMode, type ViewService, type CaretPosition } from "@battuta/api";
+import { API_VERSION, DisposableStore, toDisposable, type ActionsService, type Disposable, type KeyPress, type StylusService, type ActivationEvent, type BlockSelection, type CommandMessage, type DocumentInfo, type DocumentQueries, type EditorState, type HostCapability, type KeymapEntry, type PitchEvent, type PluginContext, type PluginEntry, type PluginManifest, type Store, type SylValue, type HarmKind, type NotationFacts, type Timemap, type ViewMode, type ViewService, type CaretPosition } from "@battuta/api";
 import { isHarmText, type Command } from "@battuta/core";
 import { checkLength, toCommand } from "./messages";
 import { keyMatches, type Layout } from "../keymap";
@@ -114,6 +114,8 @@ export interface Host {
   bindStylus(lookups: ScoreLookups | null): void;
   /** The App installs what sets the input's note length (`ctx.setEntryLength`); null while it cannot. */
   bindEntryLength(set: ((dur: string, dots: number) => void) | null): void;
+  /** The App reports every key press its handler took, after dispatch — what `ctx.keys` hands out. */
+  keyPressed(press: KeyPress): void;
   /** Commands as data: the message becomes a core command here, never in a plugin. */
   execute(message: CommandMessage): void;
   /** Plugin keybindings: called by the App's key handler AFTER the core dispatcher falls through. */
@@ -166,7 +168,7 @@ export function createHost(options: HostOptions = {}): Host {
   // Declared before the registry exists: the fallbacks look it up lazily.
   let registryRef: PluginRegistry | null = null;
   const actions = new ActionTable({
-    key: (e) => registryRef?.dispatchKeyFor(keymap, e) ?? false,
+    key: (e) => registryRef?.dispatchKeyFor(keymap, e) ?? null,
     run: (id) => {
       if (!registryRef || commands.ownerOf(id) === undefined) return false;
       void registryRef.runCommand(id);
@@ -213,6 +215,7 @@ export function createHost(options: HostOptions = {}): Host {
     measureIds: () => adapter?.measureIds() ?? [],
   };
   let viewAdapter: ViewAdapter | null = null;
+  const keyListeners = new Set<(press: KeyPress) => void>();
   let entryLength: ((dur: string, dots: number) => void) | null = null;
   const setEntryLength = (dur: string, dots = 0): void => {
     checkLength("setEntryLength", dur, dots);
@@ -306,6 +309,12 @@ export function createHost(options: HostOptions = {}): Host {
     view,
     workspace,
     stylus: stylusFor(manifest.id, subscriptions),
+    keys: {
+      on: (listener) => {
+        keyListeners.add(listener);
+        return subscriptions.add(toDisposable(() => keyListeners.delete(listener)));
+      },
+    },
     formats: {
       registerExport: (id, produce) => {
         if (!manifest.contributes?.exports?.some((x) => x.id === id)) throw new Error(`plugin ${manifest.id} did not declare export ${id} in its manifest`);
@@ -322,7 +331,7 @@ export function createHost(options: HostOptions = {}): Host {
   const registry = new PluginRegistry({
     ...(options.apiVersion !== undefined ? { apiVersion: options.apiVersion } : {}),
     capabilities: options.capabilities ?? OFFERED_CAPABILITIES,
-    isEnabled: (id) => isPluginEnabled(settings, id),
+    isEnabled: (id, byDefault) => isPluginEnabled(settings, id, byDefault),
     persistEnabled: (id, on) => setPluginEnabled(settings, id, on),
     contributeKeybindings: (pluginId, bindings) => keymap.contribute(pluginId, bindings),
     declareSlotItems: (pluginId, items) => {
@@ -356,7 +365,7 @@ export function createHost(options: HostOptions = {}): Host {
   if (!noPlugins) for (const entry of options.plugins ?? []) registry.register(entry);
   publishIds();
 
-  const dispatchKey = (e: KeyLike): boolean => registry.dispatchKeyFor(keymap, e);
+  const dispatchKey = (e: KeyLike): boolean => registry.dispatchKeyFor(keymap, e) !== null;
 
   // `onView:<mode>` fires on every change of the editor mirror's view —
   // and for the first view published, so a plugin that declares
@@ -424,6 +433,9 @@ export function createHost(options: HostOptions = {}): Host {
     },
     bindEntryLength: (next) => {
       entryLength = next;
+    },
+    keyPressed: (press) => {
+      for (const l of [...keyListeners]) l({ ...press });
     },
     execute,
     dispatchKey,
