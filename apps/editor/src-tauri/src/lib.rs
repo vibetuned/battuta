@@ -37,6 +37,47 @@ fn js_log(_app: tauri::AppHandle, msg: String) {
 /// compared them with the native side's; with capture on it checks that the
 /// page gets no pen at all. To logcat through the console on Android, to
 /// `shell.log` through `js_log` on iOS.
+/// Debug builds: granita's own fixtures (plugins/battuta-mobile/granita,
+/// from granita's `scripts/shell_fixtures.py`) run through `stylus_recognize`
+/// once the page is up — each symbol's class against PyTorch's, to
+/// `shell.log` on iOS and logcat on Android. The native rasteriser is not
+/// Pillow, so a confidence differs a little; a class should not.
+#[cfg(all(mobile, debug_assertions))]
+const GRANITA_FIXTURES: &str = include_str!("../plugins/battuta-mobile/granita/fixtures.json");
+#[cfg(all(mobile, debug_assertions))]
+fn granita_probe() -> String {
+    r#"console.info('[granita] probe armed');
+setTimeout(async () => {
+  const inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
+  if (!inv) { console.info('[granita] no invoke'); return; }
+  // The console reaches logcat on Android; js_log reaches shell.log on iOS.
+  const log = (m) => { console.info('[granita] ' + m); inv('js_log', { msg: '[granita] ' + m }).catch(() => undefined); };
+  try {
+  const fx = FIXTURES;
+  let agree = 0, worst = 0, ms = 0;
+  for (const f of fx.fixtures) {
+    const c = f.context;
+    const t0 = performance.now();
+    try {
+      const top = await inv('stylus_recognize', { strokes: f.strokes, staffSpace: fx.staff.staff_space, context: { yStaff: c.y_staff, xMeasure: c.x_measure, barline: c.barline, noteDx: c.note_dx, noteDy: c.note_dy, width: c.width, height: c.height } });
+      ms += performance.now() - t0;
+      const best = top[0] || { label: '-', confidence: 0 };
+      const ok = best.label === f.top.label;
+      if (ok) agree++;
+      worst = Math.max(worst, Math.abs(best.confidence - f.top.confidence));
+      log(`${f.drawn_as}: ${best.label} ${(best.confidence * 100).toFixed(0)} % (reference ${f.top.label} ${(f.top.confidence * 100).toFixed(0)} %)${ok ? '' : ' MISMATCH'}`);
+    } catch (e) {
+      log(`${f.drawn_as}: FAILED ${e}`);
+    }
+  }
+  log(`${agree} of ${fx.fixtures.length} top-1 agree, max |Δ confidence| ${worst.toFixed(3)}, ${(ms / fx.fixtures.length).toFixed(1)} ms per symbol, the first with the model's loading`);
+  } catch (e) {
+    log(`probe FAILED ${e}`);
+  }
+}, 6000);"#
+        .replace("FIXTURES", GRANITA_FIXTURES)
+}
+
 #[cfg(all(mobile, debug_assertions))]
 const STYLUS_PAGE_PROBE: &str = r#"(() => {
   if (window.__STYLUS_PAGE_PROBE__) return;
@@ -356,6 +397,15 @@ async fn stylus_capture(app: tauri::AppHandle, on: bool) -> Result<(), String> {
 async fn stylus_area(app: tauri::AppHandle, rects: Vec<[f64; 4]>) -> Result<(), String> {
     use tauri_plugin_battuta_mobile::BattutaMobileExt;
     app.battuta_mobile().stylus_area(rects)
+}
+
+/// The stylus (1.3.5, phase 11 M2): granita on a symbol — the classes by
+/// confidence, from the native side's model (`ctx.stylus.recognize`).
+#[cfg(mobile)]
+#[tauri::command]
+async fn stylus_recognize(app: tauri::AppHandle, strokes: Vec<Vec<[f64; 2]>>, staff_space: f64, context: Option<tauri_plugin_battuta_mobile::SymbolContext>) -> Result<Vec<tauri_plugin_battuta_mobile::Recognition>, String> {
+    use tauri_plugin_battuta_mobile::BattutaMobileExt;
+    app.battuta_mobile().stylus_recognize(strokes, staff_space, context)
 }
 
 /// The system share sheet (tablets): AirDrop, Mail, another app.
@@ -927,6 +977,9 @@ pub fn run() {
             // on it should log nothing: the pen is battuta's, not the page's.
             #[cfg(all(mobile, debug_assertions))]
             let _ = webview.eval(STYLUS_PAGE_PROBE);
+            // granita's fixtures through the native model: a line per symbol, a summary.
+            #[cfg(all(mobile, debug_assertions))]
+            let _ = webview.eval(&granita_probe());
             // Headless shell self-test: exercise the save command end to end.
             if let Ok(test_file) = std::env::var("BATTUTA_SHELL_TEST_FILE") {
                 let js = format!(
@@ -1192,12 +1245,12 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool {
 /// The iPad answers MIDI too (CoreMIDI, M3): its WebKit has no Web MIDI.
 #[cfg(target_os = "ios")]
 fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool {
-    tauri::generate_handler![bench_echo, bench_report, js_log, save_score, file_mtime, initial_score, share_file, midi_open_outputs, midi_close_outputs, midi_send, midi_bluetooth, workspace_home, workspace_pick_folder, workspace_open_folder, workspace_read_dir, workspace_read_file, workspace_rename, workspace_create_folder, workspace_create_file, stylus_capture, stylus_area]
+    tauri::generate_handler![bench_echo, bench_report, js_log, save_score, file_mtime, initial_score, share_file, midi_open_outputs, midi_close_outputs, midi_send, midi_bluetooth, workspace_home, workspace_pick_folder, workspace_open_folder, workspace_read_dir, workspace_read_file, workspace_rename, workspace_create_folder, workspace_create_file, stylus_capture, stylus_area, stylus_recognize]
 }
 /// Android's WebView has Web MIDI: the page talks to the devices itself.
 #[cfg(target_os = "android")]
 fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool {
-    tauri::generate_handler![bench_echo, bench_report, js_log, save_score, file_mtime, initial_score, share_file, midi_bluetooth, workspace_home, workspace_pick_folder, workspace_open_folder, workspace_read_dir, workspace_read_file, workspace_rename, workspace_create_folder, workspace_create_file, stylus_capture, stylus_area]
+    tauri::generate_handler![bench_echo, bench_report, js_log, save_score, file_mtime, initial_score, share_file, midi_bluetooth, workspace_home, workspace_pick_folder, workspace_open_folder, workspace_read_dir, workspace_read_file, workspace_rename, workspace_create_folder, workspace_create_file, stylus_capture, stylus_area, stylus_recognize]
 }
 
 #[cfg(test)]

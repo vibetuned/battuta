@@ -19,7 +19,10 @@
 //!   by such paths, walking the tree name by name.
 //!
 //! - **The stylus** (1.3.0, phase 11) — the Apple Pencil and the S Pen,
-//!   captured natively while the page asks for it (`stylus_capture`).
+//!   captured natively while the page asks for it (`stylus_capture`); and
+//!   **granita** (1.3.5, M2), battuta's glyph classifier, read on a symbol's
+//!   strokes (`stylus_recognize`) — the model's files live in this plugin,
+//!   copied from a granita release by `scripts/copy-granita.sh`.
 //!
 //! The page never calls this plugin: the shell does, from the workspace,
 //! share and stylus commands it already answers (`lib.rs`), so the page's
@@ -46,6 +49,26 @@ impl<R: Runtime, T: Manager<R>> BattutaMobileExt<R> for T {
     fn battuta_mobile(&self) -> &BattutaMobile<R> {
         self.state::<BattutaMobile<R>>().inner()
     }
+}
+
+/// Where a symbol sits, in staff spaces (`ctx.stylus.recognize`'s context; granita's `SymbolContext`).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SymbolContext {
+    pub y_staff: f64,
+    pub x_measure: f64,
+    pub barline: f64,
+    pub note_dx: Option<f64>,
+    pub note_dy: Option<f64>,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// One of granita's answers: a class of its sidecar and its confidence, 0–1.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Recognition {
+    pub label: String,
+    pub confidence: f64,
 }
 
 /// One entry of a listed folder (Android document trees).
@@ -144,6 +167,27 @@ impl<R: Runtime> BattutaMobile<R> {
             rects: Vec<[f64; 4]>,
         }
         self.call::<Nothing>("stylusArea", Args { rects }).map(|_| ())
+    }
+
+    /// granita on a symbol (1.3.5, phase 11 M2): its strokes in page px,
+    /// the staff space in page px, and where it sits — the native side
+    /// rasterises as granita does, builds the context vector and runs the
+    /// model (Core ML on iOS, LiteRT on Android, the files in this plugin):
+    /// the classes by confidence, best first. Errors are the shell's: no
+    /// model in the bundle, an OS too old for it.
+    pub fn stylus_recognize(&self, strokes: Vec<Vec<[f64; 2]>>, staff_space: f64, context: Option<SymbolContext>) -> Result<Vec<Recognition>, String> {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Args {
+            strokes: Vec<Vec<[f64; 2]>>,
+            staff_space: f64,
+            context: Option<SymbolContext>,
+        }
+        #[derive(Deserialize)]
+        struct Answer {
+            top: Vec<Recognition>,
+        }
+        self.call::<Answer>("stylusRecognize", Args { strokes, staff_space, context }).map(|a| a.top)
     }
 
     /// The system folder picker. iPadOS: a path, its scope started and a

@@ -23,6 +23,23 @@ class AreaArgs: Decodable {
   let rects: [[Double]]
 }
 
+/// Where a symbol sits, in staff spaces (granita's `SymbolContext`).
+class ContextArgs: Decodable {
+  let yStaff: Double
+  let xMeasure: Double
+  let barline: Double
+  let noteDx: Double?
+  let noteDy: Double?
+  let width: Double
+  let height: Double
+}
+
+class RecognizeArgs: Decodable {
+  let strokes: [[[Double]]]
+  let staffSpace: Double
+  let context: ContextArgs?
+}
+
 /// battuta's native iPadOS services (phase 10, M1): the share sheet, and
 /// folders the user picks.
 ///
@@ -74,6 +91,37 @@ class BattutaMobilePlugin: Plugin, UIDocumentPickerDelegate {
       self.stylusArea = rects
       self.stylus?.area = rects
       invoke.resolve()
+    }
+  }
+
+  // MARK: granita (1.3.5, phase 11 M2): a symbol's strokes to its classes
+
+  /// Loaded on the first symbol; its own queue, the model call takes a few ms.
+  private var granita: GranitaModel?
+  private let granitaQueue = DispatchQueue(label: "com.vibetuned.battuta.granita")
+
+  @objc public func stylusRecognize(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(RecognizeArgs.self)
+    let strokes = args.strokes.map { $0.filter { $0.count == 2 }.map { CGPoint(x: $0[0], y: $0[1]) } }.filter { !$0.isEmpty }
+    guard !strokes.isEmpty, args.staffSpace > 0 else {
+      invoke.reject("recognize: strokes and a positive staffSpace are needed")
+      return
+    }
+    granitaQueue.async {
+      do {
+        let model = try self.granita ?? GranitaModel()
+        self.granita = model
+        let fraction = StrokeRaster.fraction(of: strokes, staffSpace: args.staffSpace)
+        let pixels = StrokeRaster.render(strokes, fraction: fraction)
+        let vector =
+          args.context.map {
+            SymbolContext(yStaff: $0.yStaff, xMeasure: $0.xMeasure, barline: $0.barline, noteDx: $0.noteDx, noteDy: $0.noteDy, width: $0.width, height: $0.height).vector
+          } ?? SymbolContext.unknown
+        let top = try model.predict(input: StrokeRaster.normalize(pixels), context: vector)
+        invoke.resolve(["top": top.map { ["label": $0.label, "confidence": Double($0.confidence)] }])
+      } catch {
+        invoke.reject("\(error)")
+      }
     }
   }
 

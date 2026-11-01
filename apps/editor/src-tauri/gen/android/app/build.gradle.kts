@@ -1,4 +1,5 @@
 import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
@@ -27,6 +28,10 @@ val keystoreProperties = Properties().apply {
 android {
     compileSdk = 36
     namespace = "com.vibetuned.battuta"
+    // granita's model (phase 11, M2), an asset of plugins/battuta-mobile: stored as is, so LiteRT reads it in place.
+    androidResources {
+        noCompress += listOf("tflite")
+    }
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
         applicationId = "com.vibetuned.battuta"
@@ -71,11 +76,16 @@ android {
     // the first alphabetically, "arm" (32-bit only); "universal" carries all four,
     // as the Tauri CLI builds it (after Vibetuned's midi-stroke).
     productFlavors.getByName("universal").isDefault = true
-    kotlinOptions {
-        jvmTarget = "1.8"
-    }
     buildFeatures {
         buildConfig = true
+    }
+}
+
+// Kotlin 2.3.21 (phase 11, M2: LiteRT's Kotlin API needs a 2.x compiler): the
+// compilerOptions DSL, kotlinOptions being an error there.
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_1_8)
     }
 }
 

@@ -11,6 +11,7 @@
 		347140F6DD46CF9C0082B9CB /* libapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 19989DBF90DB3E499F4FAF97 /* libapp.a */; };
 		62EF81B8444ADA0B485D7097 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 2D639BC4918F78F91299861E /* PrivacyInfo.xcprivacy */; };
 		791578974B743DA0254C1C7D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = D62B39A36C0D383FD16E5BB3 /* LaunchScreen.storyboard */; };
+		7DF36D8821B5FE05B5DD18E5 /* granitanet.json in Resources */ = {isa = PBXBuildFile; fileRef = E8F1589AA4376879DBD4A32D /* granitanet.json */; };
 		98028E84D151B8C1D22FF6AA /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4678D96433D6D72BD9C6ED37 /* Security.framework */; };
 		AA5C2B0786DFAC1BB1BE7B19 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6CB32BA2BF3D010110B5797E /* UIKit.framework */; };
 		B244FE994A26F38308EDDC3D /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 68C8398C66C95E27339DCBBF /* Metal.framework */; };
@@ -19,6 +20,7 @@
 		C841A225DFF8A5D606366AE5 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 81992C1AE3E256280BD032C5 /* CoreGraphics.framework */; };
 		CD839494640324BAF1A3C014 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 27C51F623349BCA30BD7A777 /* main.mm */; };
 		E1367EE3896F725ACE87122C /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 234B077321CD8A7EEF7739D4 /* MetalKit.framework */; };
+		E63B3E0A98864B588C71E91D /* granitanet.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = DB8B14528F3AD4E596095455 /* granitanet.mlpackage */; };
 		FC9A2C4791FD14334664A0EB /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5109C26BE4BB6D48B36C26AC /* WebKit.framework */; };
 /* End PBXBuildFile section */
 
@@ -31,6 +33,7 @@
 		4678D96433D6D72BD9C6ED37 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		5109C26BE4BB6D48B36C26AC /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
 		51C8BE25FA351CDB62B1E468 /* battuta-editor_iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "battuta-editor_iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		54B4A7994BBA8A1EC22F6AB4 /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
 		56EF8A1613DF1CD3142B61A2 /* bindings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bindings.h; sourceTree = "<group>"; };
 		57731315B8F7759C5A92E412 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		5FD56C54F5DF5B1C3596738D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -38,10 +41,13 @@
 		6CB32BA2BF3D010110B5797E /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
 		81992C1AE3E256280BD032C5 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
 		8BBF9B52E51A241EC9043E7A /* lib.rs */ = {isa = PBXFileReference; path = lib.rs; sourceTree = "<group>"; };
+		AC983C94BC9330E18227C91E /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
 		B25D5DBB04682E24ACE4FBD8 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
 		C7D7773866AA41254E456411 /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = SOURCE_ROOT; };
 		D4E2DD2FEDE4063E18696FEA /* main.rs */ = {isa = PBXFileReference; path = main.rs; sourceTree = "<group>"; };
 		D62B39A36C0D383FD16E5BB3 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		DB8B14528F3AD4E596095455 /* granitanet.mlpackage */ = {isa = PBXFileReference; path = granitanet.mlpackage; sourceTree = "<group>"; };
+		E8F1589AA4376879DBD4A32D /* granitanet.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = granitanet.json; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -63,9 +69,27 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		01D41ACE81D147A197A3480C /* release */ = {
+			isa = PBXGroup;
+			children = (
+				54B4A7994BBA8A1EC22F6AB4 /* libapp.a */,
+			);
+			path = release;
+			sourceTree = "<group>";
+		};
+		02C1DCCAC75787F2190ECCB9 /* arm64 */ = {
+			isa = PBXGroup;
+			children = (
+				DE9038137B4EB9E6F748041B /* debug */,
+				01D41ACE81D147A197A3480C /* release */,
+			);
+			path = arm64;
+			sourceTree = "<group>";
+		};
 		329178FC907D918E2BF4F60E /* Externals */ = {
 			isa = PBXGroup;
 			children = (
+				02C1DCCAC75787F2190ECCB9 /* arm64 */,
 			);
 			path = Externals;
 			sourceTree = "<group>";
@@ -138,11 +162,22 @@
 				D62B39A36C0D383FD16E5BB3 /* LaunchScreen.storyboard */,
 				6BE0218BF17FA0559041DB18 /* battuta-editor_iOS */,
 				329178FC907D918E2BF4F60E /* Externals */,
+				C8D784412C79111CD994F18C /* Resources */,
 				37A042E6DA2387B30C3F0F74 /* Sources */,
 				B9CB7892BA2E79A736437AD6 /* src */,
 				6844915550B95176E328A20C /* Frameworks */,
 				823B474E4D1D0F0568C8FB0D /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		C8D784412C79111CD994F18C /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				E8F1589AA4376879DBD4A32D /* granitanet.json */,
+				DB8B14528F3AD4E596095455 /* granitanet.mlpackage */,
+			);
+			name = Resources;
+			path = "../../plugins/battuta-mobile/ios/Resources";
 			sourceTree = "<group>";
 		};
 		DDFF9DAFABC91C388E324BDF /* bindings */ = {
@@ -151,6 +186,21 @@
 				56EF8A1613DF1CD3142B61A2 /* bindings.h */,
 			);
 			path = bindings;
+			sourceTree = "<group>";
+		};
+		DE9038137B4EB9E6F748041B /* debug */ = {
+			isa = PBXGroup;
+			children = (
+				AC983C94BC9330E18227C91E /* libapp.a */,
+			);
+			path = debug;
+			sourceTree = "<group>";
+		};
+		"TEMP_49119F63-E0B0-4184-AAB9-CBCC668569E2" /* x86_64 */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = x86_64;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -218,6 +268,7 @@
 				791578974B743DA0254C1C7D /* LaunchScreen.storyboard in Resources */,
 				62EF81B8444ADA0B485D7097 /* PrivacyInfo.xcprivacy in Resources */,
 				1AD6556550ED393E3F7996F6 /* assets in Resources */,
+				7DF36D8821B5FE05B5DD18E5 /* granitanet.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -252,6 +303,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E63B3E0A98864B588C71E91D /* granitanet.mlpackage in Sources */,
 				CD839494640324BAF1A3C014 /* main.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

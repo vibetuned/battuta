@@ -22,6 +22,7 @@ import android.os.ParcelUuid
 import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
 import android.util.Base64
+import android.graphics.PointF
 import android.graphics.RectF
 import android.webkit.MimeTypeMap
 import android.webkit.WebView
@@ -40,6 +41,7 @@ import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSArray
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
+import java.util.concurrent.Executors
 import java.io.File
 import java.io.FileNotFoundException
 import java.util.UUID
@@ -59,6 +61,25 @@ class CaptureArgs {
 @InvokeArg
 class AreaArgs {
     var rects: Array<DoubleArray> = arrayOf()
+}
+
+/** Where a symbol sits, in staff spaces (granita's `SymbolContext`). */
+@InvokeArg
+class ContextArgs {
+    var yStaff: Double = 0.0
+    var xMeasure: Double = 0.5
+    var barline: Double = 8.0
+    var noteDx: Double? = null
+    var noteDy: Double? = null
+    var width: Double = 0.0
+    var height: Double = 0.0
+}
+
+@InvokeArg
+class RecognizeArgs {
+    var strokes: Array<Array<DoubleArray>> = arrayOf()
+    var staffSpace: Double = 0.0
+    var context: ContextArgs? = null
 }
 
 @InvokeArg
@@ -163,6 +184,36 @@ class BattutaMobilePlugin(private val activity: Activity) : Plugin(activity) {
             stylusArea = rects
             stylus?.area = rects
             invoke.resolve()
+        }
+    }
+
+    // --- granita (1.3.5, phase 11 M2): a symbol's strokes to its classes ---
+
+    /** Loaded on the first symbol; its own thread, the model call takes a few ms. */
+    private val granitaThread = Executors.newSingleThreadExecutor()
+    private var granita: GranitaModel? = null
+
+    @Command
+    fun stylusRecognize(invoke: Invoke) {
+        val args = invoke.parseArgs(RecognizeArgs::class.java)
+        val strokes = args.strokes.map { s -> s.filter { it.size == 2 }.map { PointF(it[0].toFloat(), it[1].toFloat()) } }.filter { it.isNotEmpty() }
+        if (strokes.isEmpty() || args.staffSpace <= 0.0) {
+            invoke.reject("recognize: strokes and a positive staffSpace are needed")
+            return
+        }
+        granitaThread.execute {
+            try {
+                val model = granita ?: GranitaModel(activity.assets).also { granita = it }
+                val fraction = StrokeRaster.fraction(strokes, args.staffSpace)
+                val pixels = StrokeRaster.render(strokes, fraction)
+                val vector = args.context?.let { SymbolContext(it.yStaff, it.xMeasure, it.barline, it.noteDx, it.noteDy, it.width, it.height).vector() } ?: SymbolContext.UNKNOWN
+                val top = model.predict(StrokeRaster.normalize(pixels), vector)
+                val list = JSArray()
+                for (t in top) list.put(JSObject().apply { put("label", t.label); put("confidence", t.confidence.toDouble()) })
+                invoke.resolve(JSObject().apply { put("top", list) })
+            } catch (e: Exception) {
+                invoke.reject(e.message ?: e.toString())
+            }
         }
     }
 

@@ -30,4 +30,6 @@ dependencies {
     implementation("androidx.core:core-ktx:1.9.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation(project(":tauri-android"))
+    // granita (phase 11, M2): LiteRT's CompiledModel API runs the classifier on the CPU.
+    implementation("com.google.ai.edge.litert:litert:2.3.2")
 }

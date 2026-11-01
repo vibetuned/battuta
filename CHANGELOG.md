@@ -56,6 +56,36 @@ Phase 11). Its first slice is the bridge they all stand on.
   the door and copied, one undo step, the caret going to the event
   (`writtenBy`). `core.enterNote`'s command is now the same `EntryCommand`
   as the rest's.
+- **M2: granita in the shell (2026-11-01).** `plugins/battuta-mobile`
+  carries granita's released model, copied by
+  `scripts/copy-granita.sh <granita checkout>` and named in
+  `granita/VERSION` (granitanet v7, granita commit 80f50d6): the Core ML
+  package in `ios/Resources`, which the iOS project compiles into the app
+  (`gen/apple/project.yml`, regenerated), the LiteRT model and the sidecar
+  in `android/src/main/assets` (stored uncompressed, `noCompress` in the
+  app's Gradle), and `granita/fixtures.json`. The Swift and Kotlin
+  `StrokeRaster`, `SymbolContext` and `GranitaModel` are granita's test
+  shells' (3.0 staff spaces fill the canvas; the vector built natively from
+  the raw facts); `stylusRecognize` runs them on a queue of its own, the
+  model loaded on the first symbol; the shell's `stylus_recognize` command
+  answers `ctx.stylus.recognize`. Android's build moved to Kotlin 2.3.21
+  (LiteRT 2.3.2's API carries Kotlin 2.4 metadata, which the 1.9.25
+  compiler refuses) and the app's `kotlinOptions` to the `compilerOptions`
+  DSL. Debug builds run the fixtures through the real path once the page
+  is up, a line per symbol to `shell.log` and logcat: on the Galaxy Tab
+  S8 Ultra, 13 of 13 classes agree with PyTorch, the confidences within
+  0.047, 22 ms per symbol with the model's load in the first — while the
+  tablet's screen is on; dozing, the WebView suspends the page's timers and
+  no probe fires. The iPad build succeeded (the model and sidecar in the
+  bundle) but `devicectl device install` hung three times that evening,
+  as it had earlier in the day (CoreDevice on the Mac, the device listed
+  as connected; the installs that worked took seconds), and the simulator
+  build wants the iOS 27.2 simulator runtime, not installed; so the iOS
+  half was checked on the Mac instead: the plugin's three Swift files
+  compiled unchanged with a 40-line harness, against the `.mlmodelc` from
+  the iPad app bundle and the same fixtures — 13 of 13, the confidences
+  within 0.093 (Core Graphics draws a wide line less like Pillow than
+  Android's Canvas), 0.5 ms per symbol on the CPU, as the plugin runs it.
 - **The bundle ceiling raised to 400 kB (2026-11-01), the user's
   decision.** `core.mark`'s mapping sits in the host's synchronous
   message-to-command table, which cannot load lazily: the main bundle

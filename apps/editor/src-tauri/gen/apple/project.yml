@@ -42,6 +42,12 @@ targets:
         buildPhase: resources
         type: folder
       - path: LaunchScreen.storyboard
+      # granita's model (phase 11, M2; plugins/battuta-mobile/scripts/copy-granita.sh
+      # brings it from granita): Xcode compiles the package into the app, where the
+      # plugin's GranitaModel loads it with its sidecar.
+      - path: ../../plugins/battuta-mobile/ios/Resources/granitanet.mlpackage
+      - path: ../../plugins/battuta-mobile/ios/Resources/granitanet.json
+        buildPhase: resources
     info:
       path: battuta-editor_iOS/Info.plist
       properties:
