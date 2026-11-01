@@ -22,7 +22,7 @@
  *     event nearest it across, and the pitch at that height from the
  *     staff's drawn lines and the clef in force.
  */
-import type { ClefContext, Disposable, Pitch, StaffContext, StylusEvent, StylusSample, StylusScorePoint } from "@battuta/api";
+import type { ClefContext, Disposable, Pitch, StaffContext, StylusEvent, StylusRecognition, StylusRecognizeRequest, StylusSample, StylusScorePoint } from "@battuta/api";
 import { shellPlatform, tauriInvoke } from "./shell";
 
 // --- the score under the pen ----------------------------------------------------
@@ -76,32 +76,72 @@ function nearestEvent(staff: Element, x: number): string | null {
   return best?.id ?? null;
 }
 
-/** Where a page point falls in edit view: the tile under it, the staff nearest it, that staff's event nearest it, the pitch at that height. Null off the measures. */
+/** Staff spaces within which a notehead is a symbol's neighbour (granita's `NOTE_RANGE`). */
+export const NOTE_RANGE = 8;
+
+/** A staff's geometry from its lines' y, top to bottom: the space between two lines and the middle line. */
+export function staffGeometry(lines: readonly number[]): { space: number; middleY: number } {
+  const top = lines[0]!;
+  const bottom = lines[lines.length - 1]!;
+  return { space: (bottom - top) / (lines.length - 1), middleY: (top + bottom) / 2 };
+}
+
+/** The head nearest a point, when one is within `reach`. */
+export function nearestOf<T extends { x: number; y: number }>(heads: readonly T[], x: number, y: number, reach: number): T | null {
+  let best: { head: T; d: number } | null = null;
+  for (const head of heads) {
+    const d = Math.hypot(head.x - x, head.y - y);
+    if (!best || d < best.d) best = { head, d };
+  }
+  return best && best.d <= reach ? best.head : null;
+}
+
+/** Every notehead of a staff — a chord's notes each their own — with its centre in page px. */
+function headsOf(staff: Element): { eventId: string; x: number; y: number }[] {
+  const heads: { eventId: string; x: number; y: number }[] = [];
+  for (const g of staff.querySelectorAll("g.note[id]")) {
+    const r = (g.querySelector(":scope > g.notehead") ?? g).getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) continue;
+    heads.push({ eventId: g.id, x: r.left + r.width / 2, y: r.top + r.height / 2 });
+  }
+  return heads;
+}
+
+/**
+ * Where a page point falls in edit view: the tile under it, the staff nearest it, that
+ * staff's event nearest it, the pitch at that height; and (1.3.5) the staff's geometry,
+ * the measure's extent and the nearest notehead. Null off the measures.
+ */
 export function resolvePoint(x: number, y: number, lookups: ScoreLookups): StylusScorePoint | null {
   const tile = document.elementsFromPoint(x, y).map((e) => e.closest<HTMLElement>(".tile[data-index]")).find((t): t is HTMLElement => t !== null);
   const frame = tile?.querySelector<HTMLElement>("[data-tile-frame]");
   if (!tile || !frame) return null;
   const measureIndex = Number(tile.dataset["index"]);
-  let best: { n: number; g: Element; lines: number[]; d: number } | null = null;
+  let best: { n: number; g: Element; lines: number[]; left: number; right: number; d: number } | null = null;
   for (const g of tile.querySelectorAll<SVGGElement>("g.staff[id]")) {
     const n = lookups.staffNOf(g.id);
     if (n === undefined) continue;
+    let left = Infinity;
+    let right = -Infinity;
     const lines = [...g.children]
       .filter((c) => c.tagName === "path")
       .map((p) => {
         const r = p.getBoundingClientRect();
+        left = Math.min(left, r.left);
+        right = Math.max(right, r.right);
         return r.top + r.height / 2;
       })
       .sort((a, b) => a - b);
     if (lines.length < 2) continue;
     const d = y < lines[0]! ? lines[0]! - y : y > lines[lines.length - 1]! ? y - lines[lines.length - 1]! : 0;
-    if (!best || d < best.d) best = { n, g, lines, d };
+    if (!best || d < best.d) best = { n, g, lines, left, right, d };
   }
   if (!best) return null;
   const step = stepAt(y, best.lines);
   if (step === null) return null;
   const context = lookups.contextOf(measureIndex, best.n);
   const origin = frame.getBoundingClientRect();
+  const staff = staffGeometry(best.lines);
   return {
     measureIndex,
     staffN: best.n,
@@ -109,6 +149,9 @@ export function resolvePoint(x: number, y: number, lookups: ScoreLookups): Stylu
     step,
     pitch: context ? pitchAtStep(context.clef, step) : null,
     tile: { x: x - origin.left, y: y - origin.top },
+    staff,
+    measure: { left: best.left, right: best.right },
+    nearestNote: nearestOf(headsOf(best.g), x, y, NOTE_RANGE * staff.space),
   };
 }
 
@@ -265,6 +308,38 @@ export class StylusService {
       this.area = [];
     }
     return invoke("stylus_capture", { on: after }).then(() => undefined);
+  }
+
+  /** Where a page point falls on the score (1.3.5); null with no document open or off the measures. */
+  at(x: number, y: number): StylusScorePoint | null {
+    const lookups = this.lookups();
+    return lookups ? resolvePoint(x, y, lookups) : null;
+  }
+
+  /** The shell's classifier on a symbol (1.3.5): the request checked at the door, the answer the shell's. */
+  recognize(request: StylusRecognizeRequest): Promise<readonly StylusRecognition[]> {
+    const invoke = tauriInvoke();
+    if (!invoke || !this.available) return Promise.reject(new Error("recognize: no stylus shell"));
+    const strokes = request.strokes;
+    if (!Array.isArray(strokes) || strokes.length === 0 || !strokes.every((s) => Array.isArray(s) && s.length > 0 && s.every((p) => Array.isArray(p) && p.length === 2 && p.every((v) => Number.isFinite(v))))) {
+      return Promise.reject(new Error("recognize: strokes must be non-empty arrays of [x, y] points"));
+    }
+    if (!(Number.isFinite(request.staffSpace) && request.staffSpace > 0)) return Promise.reject(new Error("recognize: staffSpace must be a positive number"));
+    const c = request.context;
+    const context = c
+      ? {
+          yStaff: Number(c.yStaff),
+          xMeasure: Number(c.xMeasure),
+          barline: Number(c.barline),
+          noteDx: c.noteDx === null ? null : Number(c.noteDx),
+          noteDy: c.noteDy === null ? null : Number(c.noteDy),
+          width: Number(c.width),
+          height: Number(c.height),
+        }
+      : null;
+    return invoke("stylus_recognize", { strokes: request.strokes.map((s) => s.map((p) => [p[0], p[1]])), staffSpace: request.staffSpace, context }).then((answer) =>
+      (Array.isArray(answer) ? answer : []).map((a: { label?: unknown; confidence?: unknown }) => ({ label: String(a.label), confidence: Number(a.confidence) })),
+    );
   }
 
   /** Every event, read against the score; the disposable unsubscribes. */

@@ -16,8 +16,8 @@
  *    nothing at all.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { API_VERSION, definePlugin, type PluginContext, type PluginEntry, type PluginManifest, type DocumentInfo } from "@battuta/api";
-import { SetHarmCommand, SetPitchesCommand, SetSylCommand, buildEventIndex, buildScore, findAll, type CoreElement } from "@battuta/core";
+import { API_VERSION, definePlugin, type Mark, type PluginContext, type PluginEntry, type PluginManifest, type DocumentInfo } from "@battuta/api";
+import { SetHarmCommand, SetPitchesCommand, SetSylCommand, buildEventIndex, buildScore, findAll, resolveContexts, type CoreElement } from "@battuta/core";
 import { createHost, memorySettings, toCommand, writtenBy, HostAudioService, type SessionAdapter } from "../src/host";
 import { memoryStorage } from "../src/host/services";
 import { dimsDeclared } from "../src/host/slots";
@@ -327,6 +327,86 @@ describe("commands as data", () => {
     expect(() => toCommand({ type: "core.enterNote", eventId: "r1", pname: "g", oct: 4, dur: "3" })).toThrow(/dur must be one of 1, 2, 4, 8, 16, 32, 64/);
     expect(() => toCommand({ type: "core.enterNote", eventId: "r1", pname: "g", oct: 4, dur: "4", dots: 3 })).toThrow(/dots must be 0, 1 or 2/);
     expect(toCommand({ type: "core.enterNote", eventId: "r1", pname: "g", oct: 4, dur: "4", dots: 1 }).label).toBe("enter note g4.");
+  });
+
+  it("maps core.mark to the keyboard's marks on an event — accidental, articulation, fermata, dynamic, fingering, pedal, dot, clef, rest — each undone whole, the caret going to the event", () => {
+    // 2/4: a quarter note and a quarter rest.
+    const el = (tag: string, attrs: Record<string, string> = {}, ...children: CoreElement[]): CoreElement => ({ tag, attrs, children });
+    const root = el("music", {}, el("body", {}, el("mdiv", {}, el("score", {}, el("scoreDef", { "meter.count": "2", "meter.unit": "4" }, el("staffGrp", {}, el("staffDef", { n: "1", lines: "5", "clef.shape": "G", "clef.line": "2" }))), el("section", {}, el("measure", { n: "1", "xml:id": "m1" }, el("staff", { n: "1" }, el("layer", { n: "1" }, el("note", { "xml:id": "n1", pname: "c", oct: "4", dur: "4" }), el("rest", { "xml:id": "r1", dur: "4" })))))))));
+    const score = buildScore(root);
+    const ctx = () => ({ score, index: buildEventIndex(score) });
+    const events = () => findAll(score.measures[0]!, "layer")[0]!.children.map((c) => (typeof c === "string" ? c : `${c.tag}${c.attrs["pname"] ?? ""}${c.attrs["oct"] ?? ""}:${c.attrs["dur"] ?? ""}`));
+    const note = () => findAll(score.measures[0]!, "note")[0]!;
+    const measure = () => JSON.stringify(score.measures[0]);
+    const run = (mark: Mark) => {
+      const cmd = toCommand({ type: "core.mark", eventId: "n1", mark });
+      cmd.apply(ctx());
+      return cmd;
+    };
+    // Attributes on the note: the accidental and the articulation.
+    let cmd = run({ kind: "accidental", accid: "s" });
+    expect(cmd.label).toBe("sharp");
+    expect(note().attrs["accid"]).toBe("s");
+    expect(writtenBy(cmd)).toBe("n1");
+    cmd.revert(ctx());
+    expect(note().attrs["accid"]).toBeUndefined();
+    cmd = run({ kind: "articulation", artic: "stacc" });
+    expect(cmd.label).toBe("staccato");
+    expect(note().attrs["artic"]).toBe("stacc");
+    cmd.revert(ctx());
+    expect(note().attrs["artic"]).toBeUndefined();
+    // Marks that live beside the note in the measure.
+    const beside: [Mark, string, string][] = [
+      [{ kind: "fermata" }, "fermata", "fermata"],
+      [{ kind: "dynamic", value: "p" }, "dynam", "dynamic p"],
+      [{ kind: "fingering", finger: "3" }, "fing", "fingering 3"],
+      [{ kind: "pedal", endId: "r1" }, "pedal", "pedal"],
+    ];
+    for (const [mark, tag, label] of beside) {
+      expect(measure()).not.toContain(`"${tag}"`);
+      cmd = run(mark);
+      expect(cmd.label).toBe(label);
+      expect(measure()).toContain(`"${tag}"`);
+      expect(writtenBy(cmd)).toBe("n1");
+      cmd.revert(ctx());
+      expect(measure()).not.toContain(`"${tag}"`);
+    }
+    // The dot: the note re-entered in place, the rest after it giving up an eighth.
+    cmd = run({ kind: "dot" });
+    expect(cmd.label).toBe("dot");
+    expect(note().attrs["dots"]).toBe("1");
+    expect(events()).toEqual(["notec4:4", "rest:8"]);
+    cmd.revert(ctx());
+    expect(note().attrs["dots"]).toBeUndefined();
+    expect(events()).toEqual(["notec4:4", "rest:4"]);
+    // The clef: at the event's measure, on its staff.
+    cmd = run({ kind: "clef", shape: "F" });
+    expect(cmd.label).toBe("clef F");
+    expect(resolveContexts(score)[0]!.get(1)!.clef).toMatchObject({ shape: "F", line: 4 });
+    cmd.revert(ctx());
+    expect(resolveContexts(score)[0]!.get(1)!.clef).toMatchObject({ shape: "G", line: 2 });
+    // The rest: entered over the note as core.enterNote enters a note; the caret goes to it.
+    cmd = run({ kind: "rest", dur: "8" });
+    expect(cmd.label).toBe("enter rest 8");
+    expect(events()).toEqual(["rest:8", "rest:8", "rest:4"]);
+    expect(writtenBy(cmd)).toBe(findAll(score.measures[0]!, "rest")[0]!.attrs["xml:id"]);
+    cmd.revert(ctx());
+    expect(events()).toEqual(["notec4:4", "rest:4"]);
+    // An event that is not there, found when it runs.
+    expect(() => toCommand({ type: "core.mark", eventId: "nope", mark: { kind: "dot" } }).apply(ctx())).toThrow(/no event "nope"/);
+  });
+
+  it("refuses a core.mark it cannot read at the door", () => {
+    const mark = (m: unknown) => toCommand({ type: "core.mark", eventId: "n1", mark: m as Mark });
+    expect(() => mark({ kind: "slur" })).toThrow(/unknown mark kind "slur"/);
+    expect(() => mark({ kind: "accidental", accid: "ff" })).toThrow(/accid must be one of s, f, n, x/);
+    expect(() => mark({ kind: "articulation", artic: "staccato" })).toThrow(/artic must be one of stacc, ten, acc, stacciss, marc/);
+    expect(() => mark({ kind: "dynamic", value: "P!" })).toThrow(/one to four letters/);
+    expect(() => mark({ kind: "fingering", finger: "6" })).toThrow(/finger must be one of 1, 2, 3, 4, 5/);
+    expect(() => mark({ kind: "pedal" })).toThrow(/a pedal needs endId/);
+    expect(() => mark({ kind: "clef", shape: "B" })).toThrow(/shape must be one of G, F, C/);
+    expect(() => mark({ kind: "rest", dur: "3" })).toThrow(/dur must be one of 1, 2, 4, 8, 16, 32, 64/);
+    expect(mark({ kind: "rest", dur: "4", dots: 1 }).label).toBe("enter rest 4.");
   });
 
   it("maps core.addChordNote to the keyboard's chord command: a note becomes a chord, a rest is refused; and refuses a pitch it cannot write", () => {

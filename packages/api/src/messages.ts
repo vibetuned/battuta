@@ -82,8 +82,40 @@ export interface AddChordNoteMessage {
   oct: number;
 }
 
-export type CommandMessage = SetPitchesMessage | SetSylMessage | SetHarmMessage | EnterNoteMessage | AddChordNoteMessage;
+/**
+ * A mark on an event, as the keyboard's keys put them (1.3.5, the stylus):
+ * the accidental, articulation, dot, fermata, dynamic, fingering and pedal
+ * keys on a note, chord or rest; a clef at the event's measure on its
+ * staff; a rest entered over the event, as `core.enterNote` enters a note.
+ * Each toggles as its key does: the same mark again takes it away.
+ */
+export type Mark =
+  | { kind: "accidental"; accid: "s" | "f" | "n" | "x" }
+  | { kind: "articulation"; artic: "stacc" | "ten" | "acc" | "stacciss" | "marc" }
+  | { kind: "dot" }
+  | { kind: "fermata" }
+  /** The dynamic's text: "p", "mf", "sfz" … one to four letters. */
+  | { kind: "dynamic"; value: string }
+  | { kind: "fingering"; finger: "1" | "2" | "3" | "4" | "5" }
+  /** A pedal from the event to `endId`, as the keyboard's pedal spans a selection; refused on one event alone. */
+  | { kind: "pedal"; endId: string }
+  /** G on the second line, F on the fourth, C on the third. */
+  | { kind: "clef"; shape: "G" | "F" | "C" }
+  /** Written duration as `core.enterNote`'s; the rest replaces the event. */
+  | { kind: "rest"; dur: string; dots?: number };
+
+/**
+ * Put a mark on an event (1.3.5, the stylus). One undo step; labels itself.
+ * The caret goes to the event (to the rest, for a rest).
+ */
+export interface MarkMessage {
+  type: "core.mark";
+  eventId: string;
+  mark: Mark;
+}
+
+export type CommandMessage = SetPitchesMessage | SetSylMessage | SetHarmMessage | EnterNoteMessage | AddChordNoteMessage | MarkMessage;
 
 export type CommandMessageType = CommandMessage["type"];
 
-export const COMMAND_MESSAGE_TYPES: readonly CommandMessageType[] = ["core.setPitches", "core.setSyl", "core.setHarm", "core.enterNote", "core.addChordNote"];
+export const COMMAND_MESSAGE_TYPES: readonly CommandMessageType[] = ["core.setPitches", "core.setSyl", "core.setHarm", "core.enterNote", "core.addChordNote", "core.mark"];

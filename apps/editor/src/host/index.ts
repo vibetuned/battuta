@@ -239,9 +239,11 @@ export function createHost(options: HostOptions = {}): Host {
   // time a plugin uses it in a shell that has a stylus — never on a desktop.
   let stylusLookups: ScoreLookups | null = null;
   let stylusModule: Promise<import("./stylus").StylusService> | null = null;
+  let stylusLoaded: import("./stylus").StylusService | null = null;
   const stylusImpl = () =>
     (stylusModule ??= import("./stylus").then((m) => {
       m.stylusService.lookups = () => stylusLookups;
+      stylusLoaded = m.stylusService;
       return m.stylusService;
     }));
   const stylusAvailable = (): boolean => shellPlatform()?.mobile === true && tauriInvoke() !== null;
@@ -274,6 +276,9 @@ export function createHost(options: HostOptions = {}): Host {
           }),
         );
       },
+      // 1.3.5: the service answers once loaded (the first capture or on loads it).
+      at: (x, y) => stylusLoaded?.at(x, y) ?? null,
+      recognize: (request) => (stylusAvailable() ? stylusImpl().then((s) => s.recognize(request)) : Promise.reject(new Error("ctx.stylus.recognize: no stylus shell"))),
     };
   };
 

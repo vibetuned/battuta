@@ -15,9 +15,53 @@ The stylus, for 1.3.0 (Phase 11): battuta's first native plugin, in three
 parts as the user set them out on 2026-10-29. First, notes added with the
 pen, a held pen popping a cross at its tip (left–right the duration,
 top–bottom the pitch). Second, ABC music written by hand with ML Kit and
-PencilKit. Third, a glyph classifier of battuta's own. Its first slice is
-the bridge they all stand on.
+PencilKit — dropped by the user on 2026-11-01 after feedback. Third,
+symbols written by hand and read by granita, a glyph classifier of
+battuta's own (vibetuned/granita), planned on 2026-11-01 (PLANNING.md,
+Phase 11). Its first slice is the bridge they all stand on.
 
+- **Part 3 planned: handwriting read by granita (2026-11-01).** After the
+  user tried v7 of granitanet on both tablets with granita's test shells
+  (a notehead on the staff for a real context; the size rule calibrated by
+  hand to 3.0 staff spaces per canvas), the plan went into PLANNING.md
+  (Phase 11) with the user's decisions: the mode is a status-bar item the
+  plugin contributes, cross ↔ handwriting; marks are written through one
+  message, `core.mark { eventId, mark }`, a closed union; the model's files
+  are copied into `battuta-mobile` and tracked; when the model is unsure a
+  chooser of its top three is tapped with the pen; and the heuristics the
+  model cannot learn (the augmentation dot right of a note, accidentals
+  left of one, fingerings and dynamics never inside the staff, clefs and
+  rests only inside it) run over its top five. The user approved the API
+  1.3.5 ceiling: `StylusScorePoint` with the staff, the measure and the
+  nearest notehead in page px, `ctx.stylus.at(x, y)`, `ctx.stylus.recognize`
+  with the native side building granita's vector, and `core.mark`.
+- **API 1.3.5: the symbol's context, the classifier and `core.mark`
+  (2026-11-01).** The approved ceiling, in full. `StylusScorePoint` gains
+  `staff { space, middleY }` (from the staff's lines), `measure { left,
+  right }` (where its lines begin and end) and `nearestNote` (the notehead
+  within 8 staff spaces, a chord's note its own, with its head's centre),
+  all in page px; `ctx.stylus.at(x, y)` reads any page point the way the
+  events' `at` are read (null before the service has loaded — the first
+  `capture` or `on` loads it); `ctx.stylus.recognize({ strokes, staffSpace,
+  context })` sends a symbol to the shell's `stylus_recognize` and answers
+  the classes by confidence (the shell's half comes with the model, M2).
+  `core.mark { eventId, mark }` puts one of the keyboard's marks on an
+  event through the same commands the keys use — accidental, articulation,
+  dot (the session's in-place re-entry), fermata, dynamic, fingering, a
+  pedal from the event to `endId` (the core refuses a pedal on one event:
+  "a pedal needs two different events", as the keyboard's spans a
+  selection — the one shape the approved list did not spell out), a clef at
+  the event's measure and staff (G on the second line, F on the fourth, C
+  on the third), a rest entered over the event — each checked at
+  the door and copied, one undo step, the caret going to the event
+  (`writtenBy`). `core.enterNote`'s command is now the same `EntryCommand`
+  as the rest's.
+- **The bundle ceiling raised to 400 kB (2026-11-01), the user's
+  decision.** `core.mark`'s mapping sits in the host's synchronous
+  message-to-command table, which cannot load lazily: the main bundle
+  measured 395.2 kB against the 392 kB ceiling of 2026-10-29. The user
+  chose 400 kB over 396, leaving room for the next host-side slice; the
+  plugin and the stylus service stay lazy. `budget.json` says the same.
 - **Native capture first, in 1.3.0 (2026-10-29).** The user's choices: the
   shell's native code captures the stylus and hands it to the core, rather
   than the page reading pen pointer events; and it ships in 1.3.0, after

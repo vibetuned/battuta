@@ -8,13 +8,96 @@ Each phase ends in something usable day-to-day; nothing in a later phase is requ
 > the quality-of-life round — lyrics, staff groups, the mouse-free
 > context bar, playback to MIDI devices).** Plans, exit criteria,
 > triage and progress notes live in [CHANGELOG.md](CHANGELOG.md).
-> **Phase 9 below shipped as 1.0.0; Phase 10 — tablets — is the open
-> one.** Still carried into Phase 9 from earlier
+> **Phase 9 below shipped as 1.0.0, Phase 10 — tablets — as 1.2.0;
+> Phase 11 — the stylus — is the open one.** Still carried into Phase 9 from earlier
 > rounds: live (rather than save-time) file watching, which ships in
 > the folder-view slice; splice-at-caret and overlay-as-new-layer paste
 > policies; split view; MusicXML *export* (no Verovio support — needs
 > another engine); and the possible Rust/WASM core rewrite, which the
 > API package sits above.
+
+## Phase 11 — The stylus (decided 2026-10-29 and 2026-11-01)
+
+battuta's first native plugin: the Apple Pencil and the S Pen, captured by
+the iOS and Android shells and handed to the core read against the score,
+and the plugin `battuta.stylus` on top of `@battuta/api`. Three parts, as
+the user set them out on 2026-10-29: notes with the pen — the cross at its
+tip, shipped in the unreleased 1.3.0 with API 1.3.0–1.3.4 (the CHANGELOG
+has every decision); ABC music by hand with ML Kit and PencilKit, dropped
+on 2026-11-01 after feedback; and symbols written by hand and read by
+**granita**, battuta's own glyph classifier (vibetuned/granita) — the open
+part, planned on 2026-11-01.
+
+**granita.** granitanet v7: 51 classes (fingerings, ornaments,
+articulations, accidentals, dynamics, pedal, notes by duration, rests,
+clefs, the barline), 2.0 M parameters, a 16-feature context — where the
+mark sits: the staff zone, the place in the measure, the nearest
+notehead's offset and side, the size, all in staff spaces — exported to
+Core ML (fp16, iOS 16+) and LiteRT. Its test shells (`granita/apps/ios`,
+`apps/android`) proved both exports on both tablets and calibrated the size
+rule by hand: 3.0 staff spaces fill the model's canvas.
+
+**Decisions (the user, 2026-11-01).**
+
+- **The mode**: a status-bar item the plugin contributes, cross ↔
+  handwriting; no pen gesture.
+- **Writing**: one message, `core.mark { eventId, mark }`, a closed union
+  the host maps to the session's marks; the caret goes to the event, as it
+  does for `core.enterNote`.
+- **The model**: its files copied into `battuta-mobile` and tracked (iOS
+  resources, Android assets, the sidecar), a script copying a named granita
+  release, the CHANGELOG saying which.
+- **Unsure** — the best guess under the threshold, or no class passing its
+  placement rule: a chooser of the top three at the symbol, tapped with the
+  pen.
+- **The context comes from the API**, not from overlay props the plugin
+  caches.
+- **Heuristics the model cannot learn**, the user's brief: the augmentation
+  dot is right of a note and a staccato above or below one; accidentals are
+  left of a note; fingerings and dynamics are never inside the staff
+  (fingerings above, dynamics and pedal below); clefs and rests only inside
+  it, a clef at the measure's start.
+
+**M1 — the API (1.3.5, approved on 2026-11-01 as the ceiling).**
+`StylusScorePoint` gains `staff { space, middleY }`, `measure { left,
+right }` and `nearestNote { eventId, x, y } | null`, in page px, the
+notehead within 8 spaces; `ctx.stylus.at(x, y)` resolves any page point;
+`ctx.stylus.recognize({ strokes, staffSpace, context })` answers
+`[{ label, confidence }]`, the host forwarding to the shell, which builds
+granita's vector from the raw facts (no TypeScript port of `context.py`);
+`core.mark`. A patch bump per approved change while unpublished. Done when
+the host tests cover each, `api-report.d.ts` agrees, and a plugin can read
+a drawn symbol's whole context from one `at` call.
+
+**M2 — the model in the shell.** `StrokeRaster` and `GranitaModel` lifted
+from granita's shells into `battuta-mobile` (Swift, Kotlin); a `classify`
+command — strokes in page px, the staff space, the context facts — answering
+the top five; Core ML and LiteRT 2.3.2 on the CPU; the model files and the
+sidecar in the crate. Done when granita's `fixtures.json` passes through the
+shell on both tablets with the shells' numbers.
+
+**M3 — the plugin's handwriting mode.** The status-bar item; a symbol is
+the strokes that follow each other within ~600 ms and two staff spaces; on
+the timeout, `at` for the context, `recognize`, the heuristics over the top
+five by confidence, the first passing class written through `core.mark` (a
+drawn note: `core.enterNote` with the class's duration at the head's
+pitch); a fading label at the symbol; the chooser when unsure; the cross
+untouched. The pure functions — grouping, the rule table, class → mark —
+unit-tested; the plugin's README and BUILDING.
+
+**M4 — docs and release.** The guide's stylus page, the CHANGELOG, then
+1.3.0 for the stores and the desktop.
+
+**Exit criteria.** On both tablets, every class that has a mark in the
+editor, written by hand at natural size on a staff beside a note, lands as
+the right mark or offers it in the top three; the cross unchanged; one undo
+step per symbol; nothing on the desktop or in a browser
+(`ctx.stylus.available` is false there).
+
+**Out of v1, to decide later.** The barline class (nothing to write);
+ornaments (the editor only cycles them — setting one would be a small
+session addition); whole vs half rest (one class; by the measure's room);
+the double flat (the editor has none: a notice); handwriting on the desktop.
 
 ## Phase 10 — Tablets: iPadOS and Android (decided 2026-10-20)
 

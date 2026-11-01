@@ -1,4 +1,4 @@
-// @battuta/api 1.3.4 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
+// @battuta/api 1.3.5 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
 
 // ---- ../dist/.tsbuildinfo
 {"version":"5.9.3"}
@@ -492,7 +492,7 @@ export interface FormatsService {
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export declare const API_VERSION = "1.3.4";
+export declare const API_VERSION = "1.3.5";
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";
 export type { Disposable } from "./disposable.js";
@@ -506,9 +506,9 @@ export type { HighlightCue, ViewService } from "./view.js";
 export type { OverlayBox, OverlayStaff, TileOverlayProps, OverlaySpec, OverlaysService, BandCell, OverlayBand } from "./overlays.js";
 export type { ExportContribution, ExportFile, ExportPayload, ImportContribution, ImportFile, FormatsService } from "./formats.js";
 export type { DirEntry, WatchEvent, WatchEventKind, WorkspaceService } from "./workspace.js";
-export type { StylusSample, StylusScorePoint, StylusEvent, StylusService } from "./stylus.js";
+export type { StylusSample, StylusScorePoint, StylusEvent, StylusService, StylusSymbolContext, StylusRecognizeRequest, StylusRecognition } from "./stylus.js";
 export type { KeyPress, KeysService } from "./keys.js";
-export type { SetPitchesMessage, SetSylMessage, SetHarmMessage, EnterNoteMessage, AddChordNoteMessage, CommandMessage, CommandMessageType } from "./messages.js";
+export type { SetPitchesMessage, SetSylMessage, SetHarmMessage, EnterNoteMessage, AddChordNoteMessage, Mark, MarkMessage, CommandMessage, CommandMessageType } from "./messages.js";
 export { COMMAND_MESSAGE_TYPES } from "./messages.js";
 export type { MidiPort, MidiNoteEvent, MidiVirtualInput, MidiOutputs, MidiService } from "./midi.js";
 export type { KeymapEntry, ActionsService } from "./actions.js";
@@ -859,7 +859,58 @@ export interface AddChordNoteMessage {
     pname: string;
     oct: number;
 }
-export type CommandMessage = SetPitchesMessage | SetSylMessage | SetHarmMessage | EnterNoteMessage | AddChordNoteMessage;
+/**
+ * A mark on an event, as the keyboard's keys put them (1.3.5, the stylus):
+ * the accidental, articulation, dot, fermata, dynamic, fingering and pedal
+ * keys on a note, chord or rest; a clef at the event's measure on its
+ * staff; a rest entered over the event, as `core.enterNote` enters a note.
+ * Each toggles as its key does: the same mark again takes it away.
+ */
+export type Mark = {
+    kind: "accidental";
+    accid: "s" | "f" | "n" | "x";
+} | {
+    kind: "articulation";
+    artic: "stacc" | "ten" | "acc" | "stacciss" | "marc";
+} | {
+    kind: "dot";
+} | {
+    kind: "fermata";
+}
+/** The dynamic's text: "p", "mf", "sfz" … one to four letters. */
+ | {
+    kind: "dynamic";
+    value: string;
+} | {
+    kind: "fingering";
+    finger: "1" | "2" | "3" | "4" | "5";
+}
+/** A pedal from the event to `endId`, as the keyboard's pedal spans a selection; refused on one event alone. */
+ | {
+    kind: "pedal";
+    endId: string;
+}
+/** G on the second line, F on the fourth, C on the third. */
+ | {
+    kind: "clef";
+    shape: "G" | "F" | "C";
+}
+/** Written duration as `core.enterNote`'s; the rest replaces the event. */
+ | {
+    kind: "rest";
+    dur: string;
+    dots?: number;
+};
+/**
+ * Put a mark on an event (1.3.5, the stylus). One undo step; labels itself.
+ * The caret goes to the event (to the rest, for a rest).
+ */
+export interface MarkMessage {
+    type: "core.mark";
+    eventId: string;
+    mark: Mark;
+}
+export type CommandMessage = SetPitchesMessage | SetSylMessage | SetHarmMessage | EnterNoteMessage | AddChordNoteMessage | MarkMessage;
 export type CommandMessageType = CommandMessage["type"];
 export declare const COMMAND_MESSAGE_TYPES: readonly CommandMessageType[];
 
@@ -1096,6 +1147,22 @@ export interface StylusScorePoint {
         x: number;
         y: number;
     };
+    /** The staff's geometry in page px (1.3.5): the distance between two of its lines, and its middle line's y. */
+    staff: {
+        space: number;
+        middleY: number;
+    };
+    /** The measure's barlines in page px (1.3.5): where the staff's lines begin and end. */
+    measure: {
+        left: number;
+        right: number;
+    };
+    /** The notehead nearest the point within 8 staff spaces (1.3.5): the note's own id — a chord's note names itself, not the chord — and its head's centre in page px. Null when none is that near. */
+    nearestNote: {
+        eventId: string;
+        x: number;
+        y: number;
+    } | null;
 }
 export type StylusEvent = 
 /** A stroke: samples batched once per screen frame, `down` first; `at` is its last sample's place. `predicted` are the system's guesses ahead (iPadOS). */
@@ -1134,6 +1201,36 @@ export type StylusEvent =
     height: number | null;
     at: StylusScorePoint | null;
 };
+/**
+ * Where a symbol sits, in staff spaces — granita's `SymbolContext`, which the
+ * shell turns into the model's vector (1.3.5). Everything in it comes from a
+ * `StylusScorePoint`: the staff, the measure and the nearest notehead.
+ */
+export interface StylusSymbolContext {
+    /** The symbol's centre from the staff's middle line; down is positive. */
+    yStaff: number;
+    /** 0 at the left barline, 1 at the right. */
+    xMeasure: number;
+    /** Distance to the nearest barline. */
+    barline: number;
+    /** The centre minus the nearest notehead's centre; null with no notehead within 8 spaces. */
+    noteDx: number | null;
+    noteDy: number | null;
+    /** The symbol's box. */
+    width: number;
+    height: number;
+}
+/** A symbol to read (1.3.5): its strokes in page px, the staff space in page px, and where it sits — null when unknown, which the model was trained for too. */
+export interface StylusRecognizeRequest {
+    strokes: readonly (readonly (readonly [x: number, y: number])[])[];
+    staffSpace: number;
+    context: StylusSymbolContext | null;
+}
+/** One of the classifier's answers (1.3.5): a class of granita's sidecar and its confidence, 0–1. */
+export interface StylusRecognition {
+    label: string;
+    confidence: number;
+}
 export interface StylusService {
     /** True in the iOS and Android shells, which capture the stylus; false on the desktop and in a browser — do nothing there. */
     readonly available: boolean;
@@ -1141,6 +1238,10 @@ export interface StylusService {
     capture(on: boolean): Promise<void>;
     /** Every event while capture is on; the disposable unsubscribes. */
     on(listener: (event: StylusEvent) => void): Disposable;
+    /** Where a page point falls on the score, read as the events' `at` are (1.3.5). Null off the measures, with no document open, and before the service has loaded — it loads with the first `capture` or `on`. */
+    at(x: number, y: number): StylusScorePoint | null;
+    /** The shell's classifier, granita, on a symbol (1.3.5): its classes by confidence, best first. Rejects on the desktop and in a shell without the model. */
+    recognize(request: StylusRecognizeRequest): Promise<readonly StylusRecognition[]>;
 }
 
 // ---- view.d.ts

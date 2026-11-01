@@ -35,6 +35,12 @@ export interface StylusScorePoint {
   pitch: Pitch | null;
   /** The point in the tile's own pixels — `TileOverlayProps`' frame, for drawing there. */
   tile: { x: number; y: number };
+  /** The staff's geometry in page px (1.3.5): the distance between two of its lines, and its middle line's y. */
+  staff: { space: number; middleY: number };
+  /** The measure's barlines in page px (1.3.5): where the staff's lines begin and end. */
+  measure: { left: number; right: number };
+  /** The notehead nearest the point within 8 staff spaces (1.3.5): the note's own id — a chord's note names itself, not the chord — and its head's centre in page px. Null when none is that near. */
+  nearestNote: { eventId: string; x: number; y: number } | null;
 }
 
 export type StylusEvent =
@@ -47,6 +53,39 @@ export type StylusEvent =
   /** The Pencil Pro's squeeze (down, up) and double-tap (tap); the S Pen's side button (down, up). Where the pen was, when the system says. */
   | { type: "button"; button: "squeeze" | "doubleTap" | "side"; phase: "down" | "up" | "tap"; x: number | null; y: number | null; height: number | null; at: StylusScorePoint | null };
 
+/**
+ * Where a symbol sits, in staff spaces — granita's `SymbolContext`, which the
+ * shell turns into the model's vector (1.3.5). Everything in it comes from a
+ * `StylusScorePoint`: the staff, the measure and the nearest notehead.
+ */
+export interface StylusSymbolContext {
+  /** The symbol's centre from the staff's middle line; down is positive. */
+  yStaff: number;
+  /** 0 at the left barline, 1 at the right. */
+  xMeasure: number;
+  /** Distance to the nearest barline. */
+  barline: number;
+  /** The centre minus the nearest notehead's centre; null with no notehead within 8 spaces. */
+  noteDx: number | null;
+  noteDy: number | null;
+  /** The symbol's box. */
+  width: number;
+  height: number;
+}
+
+/** A symbol to read (1.3.5): its strokes in page px, the staff space in page px, and where it sits — null when unknown, which the model was trained for too. */
+export interface StylusRecognizeRequest {
+  strokes: readonly (readonly (readonly [x: number, y: number])[])[];
+  staffSpace: number;
+  context: StylusSymbolContext | null;
+}
+
+/** One of the classifier's answers (1.3.5): a class of granita's sidecar and its confidence, 0–1. */
+export interface StylusRecognition {
+  label: string;
+  confidence: number;
+}
+
 export interface StylusService {
   /** True in the iOS and Android shells, which capture the stylus; false on the desktop and in a browser — do nothing there. */
   readonly available: boolean;
@@ -54,4 +93,8 @@ export interface StylusService {
   capture(on: boolean): Promise<void>;
   /** Every event while capture is on; the disposable unsubscribes. */
   on(listener: (event: StylusEvent) => void): Disposable;
+  /** Where a page point falls on the score, read as the events' `at` are (1.3.5). Null off the measures, with no document open, and before the service has loaded — it loads with the first `capture` or `on`. */
+  at(x: number, y: number): StylusScorePoint | null;
+  /** The shell's classifier, granita, on a symbol (1.3.5): its classes by confidence, best first. Rejects on the desktop and in a shell without the model. */
+  recognize(request: StylusRecognizeRequest): Promise<readonly StylusRecognition[]>;
 }

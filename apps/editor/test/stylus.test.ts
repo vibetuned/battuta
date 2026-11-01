@@ -6,7 +6,7 @@
  * which event, the score's area — is checked on the tablets.
  */
 import { describe, it, expect } from "vitest";
-import { pitchAtStep, shieldFromPen, stepAt } from "../src/host/stylus";
+import { NOTE_RANGE, nearestOf, pitchAtStep, shieldFromPen, staffGeometry, stepAt } from "../src/host/stylus";
 
 const LINES = [100, 110, 120, 130, 140]; // a five-line staff, 10 px between lines
 const name = (p: { pname: string; oct: number } | null) => (p ? `${p.pname}${p.oct}` : null);
@@ -128,5 +128,23 @@ describe("shieldFromPen", () => {
     down();
     target.dispatchEvent(event("pointerdown", 0, { pointerType: "pen" }));
     expect(seen).toEqual(["pointerdown:pen"]);
+  });
+});
+
+describe("the symbol's context (1.3.5)", () => {
+  it("reads a staff's space and middle line off its lines, however many", () => {
+    expect(staffGeometry([100, 112, 124, 136, 148])).toEqual({ space: 12, middleY: 124 });
+    expect(staffGeometry([50, 60])).toEqual({ space: 10, middleY: 55 });
+  });
+
+  it("finds the notehead nearest a point when one is within reach, and none beyond eight spaces", () => {
+    const heads = [
+      { eventId: "a", x: 100, y: 100 },
+      { eventId: "b", x: 130, y: 90 },
+    ];
+    expect(nearestOf(heads, 120, 95, NOTE_RANGE * 12)?.eventId).toBe("b");
+    expect(nearestOf(heads, 101, 100, 1.5)?.eventId).toBe("a");
+    expect(nearestOf(heads, 300, 100, NOTE_RANGE * 12)).toBeNull(); // 170 px away, 96 is the reach
+    expect(nearestOf([], 0, 0, 10)).toBeNull();
   });
 });
