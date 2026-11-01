@@ -135,6 +135,17 @@ the bridge they all stand on.
   on, and so did Bluetooth MIDI pairing, shipped in 1.2.0, in a notice
   once its sheet had opened, on the iPad and on Android. The Rust side now
   takes `null` or an empty object.
+- **Debug builds keep line numbers only (2026-10-30), the user's
+  decision.** `src-tauri/target` had reached 46 GiB: debug and release
+  builds for the desktop and six tablet targets (four Android ABIs, the
+  iPad, the simulator), and the leftovers of every earlier build, which
+  cargo never removes. `cargo clean` emptied it. `[profile.dev] debug =
+  "line-tables-only"` now applies to every crate. Backtraces and
+  breakpoints keep file:line, but variables can't be inspected. A fresh
+  desktop debug build is 1.3 GB, against 1.9 GB with full debug info.
+  The other three Android ABIs come from Android Studio's *universal*
+  flavour, which builds all four in debug too. It stays the default, for
+  the store bundle.
 
 ## 1.2.0 — 2026-10-29 (Phase 10 — iPhone, iPad and Android)
 
