@@ -146,6 +146,23 @@ the bridge they all stand on.
   The other three Android ABIs come from Android Studio's *universal*
   flavour, which builds all four in debug too. It stays the default, for
   the store bundle.
+- **The guide's home page links the stores (2026-11-01).** battuta is live
+  on the App Store and Google Play. The home page now opens with three
+  buttons: the App Store and Google Play badges, and a GitHub Releases
+  button for the desktop builds (`docs/src/components/Downloads.astro`,
+  after midi-sink's). The badges are the stores' own files, unaltered:
+  Apple's from its badge service, Google's PNG from play.google.com, and
+  GitHub's white Invertocat from brand.github.com. The App Store badge
+  comes first and the Google Play badge is the same height, as their
+  guidelines ask. Apple's trademark credit sits at the foot of the page.
+  The install page, which still said "battuta is a desktop application",
+  shows the same buttons. A new section, "On a tablet or a phone", gives
+  each store's link and minimum system: iOS and iPadOS 15, Android 7.0. It
+  notes the App Store name (*battuta: Score Editor*) and that the app is
+  free, with no purchases or ads. It covers what a touch screen adds (the
+  on-screen keyboard, battuta's own folder, Bluetooth MIDI pairing), and
+  warns that uninstalling deletes battuta's own folder. The desktop part
+  follows under "On the desktop".
 
 ## 1.2.0 — 2026-10-29 (Phase 10 — iPhone, iPad and Android)
 

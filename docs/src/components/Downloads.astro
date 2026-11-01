@@ -1,0 +1,117 @@
+---
+/**
+ * The download buttons of the home page and the install page (the author's
+ * ask, 2026-11-01, after midi-sink's): the iPhone and iPad on the App
+ * Store, Android on Google Play, the desktop builds on GitHub Releases.
+ *
+ * The store buttons are the stores' own artwork, unaltered as their
+ * guidelines ask, in public/badges/:
+ * - Apple's "Download on the App Store": black, en-US, from Apple's badge
+ *   service.
+ * - Google's "Get it on Google Play": the PNG from play.google.com, which
+ *   carries its clear space as transparent margins; CSS takes those back
+ *   instead of cropping the file.
+ * The App Store badge comes first and Google Play's is as tall, as the two
+ * guidelines ask. The GitHub button is drawn in the stores' shape (black,
+ * their grey hairline, the same height) around GitHub's own white
+ * Invertocat (brand.github.com). Paths follow the docs base like <Figure>.
+ * The trademark credit Apple's guidelines ask for sits at the foot of the
+ * home page (`.trademarks` in custom.css).
+ */
+const base = import.meta.env.BASE_URL.replace(/\/?$/, "/");
+const appStore = "https://apps.apple.com/us/app/battuta-score-editor/id6828373781";
+const play = "https://play.google.com/store/apps/details?id=com.vibetuned.battuta";
+const releases = "https://github.com/vibetuned/battuta/releases";
+---
+
+<nav class="downloads" aria-label="Download battuta">
+  <a href={appStore} title="battuta for iPhone and iPad on the App Store">
+    <img src={`${base}badges/app-store.svg`} alt="Download on the App Store" />
+  </a>
+  <a href={play} title="battuta for Android phones and tablets on Google Play">
+    <img class="play" src={`${base}badges/google-play.png`} alt="Get it on Google Play" />
+  </a>
+  <a class="gh" href={releases} title="The desktop builds — macOS, Windows, Linux — on GitHub Releases">
+    <img src={`${base}badges/github-invertocat-white.svg`} alt="" />
+    <span><small>Download for desktop</small><b>GitHub Releases</b></span>
+  </a>
+</nav>
+
+<style>
+  .downloads {
+    --h: 52px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    /* at least a quarter of the badge height between badges: both stores' clear space */
+    gap: 0.875rem 1rem;
+    margin: 1.5rem auto 2rem;
+  }
+  .downloads a {
+    display: inline-flex;
+    line-height: 0;
+    text-decoration: none;
+    border-radius: 8px;
+  }
+  .downloads a:focus-visible {
+    outline: 2px solid var(--sl-color-accent);
+    outline-offset: 3px;
+  }
+  /* max-width: Starlight caps content images at their box, which squeezed
+     Google's overhanging PNG out of proportion */
+  .downloads img {
+    height: var(--h);
+    width: auto;
+    max-width: none;
+    display: block;
+  }
+  /* Google's PNG is 646 × 250 with the badge at 564 × 168, 41 px in from
+     every edge: the badge itself is --h tall, its margins overhang. */
+  .downloads img.play {
+    height: calc(var(--h) * 250 / 168);
+    margin: calc(var(--h) * -41 / 168);
+  }
+  /* the GitHub button in the stores' shape */
+  .gh {
+    height: var(--h);
+    box-sizing: border-box;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0 1rem 0 0.8rem;
+    background: #000;
+    color: #fff;
+    border: 1px solid #a6a6a6;
+    font-family: -apple-system, "SF Pro Text", "Helvetica Neue", Roboto, Arial, sans-serif;
+    line-height: 1.05;
+  }
+  .downloads .gh img {
+    height: calc(var(--h) / 2);
+  }
+  .gh small {
+    display: block;
+    font-size: 0.66rem;
+    letter-spacing: 0.01em;
+  }
+  .gh b {
+    display: block;
+    font-size: 1.2rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .gh:hover {
+    border-color: #fff;
+    color: #fff;
+  }
+  @media (max-width: 560px) {
+    .downloads {
+      --h: 44px;
+    }
+    .gh small {
+      font-size: 0.58rem;
+    }
+    .gh b {
+      font-size: 1.02rem;
+    }
+  }
+</style>

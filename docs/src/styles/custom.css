@@ -219,3 +219,11 @@ dialog.img-zoom .img-zoom-close:focus-visible {
     }
   }
 }
+
+/* The store badges' trademark credit, which Apple's guidelines ask for
+   wherever legal notices go: the foot of the home page, small. */
+.sl-markdown-content .trademarks {
+  margin-top: 3rem;
+  font-size: var(--sl-text-xs);
+  color: var(--sl-color-gray-3);
+}

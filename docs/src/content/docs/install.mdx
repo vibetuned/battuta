@@ -1,20 +1,56 @@
 ---
 title: Install battuta
-description: Download and launch battuta on Linux, macOS or Windows, or run it from source in a browser.
+description: Download and launch battuta on Linux, macOS or Windows, on iPhone, iPad and Android, or run it from source in a browser.
 sidebar:
   order: 1
 ---
 
 import { Tabs, TabItem, Steps } from "@astrojs/starlight/components";
+import Downloads from "../../components/Downloads.astro";
 
-battuta is a desktop application. It reads and writes MEI files on your own
-disk, needs no account, and makes no network requests — nothing you open
-leaves your machine, and nothing about you is collected
+battuta runs on the desktop — Linux, macOS and Windows — and on iPhone, iPad
+and Android phones and tablets. It reads and writes MEI files on your own
+device, needs no account, and makes no network requests — nothing you open
+leaves your device, and nothing about you is collected
 ([privacy](../reference/privacy/)).
 
-## Download a build
+<Downloads />
 
-Bundles are attached to each [GitHub release](https://github.com/vibetuned/battuta/releases).
+## On a tablet or a phone
+
+battuta is free on the
+[App Store](https://apps.apple.com/us/app/battuta-score-editor/id6828373781)
+for iPhone and iPad (iOS and iPadOS 15 or later), where it is listed as
+*battuta: Score Editor*, and on
+[Google Play](https://play.google.com/store/apps/details?id=com.vibetuned.battuta)
+for Android phones and tablets (Android 7.0 or later). There are no in-app
+purchases, no ads and no account.
+
+It is the same editor as on the desktop — the same files, commands and
+shortcuts — with what a touch screen needs:
+
+- **The [on-screen keyboard](../guide/virtual-keyboard/)** — a piano, the
+  modifiers and every shortcut as a touch key — shows up on its own on a
+  touch screen.
+- **Your scores** live in battuta's own folder (in the Files app, *On My
+  iPad › battuta* or *On My iPhone › battuta*) or in any folder you pick;
+  anything else on the device or in
+  your cloud drives opens through the system's document picker
+  ([files on a tablet or a phone](../guide/files/#on-a-tablet-or-a-phone)).
+- **MIDI instruments**: a USB keyboard plugged in just works; a Bluetooth one
+  is paired from battuta itself — `MIDI` in the status bar, then
+  **Bluetooth MIDI…** ([MIDI input](../guide/note-entry/#midi-input)).
+
+:::caution[Deleting the app deletes its folder]
+Uninstalling battuta removes its own folder, and the scores in it, on iPhone,
+iPad and Android alike. Move the scores you want to keep somewhere else first;
+scores in a folder you picked stay where they are.
+:::
+
+## On the desktop
+
+The desktop bundles are attached to each
+[GitHub release](https://github.com/vibetuned/battuta/releases).
 
 <Tabs>
   <TabItem label="Linux" icon="linux">
