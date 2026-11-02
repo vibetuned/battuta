@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildEventIndex, serialize, frac, fEq, decomposeDuration, validateMeasureDurations, findAll,
   ReplaceEntryCommand, AddChordNoteCommand, ToggleTieCommand, ChainTieCommand, ToggleSlurCommand, ToggleArticCommand, ToggleDynamCommand,
-  MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, TupletCommand,
+  MergeEventsCommand, SplitEventCommand, CycleDynamCommand, CycleHairpinCommand, ChangeDurationCommand, ToggleFingCommand, ToggleMarkCommand, OrnamentCycleCommand, RemoveControlCommand, ToggleGraceCommand, TogglePedalCommand, BeatRepeatCommand, MeasureRepeatCycleCommand, TupletCommand,
   type CommandContext,
 } from "../src/index.js";
 import { scoreFrom, mei } from "./helpers.js";
@@ -734,16 +734,43 @@ describe("single markings (fermata, coda, ornament cycle)", () => {
     expect(serialize(score.scoreEl)).toBe(before);
   });
 
-  it("the ornament key circles tremolo → trill → mordent → off on a note", () => {
+  const ornamentState = (score: ReturnType<typeof scoreFrom>["score"]) => {
+    const m = score.measures[0]!;
+    for (const tag of ["arpeg", "trill", "mordent", "turn"]) if (findAll(m, tag).length) return tag;
+    const idx = buildEventIndex(score);
+    return findAll(m, "bTrem").length ? "btrem" : idx.byId.has("k1") ? "none" : "gone";
+  };
+
+  it("a repeat mark by name goes straight there, replaces another, and the same again takes it off", () => {
     const { score } = scoreFrom(mei(body));
     const before = serialize(score.scoreEl);
-    const state = () => {
-      const m = score.measures[0]!;
-      if (findAll(m, "trill").length) return "trill";
-      if (findAll(m, "mordent").length) return "mordent";
-      const idx = buildEventIndex(score);
-      return findAll(m, "bTrem").length ? "btrem" : idx.byId.has("k1") ? "none" : "gone";
-    };
+    const rm = () => findAll(score.measures[0]!, "repeatMark");
+    const cmd = new ToggleMarkCommand("k1", "coda", "segno");
+    expect(cmd.label).toBe("repeat mark segno");
+    cmd.apply(ctxFor(score));
+    expect(rm()).toHaveLength(1);
+    expect(rm()[0]!.attrs["func"]).toBe("segno");
+    new ToggleMarkCommand("k1", "coda", "toCoda").apply(ctxFor(score)); // replaces
+    expect(rm()).toHaveLength(1);
+    expect(rm()[0]!.attrs["func"]).toBe("coda");
+    expect(rm()[0]!.children).toEqual(["To Coda"]);
+    new ToggleMarkCommand("k1", "coda", "fine").apply(ctxFor(score));
+    expect(rm()[0]!.attrs["func"]).toBe("fine");
+    expect(rm()[0]!.children).toEqual([]);
+    const off = new ToggleMarkCommand("k1", "coda", "fine");
+    off.apply(ctxFor(score));
+    expect(rm()).toHaveLength(0);
+    expect(serialize(score.scoreEl)).toBe(before);
+    off.revert(ctxFor(score));
+    expect(rm()[0]!.attrs["func"]).toBe("fine");
+    new ToggleMarkCommand("k1", "coda").apply(ctxFor(score)); // the key still cycles: fine -> dal segno
+    expect(rm()[0]!.attrs["func"]).toBe("dalSegno");
+  });
+
+  it("the ornament key circles tremolo → trill → mordent → turn → off on a note", () => {
+    const { score } = scoreFrom(mei(body));
+    const before = serialize(score.scoreEl);
+    const state = () => ornamentState(score);
     new OrnamentCycleCommand("k1").apply(ctxFor(score));
     expect(state()).toBe("btrem");
     expect(buildEventIndex(score).byId.get("k1")?.eventIndex).toBe(0); // still indexed through the wrapper
@@ -752,8 +779,46 @@ describe("single markings (fermata, coda, ornament cycle)", () => {
     new OrnamentCycleCommand("k1").apply(ctxFor(score));
     expect(state()).toBe("mordent");
     new OrnamentCycleCommand("k1").apply(ctxFor(score));
+    expect(state()).toBe("turn");
+    new OrnamentCycleCommand("k1").apply(ctxFor(score));
     expect(state()).toBe("none");
     expect(serialize(score.scoreEl)).toBe(before); // full circle = untouched
+  });
+
+  it("an ornament by name goes straight there, the same again takes it off, and the arpeggio needs a chord", () => {
+    const { score } = scoreFrom(mei(body));
+    const before = serialize(score.scoreEl);
+    const state = () => ornamentState(score);
+    const cmd = new OrnamentCycleCommand("k1", "trill");
+    expect(cmd.label).toBe("ornament trill");
+    cmd.apply(ctxFor(score));
+    expect(state()).toBe("trill");
+    new OrnamentCycleCommand("k1", "turn").apply(ctxFor(score)); // replaces the trill
+    expect(state()).toBe("turn");
+    expect(findAll(score.measures[0]!, "trill")).toHaveLength(0);
+    new OrnamentCycleCommand("k1", "turn").apply(ctxFor(score)); // off
+    expect(state()).toBe("none");
+    expect(serialize(score.scoreEl)).toBe(before);
+    expect(() => new OrnamentCycleCommand("k1", "arpeg").apply(ctxFor(score))).toThrow(/an arpeggio needs a chord/);
+    new OrnamentCycleCommand("kc", "arpeg").apply(ctxFor(score));
+    expect(findAll(score.measures[0]!, "arpeg")).toHaveLength(1);
+  });
+
+  it("a mark that stands on its own is removed by its id and put back by revert; an event or an unknown id is refused", () => {
+    const { score } = scoreFrom(mei(body));
+    new OrnamentCycleCommand("k1", "mordent").apply(ctxFor(score));
+    new ToggleMarkCommand("k1", "fermata").apply(ctxFor(score));
+    const snap = serialize(score.scoreEl);
+    const id = findAll(score.measures[0]!, "mordent")[0]!.attrs["xml:id"]!;
+    const cmd = new RemoveControlCommand(id);
+    cmd.apply(ctxFor(score));
+    expect(findAll(score.measures[0]!, "mordent")).toHaveLength(0);
+    expect(findAll(score.measures[0]!, "fermata")).toHaveLength(1);
+    expect(cmd.startId).toBe("k1");
+    cmd.revert(ctxFor(score));
+    expect(serialize(score.scoreEl)).toBe(snap);
+    expect(() => new RemoveControlCommand("k1").apply(ctxFor(score))).toThrow(/no mark "k1"/);
+    expect(() => new RemoveControlCommand("nope").apply(ctxFor(score))).toThrow(/no mark "nope"/);
   });
 
   it("chords start the cycle at the arpeggio; revert restores exactly", () => {

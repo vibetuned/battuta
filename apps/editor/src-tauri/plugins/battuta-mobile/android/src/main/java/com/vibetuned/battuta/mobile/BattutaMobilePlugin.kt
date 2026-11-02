@@ -71,6 +71,8 @@ class ContextArgs {
     var barline: Double = 8.0
     var noteDx: Double? = null
     var noteDy: Double? = null
+    var noteW: Double? = null
+    var noteH: Double? = null
     var width: Double = 0.0
     var height: Double = 0.0
 }
@@ -206,7 +208,7 @@ class BattutaMobilePlugin(private val activity: Activity) : Plugin(activity) {
                 val model = granita ?: GranitaModel(activity.assets).also { granita = it }
                 val fraction = StrokeRaster.fraction(strokes, args.staffSpace)
                 val pixels = StrokeRaster.render(strokes, fraction)
-                val vector = args.context?.let { SymbolContext(it.yStaff, it.xMeasure, it.barline, it.noteDx, it.noteDy, it.width, it.height).vector() } ?: SymbolContext.UNKNOWN
+                val vector = args.context?.let { SymbolContext(it.yStaff, it.xMeasure, it.barline, it.noteDx, it.noteDy, it.width, it.height, it.noteW, it.noteH).vector() } ?: SymbolContext.UNKNOWN
                 val top = model.predict(StrokeRaster.normalize(pixels), vector)
                 val list = JSArray()
                 for (t in top) list.put(JSObject().apply { put("label", t.label); put("confidence", t.confidence.toDouble()) })

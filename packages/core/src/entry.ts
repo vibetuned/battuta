@@ -834,6 +834,9 @@ export class CycleHairpinCommand implements Command {
 }
 
 export type MarkKind = "fermata" | "coda";
+/** The repeat marks the coda key cycles, by name (1.3.8: the pen writes one). */
+export type RepeatMark = "coda" | "toCoda" | "segno" | "fine" | "dalSegno" | "daCapo";
+const REPEAT_MARK_INDEX: Record<RepeatMark, number> = { coda: 0, toCoda: 1, segno: 2, fine: 3, dalSegno: 4, daCapo: 5 };
 
 /**
  * The o-key cycle, in order. "To Coda" shares func="coda" with the coda
@@ -866,11 +869,16 @@ export class ToggleMarkCommand implements Command {
   private memento: { measure: CoreElement; at: number; before: CoreElement | null; after: CoreElement | null } | null = null;
   private region: DirtyRegion[] = [];
 
+  /**
+   * `to`, with the coda kind: that repeat mark by name instead of the next in
+   * the cycle — off when the event has it already, replacing another.
+   */
   constructor(
     private readonly targetId: string,
     private readonly kind: MarkKind,
+    private readonly to?: RepeatMark,
   ) {
-    this.label = `toggle ${kind}`;
+    this.label = to && kind === "coda" ? `repeat mark ${to}` : `toggle ${kind}`;
   }
 
   apply(ctx: CommandContext): DirtyRegion[] {
@@ -884,22 +892,28 @@ export class ToggleMarkCommand implements Command {
     ) ?? null;
     this.region = [{ measureIndex: ref.measureIndex, staffN: ref.staffN }];
     const state = existing && this.kind === "coda" ? repeatMarkState(existing) : -1;
-    if (existing && this.kind === "coda" && state >= 0 && state < REPEAT_MARKS.length - 1) {
-      // the repeat-mark key cycles: coda -> To Coda -> segno -> fine ->
-      // dal segno -> da capo -> off
-      const nextMark = REPEAT_MARKS[state + 1]!;
-      const at = measure.children.indexOf(existing);
-      const next: CoreElement = { ...existing, attrs: { ...existing.attrs, func: nextMark.func }, children: nextMark.text ? [nextMark.text] : [] };
+    const wanted = this.kind === "coda" && this.to ? REPEAT_MARK_INDEX[this.to] : -1;
+    const replaceWith = (nextMark: { func: string; text?: string }) => {
+      const at = measure.children.indexOf(existing!);
+      const next: CoreElement = { ...existing!, attrs: { ...existing!.attrs, func: nextMark.func }, children: nextMark.text ? [nextMark.text] : [] };
       measure.children[at] = next;
       this.memento = { measure, at, before: existing, after: next };
+    };
+    if (existing && wanted >= 0 && wanted !== state) {
+      replaceWith(REPEAT_MARKS[wanted]!);
+    } else if (existing && wanted < 0 && this.kind === "coda" && state >= 0 && state < REPEAT_MARKS.length - 1) {
+      // the repeat-mark key cycles: coda -> To Coda -> segno -> fine ->
+      // dal segno -> da capo -> off
+      replaceWith(REPEAT_MARKS[state + 1]!);
     } else if (existing) {
       const at = measure.children.indexOf(existing);
       measure.children.splice(at, 1);
       this.memento = { measure, at, before: existing, after: null };
     } else {
       const attrs: Record<string, string> = { "xml:id": newId(), staff: String(ref.staffN), startid: `#${this.targetId}` };
-      if (this.kind === "coda") attrs["func"] = "coda";
-      const el: CoreElement = { tag, attrs, children: [] };
+      const mark = this.kind === "coda" ? REPEAT_MARKS[Math.max(wanted, 0)]! : null;
+      if (mark) attrs["func"] = mark.func;
+      const el: CoreElement = { tag, attrs, children: mark?.text ? [mark.text] : [] };
       measure.children.push(el);
       this.memento = { measure, at: measure.children.length - 1, before: null, after: el };
     }
@@ -916,17 +930,20 @@ export class ToggleMarkCommand implements Command {
   }
 }
 
-type OrnamentState = "none" | "arpeg" | "btrem" | "trill" | "mordent";
+export type OrnamentState = "none" | "arpeg" | "btrem" | "trill" | "mordent" | "turn";
 
 /**
- * One key circles the four ornaments: arpeggio → tremolo → trill →
- * mordent → none. Arpeggio only makes sense on chords (single notes skip
- * straight to tremolo). Mixed encodings, hidden behind the cycle:
- * arpeg/trill/mordent are startid control events; tremolo WRAPS the event
- * in <bTrem unitdur="16"> (ids untouched — the index walks containers).
+ * One key circles the five ornaments: arpeggio → tremolo → trill →
+ * mordent → turn → none. Arpeggio only makes sense on chords (single notes
+ * skip straight to tremolo). Mixed encodings, hidden behind the cycle:
+ * arpeg/trill/mordent/turn are startid control events; tremolo WRAPS the
+ * event in <bTrem unitdur="16"> (ids untouched — the index walks
+ * containers). Given `to`, the command goes straight to that ornament
+ * instead (the pen writes one by name, 2026-11-02) — and off, when the
+ * event has it already, as the other marks toggle.
  */
 export class OrnamentCycleCommand implements Command {
-  readonly label = "cycle ornament";
+  readonly label: string;
   private steps: (
     | { op: "removeControl"; measure: CoreElement; at: number; el: CoreElement }
     | { op: "addControl"; measure: CoreElement; el: CoreElement }
@@ -935,13 +952,19 @@ export class OrnamentCycleCommand implements Command {
   )[] = [];
   private region: DirtyRegion[] = [];
 
-  constructor(private readonly targetId: string) {}
+  constructor(
+    private readonly targetId: string,
+    private readonly to?: Exclude<OrnamentState, "none">,
+  ) {
+    this.label = to ? `ornament ${to}` : "cycle ornament";
+  }
 
   apply(ctx: CommandContext): DirtyRegion[] {
     this.steps = [];
     const ref = ctx.index.byId.get(this.targetId);
     if (!ref) throw new Error("ornament target not found");
     if (ref.tag !== "note" && ref.tag !== "chord") throw new Error("ornaments attach to notes or chords");
+    if (this.to === "arpeg" && ref.tag !== "chord") throw new Error("an arpeggio needs a chord");
     const measure = ctx.score.measures[ref.measureIndex];
     const hit = measure && locateWithParent(measure, this.targetId);
     if (!measure || !hit) throw new Error("ornament target not in measure");
@@ -954,9 +977,10 @@ export class OrnamentCycleCommand implements Command {
       : control("arpeg") ? "arpeg"
       : control("trill") ? "trill"
       : control("mordent") ? "mordent"
+      : control("turn") ? "turn"
       : "none";
-    const order: OrnamentState[] = ref.tag === "chord" ? ["none", "arpeg", "btrem", "trill", "mordent"] : ["none", "btrem", "trill", "mordent"];
-    const next = order[(order.indexOf(current) + 1) % order.length]!;
+    const order: OrnamentState[] = ref.tag === "chord" ? ["none", "arpeg", "btrem", "trill", "mordent", "turn"] : ["none", "btrem", "trill", "mordent", "turn"];
+    const next: OrnamentState = this.to ? (this.to === current ? "none" : this.to) : order[(order.indexOf(current) + 1) % order.length]!;
 
     const removeControl = (tag: string) => {
       const el = control(tag)!;
@@ -973,6 +997,7 @@ export class OrnamentCycleCommand implements Command {
     if (current === "arpeg") removeControl("arpeg");
     else if (current === "trill") removeControl("trill");
     else if (current === "mordent") removeControl("mordent");
+    else if (current === "turn") removeControl("turn");
     else if (current === "btrem") {
       const wrapper = hit.parent;
       const gp = locateWithParent(measure, wrapper.attrs["xml:id"] ?? "");
@@ -984,6 +1009,7 @@ export class OrnamentCycleCommand implements Command {
     if (next === "arpeg") addControl("arpeg");
     else if (next === "trill") addControl("trill");
     else if (next === "mordent") addControl("mordent", { form: "upper" });
+    else if (next === "turn") addControl("turn");
     else if (next === "btrem") {
       const fresh = locateWithParent(measure, this.targetId)!;
       const wrapper: CoreElement = { tag: "bTrem", attrs: { "xml:id": newId(), unitdur: "16" }, children: [fresh.el] };
@@ -1016,6 +1042,50 @@ export class OrnamentCycleCommand implements Command {
  * FOLDS into the main note (like a merge); un-gracing gives it back. The
  * fold requires the sum / difference to be one written duration.
  */
+/** The marks that stand on their own in a measure, beside the event they start on, and go as one element. */
+export const CONTROL_MARK_TAGS: ReadonlySet<string> = new Set(["dynam", "fing", "fermata", "trill", "mordent", "turn", "arpeg", "repeatMark"]);
+
+/**
+ * Remove one such mark by its id — a dynamic, a fingering, a fermata, an
+ * ornament, a repeat mark — whatever its state (the pen's eraser,
+ * 2026-11-02; the keys toggle by the event instead). Not a pedal, which
+ * is two elements, nor what is an attribute of its note (an articulation,
+ * an accidental, a dot).
+ */
+export class RemoveControlCommand implements Command {
+  readonly label: string;
+  private memento: { measure: CoreElement; at: number; el: CoreElement } | null = null;
+  private region: DirtyRegion[] = [];
+  /** The event the mark was on, once removed. */
+  startId: string | null = null;
+
+  constructor(private readonly id: string) {
+    this.label = "remove mark";
+  }
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    this.memento = null;
+    for (let m = 0; m < ctx.score.measures.length; m++) {
+      const measure = ctx.score.measures[m]!;
+      const at = measure.children.findIndex((c) => typeof c !== "string" && c.attrs["xml:id"] === this.id);
+      if (at < 0) continue;
+      const el = measure.children[at] as CoreElement;
+      if (!CONTROL_MARK_TAGS.has(el.tag)) throw new Error(`${el.tag} is not a mark that can be removed on its own`);
+      measure.children.splice(at, 1);
+      this.memento = { measure, at, el };
+      this.startId = (el.attrs["startid"] ?? "").replace(/^#/, "") || null;
+      this.region = [{ measureIndex: m, staffN: Number(el.attrs["staff"] ?? "1") }];
+      return this.region;
+    }
+    throw new Error(`no mark "${this.id}"`);
+  }
+
+  revert(_ctx: CommandContext): DirtyRegion[] {
+    if (this.memento) this.memento.measure.children.splice(this.memento.at, 0, this.memento.el);
+    return this.region;
+  }
+}
+
 export class ToggleGraceCommand implements Command {
   readonly label = "cycle grace note";
   private mementos: { el: CoreElement; before: Record<string, string> }[] = [];

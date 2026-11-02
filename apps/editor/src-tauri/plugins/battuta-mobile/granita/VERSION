@@ -1,3 +1,3 @@
-granita 80f50d64f77018730d7d0d76841be12cd0127457
-model granitanet (unknown run), models/granitanet in that commit
-copied 2026-11-01 by scripts/copy-granita.sh
+granita 54ea42f255c3362cd4988c12d6a0a0c7a4c8b801
+model granitanet (battuta_v8_ctx), models/battuta in that commit
+copied 2026-11-02 by scripts/copy-granita.sh

@@ -58,6 +58,8 @@ export function pitchAtStep(clef: ClefContext, step: number): Pitch | null {
 export interface ScoreLookups {
   staffNOf(staffId: string): number | undefined;
   contextOf(measureIndex: number, staffN: number): StaffContext | undefined;
+  /** A note's written pitch — a chord's note its own — or null for anything else (1.3.9, `nearestNote.pitch`). */
+  pitchOf(eventId: string): Pitch | null;
 }
 
 /** The engraved events a pen can land on (Verovio's classes); a chord's own notes are not events of their own. */
@@ -86,31 +88,107 @@ export function staffGeometry(lines: readonly number[]): { space: number; middle
   return { space: (bottom - top) / (lines.length - 1), middleY: (top + bottom) / 2 };
 }
 
-/** The head nearest a point, when one is within `reach`. */
-export function nearestOf<T extends { x: number; y: number }>(heads: readonly T[], x: number, y: number, reach: number): T | null {
+/** A box in page px. */
+export interface Box {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+/** A note's head centre and, when known, its body — head, stem and flag; a chord's, for a chord's note. */
+export interface Head {
+  eventId: string;
+  x: number;
+  y: number;
+  box?: Box;
+}
+
+/** A mark that stands on its own beside its event (1.3.7): its id, kind, centre and box in page px. */
+export interface MarkAt {
+  id: string;
+  kind: NonNullable<StylusScorePoint["nearestMark"]>["kind"];
+  x: number;
+  y: number;
+  box: Box;
+}
+
+/** How far a point is from a box: 0 inside it. */
+const distanceTo = (b: Box, x: number, y: number): number => Math.hypot(Math.max(b.left - x, 0, x - b.right), Math.max(b.top - y, 0, y - b.bottom));
+
+/**
+ * The note — or mark — nearest a point, when one is within `reach`: by its
+ * whole engraving where known — a mark under a stem-down note is near its
+ * stem, far from its head (the user, 2026-11-01) — else by its centre.
+ */
+export function nearestOf<T extends { x: number; y: number; box?: Box }>(heads: readonly T[], x: number, y: number, reach: number): T | null {
   let best: { head: T; d: number } | null = null;
   for (const head of heads) {
-    const d = Math.hypot(head.x - x, head.y - y);
+    const d = head.box ? distanceTo(head.box, x, y) : Math.hypot(head.x - x, head.y - y);
     if (!best || d < best.d) best = { head, d };
   }
   return best && best.d <= reach ? best.head : null;
 }
 
-/** Every notehead of a staff — a chord's notes each their own — with its centre in page px. */
-function headsOf(staff: Element): { eventId: string; x: number; y: number }[] {
-  const heads: { eventId: string; x: number; y: number }[] = [];
+/** The box around some drawn elements, in page px; null when none draws. */
+function union(els: readonly Element[]): Box | null {
+  let box: Box | null = null;
+  for (const el of els) {
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) continue;
+    box = box ? { left: Math.min(box.left, r.left), top: Math.min(box.top, r.top), right: Math.max(box.right, r.right), bottom: Math.max(box.bottom, r.bottom) } : { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+  }
+  return box;
+}
+
+/**
+ * A note's body, as granita measures a note (v8, 1.3.8): its notehead and its
+ * stem with the flag — every head of its chord and the chord's stem, for a
+ * chord's note — without the accidental, dots or articulations Verovio nests
+ * in the same `g.note`: the note as the editor shows it before a mark is added.
+ */
+function bodyOf(g: Element): Box | null {
+  const chord = g.closest("g.chord");
+  const parts = chord ? [...chord.querySelectorAll(":scope > g.note > g.notehead"), ...chord.querySelectorAll(":scope > g.stem")] : [...g.querySelectorAll(":scope > g.notehead"), ...g.querySelectorAll(":scope > g.stem")];
+  return union(parts);
+}
+
+/** Every note of a staff — a chord's notes each their own — with its head's centre and its body in page px. */
+function headsOf(staff: Element): Head[] {
+  const heads: Head[] = [];
   for (const g of staff.querySelectorAll("g.note[id]")) {
     const r = (g.querySelector(":scope > g.notehead") ?? g).getBoundingClientRect();
     if (r.width === 0 && r.height === 0) continue;
-    heads.push({ eventId: g.id, x: r.left + r.width / 2, y: r.top + r.height / 2 });
+    const whole = (g.closest("g.chord") ?? g).getBoundingClientRect();
+    const box = bodyOf(g) ?? { left: whole.left, top: whole.top, right: whole.right, bottom: whole.bottom };
+    heads.push({ eventId: g.id, x: r.left + r.width / 2, y: r.top + r.height / 2, box });
   }
   return heads;
+}
+
+/** The marks the eraser can take by their id (Verovio's classes): the control events that stand on their own, under the measure beside the staves. */
+const MARK_KINDS: Record<string, MarkAt["kind"]> = { dynam: "dynamic", fing: "fingering", fermata: "fermata", trill: "ornament", mordent: "ornament", turn: "ornament", arpeg: "ornament", repeatMark: "repeatMark" };
+const MARKS = Object.keys(MARK_KINDS)
+  .map((c) => `g.${c}[id]`)
+  .join(", ");
+
+/** Every such mark of a tile, with its centre and box in page px. */
+function marksOf(tile: Element): MarkAt[] {
+  const marks: MarkAt[] = [];
+  for (const g of tile.querySelectorAll(MARKS)) {
+    const r = g.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) continue;
+    const kind = MARK_KINDS[[...g.classList].find((c) => c in MARK_KINDS) ?? ""];
+    if (!kind) continue;
+    marks.push({ id: g.id, kind, x: r.left + r.width / 2, y: r.top + r.height / 2, box: { left: r.left, top: r.top, right: r.right, bottom: r.bottom } });
+  }
+  return marks;
 }
 
 /**
  * Where a page point falls in edit view: the tile under it, the staff nearest it, that
  * staff's event nearest it, the pitch at that height; and (1.3.5) the staff's geometry,
- * the measure's extent and the nearest notehead. Null off the measures.
+ * the measure's extent and the nearest notehead; (1.3.7) the nearest mark. Null off the measures.
  */
 export function resolvePoint(x: number, y: number, lookups: ScoreLookups): StylusScorePoint | null {
   const tile = document.elementsFromPoint(x, y).map((e) => e.closest<HTMLElement>(".tile[data-index]")).find((t): t is HTMLElement => t !== null);
@@ -142,6 +220,8 @@ export function resolvePoint(x: number, y: number, lookups: ScoreLookups): Stylu
   const context = lookups.contextOf(measureIndex, best.n);
   const origin = frame.getBoundingClientRect();
   const staff = staffGeometry(best.lines);
+  const nearest = nearestOf(headsOf(best.g), x, y, NOTE_RANGE * staff.space);
+  const mark = nearestOf(marksOf(tile), x, y, NOTE_RANGE * staff.space);
   return {
     measureIndex,
     staffN: best.n,
@@ -151,7 +231,8 @@ export function resolvePoint(x: number, y: number, lookups: ScoreLookups): Stylu
     tile: { x: x - origin.left, y: y - origin.top },
     staff,
     measure: { left: best.left, right: best.right },
-    nearestNote: nearestOf(headsOf(best.g), x, y, NOTE_RANGE * staff.space),
+    nearestNote: nearest ? { eventId: nearest.eventId, x: nearest.x, y: nearest.y, box: nearest.box ?? { left: nearest.x, top: nearest.y, right: nearest.x, bottom: nearest.y }, pitch: lookups.pitchOf(nearest.eventId) } : null,
+    nearestMark: mark ? { id: mark.id, kind: mark.kind, x: mark.x, y: mark.y } : null,
   };
 }
 
@@ -331,8 +412,10 @@ export class StylusService {
           yStaff: Number(c.yStaff),
           xMeasure: Number(c.xMeasure),
           barline: Number(c.barline),
-          noteDx: c.noteDx === null ? null : Number(c.noteDx),
-          noteDy: c.noteDy === null ? null : Number(c.noteDy),
+          noteDx: c.noteDx == null ? null : Number(c.noteDx),
+          noteDy: c.noteDy == null ? null : Number(c.noteDy),
+          noteW: c.noteW == null ? null : Number(c.noteW),
+          noteH: c.noteH == null ? null : Number(c.noteH),
           width: Number(c.width),
           height: Number(c.height),
         }

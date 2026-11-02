@@ -8,18 +8,31 @@ import type { PluginManifest } from "@battuta/api";
 
 /** The overlay's id on the host's overlays point (the `data-overlay` hook): the cross at the tip. */
 export const OVERLAY_ID = "cross";
+/** The overlay of the strokes being written, since the page draws nothing of a captured pen. */
+export const INK_ID = "ink";
+/** The overlay of handwriting's answer: the label of what was read with its ✓ ✗, or the chooser. */
+export const FEEDBACK_ID = "handwriting";
+/** The command the status-bar item runs: the cross or handwriting. */
+export const MODE_COMMAND = "battuta.stylus.mode";
 
 export const manifest: PluginManifest = {
   id: "battuta.stylus",
   name: "Stylus",
-  version: "1.3.0",
-  description: "Write notes with the Apple Pencil or the S Pen: touch a staff, drag the cross at the tip to set the length (across) and the pitch (up, down), lift to write. Squeeze, or press the side button, to add to a chord. iPad and Android tablets.",
+  version: "1.4.0",
+  description: "Write with the Apple Pencil or the S Pen, two ways. The cross: touch a staff, drag the cross at the tip to set the length (across) and the pitch (up, down), lift to write; squeeze, or press the side button, to add to a chord. Handwriting: write a symbol on the staff — a sharp, a dot, a dynamic, a note — and granita, battuta's own reader, puts it in the score. Slurs and ties: draw from a note to another. The status-bar item switches. iPad and Android tablets.",
   // ^1.3.0 carries `ctx.stylus`, the capability and `core.enterNote`; 1.3.1
   // the input's length (`editor.entryDur` / `entryDots`, `setEntryLength`)
   // and `core.enterNote`'s dots; 1.3.2 `core.addChordNote`; 1.3.3 the caret
   // going to what those two wrote — all for this plugin, approved by the
-  // user on 2026-10-29.
-  engines: { battuta: "^1.3.3" },
+  // user on 2026-10-29. 1.3.5 (approved 2026-11-01) carries handwriting's:
+  // the staff, measure and nearest notehead in `StylusScorePoint`,
+  // `ctx.stylus.at`, `ctx.stylus.recognize` and `core.mark`. 1.3.7
+  // (approved 2026-11-02): the ornament mark, `nearestMark` and
+  // `core.erase`, the quarter rest's. 1.3.8 (the same day, granita v8):
+  // the note's body in `nearestNote`, its size in the context, the
+  // repeat-mark kind. 1.3.9 (the same day): the tie and slur marks and the
+  // note's written pitch in `nearestNote`, for the bows.
+  engines: { battuta: "^1.3.9" },
   activationEvents: [
     // A tablet: the only devices with a stylus the shell captures. On any
     // other touch device `ctx.stylus.available` is false and the plugin
@@ -27,6 +40,11 @@ export const manifest: PluginManifest = {
     "onPointer:coarse",
   ],
   capabilities: ["stylus"],
-  // Deliberately NOT declared: no commands, keybindings or slot items — the
-  // pen is the whole interface, and the score is where it is used.
+  // The one command: the mode, run by the status-bar item the plugin adds
+  // at runtime once it knows there is a stylus (a declared item would show
+  // on the desktop too, where there is none). No keys: the pen is the
+  // interface, and the score is where it is used.
+  contributes: {
+    commands: [{ id: MODE_COMMAND, title: "Stylus: the cross or handwriting" }],
+  },
 };

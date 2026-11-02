@@ -16,7 +16,7 @@
  *    nothing at all.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { API_VERSION, definePlugin, type Mark, type PluginContext, type PluginEntry, type PluginManifest, type DocumentInfo } from "@battuta/api";
+import { API_VERSION, definePlugin, type CommandMessage, type Mark, type PluginContext, type PluginEntry, type PluginManifest, type DocumentInfo } from "@battuta/api";
 import { SetHarmCommand, SetPitchesCommand, SetSylCommand, buildEventIndex, buildScore, findAll, resolveContexts, type CoreElement } from "@battuta/core";
 import { createHost, memorySettings, toCommand, writtenBy, HostAudioService, type SessionAdapter } from "../src/host";
 import { memoryStorage } from "../src/host/services";
@@ -371,6 +371,19 @@ describe("commands as data", () => {
       cmd.revert(ctx());
       expect(measure()).not.toContain(`"${tag}"`);
     }
+    // The ornament by name (1.3.7): beside the note, and gone again on revert; the arpeggio needs a chord.
+    cmd = run({ kind: "ornament", ornament: "trill" });
+    expect(cmd.label).toBe("trill");
+    expect(measure()).toContain('"trill"');
+    cmd.revert(ctx());
+    expect(measure()).not.toContain('"trill"');
+    expect(() => run({ kind: "ornament", ornament: "arpeg" })).toThrow(/an arpeggio needs a chord/);
+    // A repeat mark by name (1.3.8): the segno beside the note, gone again on revert.
+    cmd = run({ kind: "repeatMark", mark: "segno" });
+    expect(cmd.label).toBe("segno");
+    expect(measure()).toContain('"func":"segno"');
+    cmd.revert(ctx());
+    expect(measure()).not.toContain('"repeatMark"');
     // The dot: the note re-entered in place, the rest after it giving up an eighth.
     cmd = run({ kind: "dot" });
     expect(cmd.label).toBe("dot");
@@ -396,15 +409,106 @@ describe("commands as data", () => {
     expect(() => toCommand({ type: "core.mark", eventId: "nope", mark: { kind: "dot" } }).apply(ctx())).toThrow(/no event "nope"/);
   });
 
+  it("maps core.erase (1.3.7) to the Delete key's rests for a note or a chord — a chord's note naming its chord — and removes a mark that stands on its own by its id; a rest, an unknown id are refused", () => {
+    // 2/4: a quarter note and a quarter chord.
+    const el = (tag: string, attrs: Record<string, string> = {}, ...children: CoreElement[]): CoreElement => ({ tag, attrs, children });
+    const root = el("music", {}, el("body", {}, el("mdiv", {}, el("score", {}, el("scoreDef", { "meter.count": "2", "meter.unit": "4" }, el("staffGrp", {}, el("staffDef", { n: "1", lines: "5", "clef.shape": "G", "clef.line": "2" }))), el("section", {}, el("measure", { n: "1", "xml:id": "m1" }, el("staff", { n: "1" }, el("layer", { n: "1" }, el("note", { "xml:id": "n1", pname: "c", oct: "4", dur: "4" }), el("chord", { "xml:id": "c1", dur: "4" }, el("note", { "xml:id": "c1a", pname: "e", oct: "4" }), el("note", { "xml:id": "c1b", pname: "g", oct: "4" }))))))))));
+    const score = buildScore(root);
+    const ctx = () => ({ score, index: buildEventIndex(score) });
+    const events = () => findAll(score.measures[0]!, "layer")[0]!.children.map((c) => (typeof c === "string" ? c : `${c.tag}:${c.attrs["dur"] ?? ""}`));
+    const measure = () => JSON.stringify(score.measures[0]);
+    const erase = (id: string) => {
+      const cmd = toCommand({ type: "core.erase", id });
+      cmd.apply(ctx());
+      return cmd;
+    };
+    // A note: a rest of its length takes its place, and the caret goes to it.
+    let cmd = erase("n1");
+    expect(cmd.label).toBe("erase");
+    expect(events()).toEqual(["rest:4", "chord:4"]);
+    const rest = findAll(score.measures[0]!, "rest")[0]!.attrs["xml:id"]!;
+    expect(writtenBy(cmd)).toBe(rest);
+    // That rest is nothing to erase.
+    expect(() => erase(rest)).toThrow(/a rest is nothing to erase/);
+    cmd.revert(ctx());
+    expect(events()).toEqual(["note:4", "chord:4"]);
+    // A chord's note names its chord — the pen's nearestNote names them — and the chord goes.
+    cmd = erase("c1b");
+    expect(events()).toEqual(["note:4", "rest:4"]);
+    cmd.revert(ctx());
+    expect(events()).toEqual(["note:4", "chord:4"]);
+    // A mark that stands on its own: a fingering put on the chord's note goes on the chord, and is erased by its id.
+    const fing = toCommand({ type: "core.mark", eventId: "c1a", mark: { kind: "fingering", finger: "2" } });
+    fing.apply(ctx());
+    expect(writtenBy(fing)).toBe("c1");
+    const f = findAll(score.measures[0]!, "fing")[0]!;
+    expect(f.attrs["startid"]).toBe("#c1");
+    cmd = erase(f.attrs["xml:id"]!);
+    expect(measure()).not.toContain('"fing"');
+    expect(writtenBy(cmd)).toBe("c1");
+    cmd.revert(ctx());
+    expect(measure()).toContain('"fing"');
+    // An accidental on a chord's note stays that note's.
+    toCommand({ type: "core.mark", eventId: "c1b", mark: { kind: "accidental", accid: "s" } }).apply(ctx());
+    expect(findAll(score.measures[0]!, "note").find((n) => n.attrs["xml:id"] === "c1b")?.attrs["accid"]).toBe("s");
+    expect(() => erase("nope")).toThrow(/no mark "nope"/);
+  });
+
+  it("maps core.mark's tie and slur (1.3.9) to the keys' commands, either way round — neighbours tied, a run chained, a slur spanned — and refuses what they refuse", () => {
+    // 4/4: c4, c4, d4, c4 quarters.
+    const el = (tag: string, attrs: Record<string, string> = {}, ...children: CoreElement[]): CoreElement => ({ tag, attrs, children });
+    const note = (id: string, pname: string) => el("note", { "xml:id": id, pname, oct: "4", dur: "4" });
+    const root = el("music", {}, el("body", {}, el("mdiv", {}, el("score", {}, el("scoreDef", { "meter.count": "4", "meter.unit": "4" }, el("staffGrp", {}, el("staffDef", { n: "1", lines: "5", "clef.shape": "G", "clef.line": "2" }))), el("section", {}, el("measure", { n: "1", "xml:id": "m1" }, el("staff", { n: "1" }, el("layer", { n: "1" }, note("n1", "c"), note("n2", "c"), note("n3", "d"), note("n4", "c")))))))));
+    const score = buildScore(root);
+    const ctx = () => ({ score, index: buildEventIndex(score) });
+    const ties = () => findAll(score.measures[0]!, "note").map((n) => n.attrs["tie"] ?? "-").join(" ");
+    const slurs = () => findAll(score.measures[0]!, "slur").map((s) => `${s.attrs["startid"]}>${s.attrs["endid"]}`);
+    const run = (eventId: string, mark: Mark) => {
+      const cmd = toCommand({ type: "core.mark", eventId, mark });
+      cmd.apply(ctx());
+      return cmd;
+    };
+    // Neighbours of the same pitch, drawn backwards: tied; the caret goes to the first.
+    let cmd = run("n2", { kind: "tie", endId: "n1" });
+    expect(cmd.label).toBe("tie");
+    expect(ties()).toBe("i t - -");
+    expect(writtenBy(cmd)).toBe("n1");
+    cmd.revert(ctx());
+    expect(ties()).toBe("- - - -");
+    // The same again unties.
+    run("n1", { kind: "tie", endId: "n2" });
+    run("n1", { kind: "tie", endId: "n2" });
+    expect(ties()).toBe("- - - -");
+    // Different pitches, or a run with one in it: the core refuses.
+    expect(() => run("n2", { kind: "tie", endId: "n3" })).toThrow(/same pitch/);
+    expect(() => run("n1", { kind: "tie", endId: "n4" })).toThrow(/same pitch/);
+    expect(() => run("n1", { kind: "tie", endId: "n1" })).toThrow(/from one event to another/);
+    // A slur, drawn backwards: from the earlier to the later.
+    cmd = run("n3", { kind: "slur", endId: "n1" });
+    expect(cmd.label).toBe("slur");
+    expect(slurs()).toEqual(["#n1>#n3"]);
+    expect(writtenBy(cmd)).toBe("n1");
+    const off = run("n1", { kind: "slur", endId: "n3" }); // the same again removes it
+    expect(slurs()).toEqual([]);
+    off.revert(ctx());
+    expect(slurs()).toEqual(["#n1>#n3"]);
+    expect(() => run("n1", { kind: "slur", endId: "nope" })).toThrow(/no event "nope"/);
+  });
+
   it("refuses a core.mark it cannot read at the door", () => {
     const mark = (m: unknown) => toCommand({ type: "core.mark", eventId: "n1", mark: m as Mark });
-    expect(() => mark({ kind: "slur" })).toThrow(/unknown mark kind "slur"/);
+    expect(() => mark({ kind: "hairpin" })).toThrow(/unknown mark kind "hairpin"/);
     expect(() => mark({ kind: "accidental", accid: "ff" })).toThrow(/accid must be one of s, f, n, x/);
     expect(() => mark({ kind: "articulation", artic: "staccato" })).toThrow(/artic must be one of stacc, ten, acc, stacciss, marc/);
     expect(() => mark({ kind: "dynamic", value: "P!" })).toThrow(/one to four letters/);
     expect(() => mark({ kind: "fingering", finger: "6" })).toThrow(/finger must be one of 1, 2, 3, 4, 5/);
     expect(() => mark({ kind: "pedal" })).toThrow(/a pedal needs endId/);
     expect(() => mark({ kind: "clef", shape: "B" })).toThrow(/shape must be one of G, F, C/);
+    expect(() => mark({ kind: "ornament", ornament: "tremolo" })).toThrow(/ornament must be one of arpeg, trill, mordent, turn/);
+    expect(() => mark({ kind: "repeatMark", mark: "ds" })).toThrow(/mark must be one of coda, toCoda, segno, fine, dalSegno, daCapo/);
+    expect(() => mark({ kind: "tie" })).toThrow(/a tie needs endId/);
+    expect(() => mark({ kind: "slur", endId: "" })).toThrow(/a slur needs endId/);
+    expect(() => toCommand({ type: "core.erase" } as unknown as CommandMessage)).toThrow(/id must name a note, a chord or a mark/);
     expect(() => mark({ kind: "rest", dur: "3" })).toThrow(/dur must be one of 1, 2, 4, 8, 16, 32, 64/);
     expect(mark({ kind: "rest", dur: "4", dots: 1 }).label).toBe("enter rest 4.");
   });

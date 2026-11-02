@@ -18,6 +18,9 @@ const point = (x: number, y: number, step: number, over: Partial<StylusScorePoin
   step,
   pitch: { pname: "cdefgab"[(((step + 2) % 7) + 7) % 7]!, oct: 4 + Math.floor((step + 2) / 7) }, // treble: step 0 is e4
   tile: { x: x - 100, y: y - 200 },
+  staff: { space: 12, middleY: 250 },
+  measure: { left: 100, right: 400 },
+  nearestNote: null,
   ...over,
 });
 const sample = (x: number, y: number): StylusSample => [x, y, 0, 0.5, 1, 0, null];

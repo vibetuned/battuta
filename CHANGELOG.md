@@ -56,6 +56,191 @@ Phase 11). Its first slice is the bridge they all stand on.
   the door and copied, one undo step, the caret going to the event
   (`writtenBy`). `core.enterNote`'s command is now the same `EntryCommand`
   as the rest's.
+- **M3: handwriting in the stylus plugin (2026-11-01).** A second mode,
+  switched by the status-bar item the plugin adds at runtime (✎ cross /
+  ✎ hand; a declared item would show on the desktop too) and its one
+  command, `battuta.stylus.mode`. In it the strokes that follow each
+  other within 600 ms and two staff spaces are one symbol
+  (`handwriting.ts`, pure, the plugin keeping the one clock); when the
+  clock runs out the symbol's centre and its head are read with
+  `ctx.stylus.at`, the place in staff spaces goes with the strokes to
+  `ctx.stylus.recognize`, and `rules.ts` — one entry per class of
+  granita's sidecar: its name, where it may sit, what it writes — takes
+  the first answer by confidence whose place fits: the dot right of a note
+  is the augmentation dot and above or below one a staccato, an accidental
+  goes on the note to its right, fingerings and dynamics never inside the
+  staff, rests and clefs only inside it with a clef at the measure's
+  start; a drawn note is `core.enterNote` over the event under its head
+  (the end with more of the pen's samples) at that pitch with the class's
+  duration, everything else `core.mark`. A label says what was read
+  (`sharp · 93 %`, 1.5 s); under 50 %, or with nothing fitting, a chooser
+  of the top three appears beside the symbol, tapped with the pen (the
+  plugin matches the tap to the buttons' page rectangles, since the pen is
+  captured) or a finger. What the editor cannot write yet is a notice:
+  the double flat, the ornaments (the editor only cycles them), the pedal
+  (it needs the event it ends on), a barline; a whole rest is written as
+  a half (one class for both). The plugin is 1.4.0 on `^1.3.5`.
+  **Tried by the user on the Galaxy Tab the same evening** (a fingering
+  written by hand landed on its note at 94 %), with four findings, each
+  fixed: the strokes were invisible — the pen is captured, so the plugin
+  now draws them in blue until the symbol is read (an `ink` overlay); the
+  chooser was cut off by the next measure — the next tile's layer covers
+  what spills right, so the chooser and the label now stay inside the
+  symbol's measure, to its left near a barline and no lower than six
+  spaces under the staff's middle; the chooser came up too much — what
+  is written at 50 % and over now shows a ✓ ✗ for three seconds, ✓ by
+  default, ✗ undoing it (the host's `undo` action) and offering the other
+  readings; and the heuristics seemed absent — they ran (the fingering
+  went through them), but the API's one `nearestNote` picks the wrong
+  note when two are close, so the plugin now reads `ctx.stylus.at` just
+  left and just right of the symbol too: a dot goes on the note BEFORE it,
+  an accidental on the note AFTER it, a mark above or below on the note
+  in its column. 40 tests. And (the user, the same hour) the nearest note
+  must be measured by its whole engraving, not its head: under a
+  stem-down note a mark is near the stem and far from the head, and the
+  neighbour with the stem-up head would win. The host now measures the
+  distance to the note's box — head, stem and flag; a chord's, for a
+  chord's note — and still reports the head's centre, which is what
+  granita's context is trained on; `nearestNote`'s documentation says so,
+  and the changed meaning is API 1.3.6 (the user had committed 1.3.5 by
+  then, so the report script asked for the bump). Then: "I still get
+  fingering 2 in the list even if the drawing is in the middle of the
+  measure" — the chooser offered the classifier's top three whatever the
+  place; now only the readings that belong there are offered, for the
+  chooser and for the ✗, and when none belongs a notice names the best
+  reading ("nothing that belongs here — read as fingering 2 (61 %)").
+  Next morning (2026-11-02), two more from the user: the chooser has a
+  last row, *none of these*, that discards the symbol (a tap elsewhere
+  still dismisses it, and is a stroke); and the reach within which the
+  next stroke joins a symbol is no longer two staff spaces flat but
+  proportional to the drawing — half its larger side, at least half a
+  space (`marginOf`) — so a staccato written right after one on the next
+  note is its own symbol and small glyphs can follow each other quickly,
+  while a sharp's four strokes still join. 41 tests.
+- **API 1.3.7: the ornaments by name, the mark under the pen and the
+  eraser (2026-11-02).** The user's decisions after the class review: the
+  arpeggio was missing because `Mark` had no ornament and the core only
+  cycled them, so `Mark` gains `{ kind: "ornament", ornament }` — arpeggio,
+  trill, mordent and **turn, new to the core** (`OrnamentCycleCommand`
+  takes the ornament to go to, off when the event has it, and the `w` key's
+  cycle gains the turn after the mordent: the keymap label and the guide
+  say so); the quarter rest becomes **the eraser** — rests are what notes
+  do not take, so no rest is written by hand — through
+  `StylusScorePoint.nearestMark` (the dynamic, fingering, fermata, ornament
+  or repeat mark nearest the point, by its engraving, with its id) and
+  `core.erase { id }`: a note or chord deleted to rests as the Delete key
+  does it (the core's `DeleteToRestsCommand` now names the rests it left,
+  for the caret), a mark that stands on its own removed whatever its state
+  (the core's new `RemoveControlCommand`); a rest, a pedal and the marks
+  that are attributes of their note are refused. Found on the way: the
+  pen's `nearestNote` names a chord's note, which the event index does not
+  hold, so every `core.mark` on one was refused ("target not found") — the
+  host now resolves a chord's note to its chord for the marks that go on
+  the event, the accidental staying the note's (`ChordNoteAccidentalCommand`),
+  and `core.erase` on it erases the chord. The classes the user is
+  dropping from granita — the barline, the pedal, the double flat, `m` and
+  `z` alone, every rest but the quarter — left the plugin's table (a
+  reading the current model still gives for them is not offered; coda
+  classes are coming, with a repeat-mark kind to approve). The eraser's
+  target: the mark within two spaces of the symbol's centre and nearer
+  than the note's head, else the note in the column when the symbol is in
+  the staff or on the head. Core 64 (entry), host 2 new, plugin 44 tests.
+- **granita v8 in the shell, API 1.3.8 (2026-11-02).** The user retrained
+  granita on the list above as its **battuta variant** (43 classes:
+  granita commit 54ea42f, run `battuta_v8_ctx`; `copy-granita.sh` now
+  reads `models/battuta`, and no longer exits on a clean working tree) —
+  the turn kept, the double sharp and the 32nd and 64th notes out as
+  well, and the **repeat marks** in: the coda and segno signs, Fine, D.S.
+  and D.C. The model's context changed with it: the nearest note is
+  measured by its **body** (head, stem and flag; a chord's as one; without
+  accidentals, dots or articulations) and the vector carries the body's
+  size, the above/below/left/right flags read against that box within
+  half a space. So: `StylusScorePoint.nearestNote` gains the body's `box`
+  (the host takes Verovio's `g.notehead` and `g.stem` boxes, the chord's
+  for a chord's note — the whole engraving before), `StylusSymbolContext`
+  gains `noteW` / `noteH`, the Swift, Kotlin and Rust context code follows
+  granita's shells, the debug probe sends the new fields, and `Mark` gains
+  `{ kind: "repeatMark", mark }` — coda, To Coda, segno, Fine, D.S., D.C.
+  — with the core's `ToggleMarkCommand` setting one by name where the coda
+  key cycles (the same again takes it off). The plugin's place rules read
+  the body too (a staccato over a stem's end is above its note; "on the
+  note" is inside its body), the repeat marks go on the event under them
+  above or below the staff, and the table lost the double sharp and the
+  short notes. The plugins README gained the rows for the stylus API
+  (1.3.0–1.3.8) and `enabledByDefault`, at the user's request. Core 249,
+  editor 179, plugin 45, API 21 tests; the initial chunk 398.7 of 400.0 kB.
+  **On the tablets, the debug probe over granita's 13 v8 fixtures:** the
+  Galaxy Tab 13 of 13 top-1, 20.6 ms per symbol, max |Δ confidence| 0.197
+  (the "dot above the staff" fixture, 85 % against PyTorch's 65 %: a 2-px
+  blob, where Android's Canvas and Pillow differ by a pixel); the iPad 12
+  of 13, 8.9 ms, the **quarter rest read as an arpeggio at 50 %** where
+  PyTorch says quarter rest 66 %. A Mac harness built from the plugin's own
+  Swift against the IPA's compiled model (the scratchpad's `harness-v8`)
+  shows the model is not at fault — on the fixtures' own pixels Core ML
+  matches PyTorch within 0.01 on all 13 — and the pixels are: Core
+  Graphics draws this zigzag with 91 ink pixels to Pillow's 74 (4 pixels
+  far off), and PyTorch itself reads those pixels as an arpeggio at 51 %.
+  The rasteriser is granita's iOS one, lifted as is; the user's call. The
+  quarter rest being the eraser, real handwriting on the iPad is the test
+  that counts.
+- **The shells draw like Pillow now (2026-11-02).** The user: "the erase
+  has really low score on iPad". Measured against Pillow at the 96-px
+  stage with primitives (a line of span 48 at fraction 0.5 maps 1:1 onto
+  the canvas), Core Graphics and Android's Canvas draw every stroke
+  fatter than granita's `render_strokes`: Pillow's wide line is a polygon
+  offset by `(width - 1) / 2` ROUNDED TO WHOLE PIXELS on each axis, so a
+  5 px pen is 5 px thick upright and 2.8 px thick at 45°, and its
+  `joint="curve"` is a pie slice of radius `width / 2 - 1`; the platform
+  canvases, anti-aliasing off, ink every pixel a 5 px stroke touches
+  (+14 % ink on the 13 fixtures, +24 % on 87 synthetic shapes) — no
+  setting draws the same pixels. So `StrokeRaster.draw` is now a port of
+  Pillow's own `Draw.c` in Swift and in Kotlin, no Core Graphics, no
+  Canvas: `draw_wide_line`'s polygon, `polygon_generic`'s scan conversion
+  (rows from the lowest to the highest vertex inclusive, crossings in
+  single precision, each span from the crossing rounded up to the one
+  rounded down, its corner-joining quirk included), the joint's pie slice
+  on the unrounded points, the dots as ellipses in a box of whole pixels
+  (those approximated: the pixels whose centre lies within the box's
+  ellipse, a hair in). On the Mac, against Pillow: the primitives differ
+  by one pixel in 19 shapes, the synthetic set by none, the fixtures by
+  three at 96 px; what is left at 32 px (the sharp, fingering 3) is the
+  fixture file's rounded `fraction` — Pillow itself reproduces those two
+  only with the exact one. **iPad, the probe over the 13 v8 fixtures: 13
+  of 13, max |Δ confidence| 0.018** (0.156 and a miss before), 7.7 ms per
+  symbol, the quarter rest at 66 % as PyTorch has it; **the Galaxy Tab:
+  13 of 13, max |Δ confidence| 0.017** (0.197 before), 25.6 ms. The same
+  port went into granita's two test shells at the user's request, with
+  their READMEs and the fixture tests' comments (their pixel guard, the
+  user's, unchanged).
+- **Slurs and ties by pen, API 1.3.9 (2026-11-02).** The user: a third
+  state of the ✎ item that lets the pen draw a line from a note (or
+  chord) to another, "a slur if the note is different and a tie if it is
+  the same note". So the item cycles cross → hand → **slur**; in that
+  mode a stroke landing on a note's body (a space to spare) starts a
+  bow, its ink drawn as it goes, and the lift on another note writes it
+  at once with handwriting's ✓ ✗ — a tie when the two notes' written
+  pitches are the same, accidental included, a slur otherwise — ✗ undoing
+  it and offering the other kind. API 1.3.9: `Mark` gains `{ kind: "tie",
+  endId }` and `{ kind: "slur", endId }`, and `nearestNote` its written
+  `pitch` (the session's new `pitchOf`, a chord's note its own). The host
+  orders the pair, so a bow drawn backwards is the same bow; a tie
+  between neighbours is the tie key's command, between notes further
+  apart the key's chain over the run (every event between a link — the
+  core refuses a run with another pitch in it, as it refuses a tie
+  between different pitches); a slur is the slur key's command. `bow.ts`
+  holds the pure half (the note under the pen, the kind, the stroke into
+  a bow); the plugin's `Reading` now carries how a choice is written, the
+  rules' way or the bow's. Editor +1 test, plugin 51. The initial chunk
+  came to 409,822 bytes, 222 over the 400.0 kB ceiling — the synchronous
+  message table again — and the user raised the ceiling to **450 kB**
+  (460,800; `budget.json` says why), to look at reducing it later.
+  Then, from the user: "we should draw all over the row" — the ink was
+  the landing measure's overlay only, so a bow into the next measure
+  vanished at the barline. Every stroke event carries its sample's place
+  with the tile's frame, so the writing and the bow now keep the page
+  origin of every tile the pen crosses (`origins`), and each tile's ink
+  layer draws the strokes in its own frame: a bow or a symbol shows all
+  over the row, in handwriting too. Plugin 52 tests.
 - **M2: granita in the shell (2026-11-01).** `plugins/battuta-mobile`
   carries granita's released model, copied by
   `scripts/copy-granita.sh <granita checkout>` and named in

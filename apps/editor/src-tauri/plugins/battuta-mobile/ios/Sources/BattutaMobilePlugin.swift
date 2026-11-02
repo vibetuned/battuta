@@ -30,6 +30,8 @@ class ContextArgs: Decodable {
   let barline: Double
   let noteDx: Double?
   let noteDy: Double?
+  let noteW: Double?
+  let noteH: Double?
   let width: Double
   let height: Double
 }
@@ -115,7 +117,7 @@ class BattutaMobilePlugin: Plugin, UIDocumentPickerDelegate {
         let pixels = StrokeRaster.render(strokes, fraction: fraction)
         let vector =
           args.context.map {
-            SymbolContext(yStaff: $0.yStaff, xMeasure: $0.xMeasure, barline: $0.barline, noteDx: $0.noteDx, noteDy: $0.noteDy, width: $0.width, height: $0.height).vector
+            SymbolContext(yStaff: $0.yStaff, xMeasure: $0.xMeasure, barline: $0.barline, noteDx: $0.noteDx, noteDy: $0.noteDy, width: $0.width, height: $0.height, noteW: $0.noteW, noteH: $0.noteH).vector
           } ?? SymbolContext.unknown
         let top = try model.predict(input: StrokeRaster.normalize(pixels), context: vector)
         invoke.resolve(["top": top.map { ["label": $0.label, "confidence": Double($0.confidence)] }])

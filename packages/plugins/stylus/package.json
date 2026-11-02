@@ -1,8 +1,8 @@
 {
   "name": "@battuta/plugin-stylus",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "license": "AGPL-3.0-only",
-  "description": "Notes written with the Apple Pencil or the S Pen: tap the staff for a note at the pitch under the pen; hold, and a cross at the tip sets its duration (left, right) and pitch (up, down) before it is written.",
+  "description": "Write with the Apple Pencil or the S Pen: the cross at the tip sets a note's length and pitch, or a symbol written by hand is read by granita and put in the score.",
   "private": true,
   "type": "module",
   "exports": {

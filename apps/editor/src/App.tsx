@@ -644,7 +644,7 @@ export default function App() {
   const session = active?.session ?? null;
   // The stylus (1.3.0): the lookups it reads the page with — staff ids and contexts of the active score.
   useEffect(() => {
-    host.bindStylus(session ? { staffNOf: (id) => session.staffRefById.get(id)?.staffN, contextOf: (mi, n) => session.contexts[mi]?.get(n) } : null);
+    host.bindStylus(session ? { staffNOf: (id) => session.staffRefById.get(id)?.staffN, contextOf: (mi, n) => session.contexts[mi]?.get(n), pitchOf: (id) => session.pitchOf(id) } : null);
     return () => host.bindStylus(null);
   }, [session]);
 
@@ -1899,7 +1899,7 @@ export default function App() {
       rule("measureRepeat", (e) => hit("measureRepeat", e) && !isMod(e) && !e.altKey, () => markTry(() => session.measureRepeat(c), "measure repeat")),
       // attack intensity (I — plain i toggles note input): a dynam cycling sf → sfz → rinf → rfz → off
       rule("intensity", (e) => hit("intensity", e) && !isMod(e) && !e.altKey, () => markTry(() => session.cycleDynam(targetOf()!, ["sf", "sfz", "rinf", "rfz"]), "intensity"), { when: () => !!targetOf() }),
-      // one key circles the four ornaments: arpeggio (chords) → tremolo → trill → mordent → off
+      // one key circles the five ornaments: arpeggio (chords) → tremolo → trill → mordent → turn → off
       rule("ornament", (e) => hit("ornament", e) && !isMod(e) && !e.altKey, () => markTry(() => session.cycleOrnament(targetOf()!), "ornament"), { when: () => !!targetOf() }),
       rule("tie", (e) => hit("tie", e) && !isMod(e), () => {
         const run = runOf();

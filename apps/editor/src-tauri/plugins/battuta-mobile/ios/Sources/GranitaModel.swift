@@ -4,7 +4,7 @@ import Foundation
 /// granita's Core ML export (`granitanet.mlpackage`, compiled into the app by the
 /// iOS project; its sidecar beside it), fed the way granita feeds PyTorch (phase 11,
 /// M2; lifted from granita's iOS test shell): `input` (1, 1, 32, 32) float32, the
-/// normalised pixels, and `context` (1, 16); `logits` (1, 51) out, softmax for the
+/// normalised pixels, and `context` (1, 16); `logits` (1, 43) out, softmax for the
 /// confidences. Loaded once, on the first symbol.
 final class GranitaModel {
   struct Sidecar: Decodable {

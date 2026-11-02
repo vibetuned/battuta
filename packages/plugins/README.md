@@ -176,6 +176,14 @@ The api is a data contract. Nothing in it is a live object of the model.
 | would the document accept this harmony text? | `ctx.query.harmValid(kind, text)` | `boolean`; core's grammar, no document needed — a lane's `complete`, a generator's filter. Ask it, never copy it |
 | **write** a harmony (empty text clears) | `ctx.execute({ type: "core.setHarm", eventId, kind, text })` | one undo step; refused when `harmValid` says no — every writer of a `<harm>` is held to the same grammar |
 | a control in the context bar that looks like the host's | render `<select className="sbsel" data-cycle?>` from a `statusBar` slot item | the look, F6 roving focus and ↑/↓ cycling (`data-cycle`) come with the class; the bar anchors host controls and grows contributions into the free space, so your item never moves them |
+| the pen — the Apple Pencil, the S Pen (capability `stylus`, 1.3.0) | `ctx.stylus.available`; `capture(on)`; `on(fn)` | false on the desktop and in a browser — do nothing there; while captured the pen writes ON THE SCORE only, fingers scroll; every event carries `at`, a `StylusScorePoint` (measure, staff, the event nearest across, the step and pitch, the tile point) |
+| where a page point falls on the score | `ctx.stylus.at(x, y)` (1.3.5) | a `StylusScorePoint` with the staff's `space` and `middleY`, the measure's barlines, `nearestNote` (the note within 8 spaces by its body — head, stem, flag — with its head's centre, its body `box` (1.3.8) and its written `pitch` (1.3.9)) and `nearestMark` (the free-standing mark within 8 spaces — dynamic, fingering, fermata, ornament, repeat mark — with its id, 1.3.7), all in page px; null off the measures |
+| read a symbol written by hand | `ctx.stylus.recognize({ strokes, staffSpace, context })` (1.3.5) | granita's classes by confidence, best first; `context` is a `StylusSymbolContext` in staff spaces (the place, the offsets from the nearest note's body and its size since 1.3.8) that the SHELL turns into the model's vector — never port granita's `context.py` to TypeScript |
+| **write** a note with the pen, or a note into a chord | `ctx.execute({ type: "core.enterNote", eventId, pname, oct, dur, dots? })` (1.3.0, `dots` 1.3.1); `core.addChordNote { eventId, pname, oct }` (1.3.2) | over the event, as the keyboard enters a note; one undo step; the caret goes to what was written (1.3.3) |
+| the input's note length, and setting it | `ctx.editor.get().entryDur` / `entryDots`; `ctx.setEntryLength(dur, dots?)` (1.3.1) | what the digits pick; setting it is what a digit does |
+| **write** a mark on an event | `ctx.execute({ type: "core.mark", eventId, mark })` (1.3.5) | a closed union, each toggling as its key does: `accidental`, `articulation`, `dot`, `fermata`, `dynamic`, `fingering`, `pedal` (needs `endId`), `clef`, `rest`, `ornament` (1.3.7: arpeggio, trill, mordent, turn), `repeatMark` (1.3.8: coda, To Coda, segno, Fine, D.S., D.C.), `tie` and `slur` to `endId` (1.3.9, either order; a tie over a run chains it); a chord's note names its chord, the accidental excepted |
+| **erase** what the pen touches | `ctx.execute({ type: "core.erase", id })` (1.3.7) | a note or chord deleted to rests as the Delete key does it; a free-standing mark removed by its id; a rest, a pedal and the marks that are attributes of their note (articulation, accidental, dot) refused; the caret goes to the rest or to the mark's event |
+| every key press, after the editor handled it (capability `keys`, 1.3.4) | `ctx.keys.on(fn)` | a `KeyPress` with the keys and the action it ran, or null |
 
 Three things to know, each learned the hard way:
 
@@ -296,6 +304,10 @@ Conventions the tests cannot see, still binding:
   every core branch of the key handler fell through, and never while a
   text lane or the shortcut editor owns the keyboard.
 - **Pin the API.** `engines.battuta: "^<API_VERSION>"`.
+- **Off until asked for?** `enabledByDefault: false` in the manifest
+  (1.3.4) starts the plugin off until the user turns it on in the Plugins
+  tab — for a tool only some sessions want (the screencast keys). Absent
+  or true: on, as every plugin before it.
 - **Traps every UI plugin will meet** (found 2026-09-14, all real, kept
   from the rolled-back attempt): activation runs BEFORE the command
   handler that caused it, so a plugin that opens its UI in `activate()`

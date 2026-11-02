@@ -60,6 +60,9 @@ pub struct SymbolContext {
     pub barline: f64,
     pub note_dx: Option<f64>,
     pub note_dy: Option<f64>,
+    /// The nearest note's body, width and height in staff spaces (granita v8); none without a note.
+    pub note_w: Option<f64>,
+    pub note_h: Option<f64>,
     pub width: f64,
     pub height: f64,
 }

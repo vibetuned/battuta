@@ -125,6 +125,19 @@ export class DocumentSession {
   chordNotes(chordId: string): { id: string; pname: string; oct: string; accid?: string }[] {
     return chordNotes(this.score, this.index, chordId);
   }
+  /** A note's written pitch — a chord's note its own — or null for anything else (the stylus's `nearestNote.pitch`). */
+  pitchOf(id: string): { pname: string; oct: number; accid?: string } | null {
+    const ref = this.index.byId.get(id);
+    const measures = ref ? [this.score.measures[ref.measureIndex]] : this.score.measures;
+    for (const m of measures) {
+      const n = m && findAll(m, "note").find((e) => e.attrs["xml:id"] === id);
+      if (!n) continue;
+      const pname = n.attrs["pname"], oct = n.attrs["oct"];
+      if (!pname || !oct) return null;
+      return { pname, oct: Number(oct), ...(n.attrs["accid"] && { accid: n.attrs["accid"] }) };
+    }
+    return null;
+  }
   chordNoteAccidental(chordId: string, noteId: string, accid: "s" | "f" | "n" | "x"): DirtyRegion[] {
     return this.execute(new ChordNoteAccidentalCommand(chordId, noteId, accid));
   }

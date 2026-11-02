@@ -59,7 +59,7 @@ setTimeout(async () => {
     const c = f.context;
     const t0 = performance.now();
     try {
-      const top = await inv('stylus_recognize', { strokes: f.strokes, staffSpace: fx.staff.staff_space, context: { yStaff: c.y_staff, xMeasure: c.x_measure, barline: c.barline, noteDx: c.note_dx, noteDy: c.note_dy, width: c.width, height: c.height } });
+      const top = await inv('stylus_recognize', { strokes: f.strokes, staffSpace: fx.staff.staff_space, context: { yStaff: c.y_staff, xMeasure: c.x_measure, barline: c.barline, noteDx: c.note_dx, noteDy: c.note_dy, noteW: c.note_w, noteH: c.note_h, width: c.width, height: c.height } });
       ms += performance.now() - t0;
       const best = top[0] || { label: '-', confidence: 0 };
       const ok = best.label === f.top.label;

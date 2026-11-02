@@ -8,8 +8,9 @@
 #   sh plugins/battuta-mobile/scripts/copy-granita.sh ../path/to/granita
 set -e
 src="${1:?usage: copy-granita.sh <granita checkout>}"
-models="$src/models/granitanet"
-[ -d "$models/granitanet.mlpackage" ] || { echo "no models/granitanet in $src" >&2; exit 1; }
+# granita's battuta variant (models/battuta since granita v8, 2026-11-02; models/granitanet before).
+models="$src/models/battuta"
+[ -d "$models/granitanet.mlpackage" ] || { echo "no models/battuta in $src" >&2; exit 1; }
 here="$(cd "$(dirname "$0")/.." && pwd)"
 
 rm -rf "$here/ios/Resources/granitanet.mlpackage"
@@ -21,11 +22,12 @@ cp "$models/granitanet.tflite" "$here/android/src/main/assets/granitanet.tflite"
 cp "$models/fixtures.json" "$here/granita/fixtures.json"
 
 commit="$(git -C "$src" rev-parse HEAD 2>/dev/null || echo unknown)"
-run="$(grep -o 'training run `[^`]*`' "$src/models/README.md" | head -1 | sed 's/training run //; s/`//g')"
-dirty="$([ -n "$(git -C "$src" status --porcelain 2>/dev/null)" ] && echo " (working tree not clean at the copy)")"
+run="$(grep -o 'training run `battuta[^`]*`' "$src/models/README.md" | head -1 | sed 's/training run //; s/`//g')"
+dirty=""
+if [ -n "$(git -C "$src" status --porcelain 2>/dev/null)" ]; then dirty=" (working tree not clean at the copy)"; fi
 cat > "$here/granita/VERSION" <<EOF
 granita $commit$dirty
-model granitanet (${run:-unknown run}), models/granitanet in that commit
+model granitanet (${run:-unknown run}), models/battuta in that commit
 copied $(date -u +%Y-%m-%d) by scripts/copy-granita.sh
 EOF
 echo "copied granitanet from $src at $commit"

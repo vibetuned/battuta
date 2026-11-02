@@ -137,7 +137,7 @@ describe("the symbol's context (1.3.5)", () => {
     expect(staffGeometry([50, 60])).toEqual({ space: 10, middleY: 55 });
   });
 
-  it("finds the notehead nearest a point when one is within reach, and none beyond eight spaces", () => {
+  it("finds the note nearest a point when one is within reach, and none beyond eight spaces", () => {
     const heads = [
       { eventId: "a", x: 100, y: 100 },
       { eventId: "b", x: 130, y: 90 },
@@ -146,5 +146,18 @@ describe("the symbol's context (1.3.5)", () => {
     expect(nearestOf(heads, 101, 100, 1.5)?.eventId).toBe("a");
     expect(nearestOf(heads, 300, 100, NOTE_RANGE * 12)).toBeNull(); // 170 px away, 96 is the reach
     expect(nearestOf([], 0, 0, 10)).toBeNull();
+  });
+
+  it("measures a note by its whole engraving, not its head: a mark under a stem-down note is that note's", () => {
+    // Note a: head at (100, 100), stem up to y 60. Note b: head at (140, 80), stem DOWN to y 130.
+    const notes = [
+      { eventId: "a", x: 100, y: 100, box: { left: 94, top: 60, right: 106, bottom: 105 } },
+      { eventId: "b", x: 140, y: 80, box: { left: 134, top: 75, right: 146, bottom: 130 } },
+    ];
+    // A staccato written at (142, 140): 60 px from b's head but 10 px under its stem — b's, not a's (40 px from a's head).
+    expect(nearestOf(notes, 142, 140, 96)?.eventId).toBe("b");
+    expect(nearestOf(notes, 140, 100, 96)?.eventId).toBe("b"); // inside b's box: distance 0
+    expect(nearestOf(notes, 100, 120, 96)?.eventId).toBe("a");
+    expect(nearestOf(notes, 142, 240, 96)).toBeNull(); // 110 px under b's stem, beyond the reach
   });
 });

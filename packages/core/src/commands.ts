@@ -234,6 +234,11 @@ export class DeleteToRestsCommand implements Command {
   private mementos: ReplaceMemento[] = [];
   constructor(private readonly ids: string[]) {}
 
+  /** The rests that took the events' places, once applied, in the ids' order. */
+  get replacedBy(): string[] {
+    return this.mementos.map((m) => m.replacement.attrs["xml:id"]!);
+  }
+
   apply(ctx: CommandContext): DirtyRegion[] {
     this.mementos = [];
     for (const id of this.ids) {

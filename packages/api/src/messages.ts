@@ -102,7 +102,15 @@ export type Mark =
   /** G on the second line, F on the fourth, C on the third. */
   | { kind: "clef"; shape: "G" | "F" | "C" }
   /** Written duration as `core.enterNote`'s; the rest replaces the event. */
-  | { kind: "rest"; dur: string; dots?: number };
+  | { kind: "rest"; dur: string; dots?: number }
+  /** An ornament by name (1.3.7), where the ornament key cycles them: the same one again takes it off, another replaces it. The arpeggio needs a chord. */
+  | { kind: "ornament"; ornament: "arpeg" | "trill" | "mordent" | "turn" }
+  /** A repeat mark by name (1.3.8), where the coda key cycles them — the coda sign, "To Coda", the segno, Fine, D.S., D.C.: the same one again takes it off, another replaces it. */
+  | { kind: "repeatMark"; mark: "coda" | "toCoda" | "segno" | "fine" | "dalSegno" | "daCapo" }
+  /** A tie from the event to `endId` (1.3.9), either order, as the tie key ties a note to its neighbour: the same pitch on both, consecutive in their layer — or every event between them a link of the chain, as the key does over a run. The same again unties. Refused across staves or layers, and where the pitches differ. */
+  | { kind: "tie"; endId: string }
+  /** A slur from the event to `endId` (1.3.9), either order, as the slur key spans a selection; the same again removes it. Notes and chords only. */
+  | { kind: "slur"; endId: string };
 
 /**
  * Put a mark on an event (1.3.5, the stylus). One undo step; labels itself.
@@ -114,8 +122,24 @@ export interface MarkMessage {
   mark: Mark;
 }
 
-export type CommandMessage = SetPitchesMessage | SetSylMessage | SetHarmMessage | EnterNoteMessage | AddChordNoteMessage | MarkMessage;
+/**
+ * Erase what stands at `id` (1.3.7, the stylus's eraser): a note or a chord
+ * — a chord's note names its chord — is deleted to rests, its time left as
+ * rests the way the Delete key leaves it; a mark that stands on its own
+ * (a dynamic, a fingering, a fermata, an ornament, a repeat mark —
+ * `StylusScorePoint.nearestMark`) is removed whatever its state. A rest,
+ * a pedal, and what is part of its note (an articulation, an accidental,
+ * a dot: the same mark again takes it off) are refused. One undo step;
+ * the caret goes to the rest that took the note's place, or to the event
+ * the mark was on.
+ */
+export interface EraseMessage {
+  type: "core.erase";
+  id: string;
+}
+
+export type CommandMessage = SetPitchesMessage | SetSylMessage | SetHarmMessage | EnterNoteMessage | AddChordNoteMessage | MarkMessage | EraseMessage;
 
 export type CommandMessageType = CommandMessage["type"];
 
-export const COMMAND_MESSAGE_TYPES: readonly CommandMessageType[] = ["core.setPitches", "core.setSyl", "core.setHarm", "core.enterNote", "core.addChordNote", "core.mark"];
+export const COMMAND_MESSAGE_TYPES: readonly CommandMessageType[] = ["core.setPitches", "core.setSyl", "core.setHarm", "core.enterNote", "core.addChordNote", "core.mark", "core.erase"];

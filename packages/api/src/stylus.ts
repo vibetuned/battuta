@@ -39,8 +39,10 @@ export interface StylusScorePoint {
   staff: { space: number; middleY: number };
   /** The measure's barlines in page px (1.3.5): where the staff's lines begin and end. */
   measure: { left: number; right: number };
-  /** The notehead nearest the point within 8 staff spaces (1.3.5): the note's own id — a chord's note names itself, not the chord — and its head's centre in page px. Null when none is that near. */
-  nearestNote: { eventId: string; x: number; y: number } | null;
+  /** The note nearest the point within 8 staff spaces (1.3.5), by its body — its notehead, stem and flag; every head and the stem of its chord, for a chord's note; without accidentals, dots or articulations (1.3.8, as granita measures a note) — so a mark under a stem-down note finds it: the note's own id (a chord's note names itself, not the chord), its HEAD's centre in page px, where the pitch is, that body's `box` in page px (1.3.8), and its written `pitch` — a chord's note its own, with its accidental when written (1.3.9; null when the note has none). Null when none is that near. */
+  nearestNote: { eventId: string; x: number; y: number; box: { left: number; top: number; right: number; bottom: number }; pitch: Pitch | null } | null;
+  /** The mark nearest the point within 8 staff spaces, by its engraving (1.3.7): one that stands on its own beside its event — a dynamic, a fingering, a fermata, an ornament (trill, mordent, turn, arpeggio) or a repeat mark — with its id, which `core.erase` takes, and its centre in page px. Not a pedal, nor an articulation, accidental or dot, which are part of their note. Null when none is that near. */
+  nearestMark: { id: string; kind: "dynamic" | "fingering" | "fermata" | "ornament" | "repeatMark"; x: number; y: number } | null;
 }
 
 export type StylusEvent =
@@ -56,7 +58,7 @@ export type StylusEvent =
 /**
  * Where a symbol sits, in staff spaces — granita's `SymbolContext`, which the
  * shell turns into the model's vector (1.3.5). Everything in it comes from a
- * `StylusScorePoint`: the staff, the measure and the nearest notehead.
+ * `StylusScorePoint`: the staff, the measure and the nearest note's body.
  */
 export interface StylusSymbolContext {
   /** The symbol's centre from the staff's middle line; down is positive. */
@@ -65,9 +67,12 @@ export interface StylusSymbolContext {
   xMeasure: number;
   /** Distance to the nearest barline. */
   barline: number;
-  /** The centre minus the nearest notehead's centre; null with no notehead within 8 spaces. */
+  /** The centre minus the centre of the nearest note's body (`nearestNote.box`, 1.3.8; its head before); null with no note within 8 spaces. */
   noteDx: number | null;
   noteDy: number | null;
+  /** That body's width and height (1.3.8); null with no note. */
+  noteW: number | null;
+  noteH: number | null;
   /** The symbol's box. */
   width: number;
   height: number;

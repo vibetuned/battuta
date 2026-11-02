@@ -94,10 +94,24 @@ the right mark or offers it in the top three; the cross unchanged; one undo
 step per symbol; nothing on the desktop or in a browser
 (`ctx.stylus.available` is false there).
 
-**Out of v1, to decide later.** The barline class (nothing to write);
-ornaments (the editor only cycles them — setting one would be a small
-session addition); whole vs half rest (one class; by the measure's room);
-the double flat (the editor has none: a notice); handwriting on the desktop.
+**Decided on 2026-11-02, after the class review.** The ornaments by name
+(API 1.3.7: `Mark`'s `ornament` kind; the turn added to the core and the
+`w` cycle); the quarter rest as **the eraser** (`nearestMark`,
+`core.erase`), no other rest by hand; the classes granita drops: the
+barline, the pedal, the double flat, `m` and `z` alone, every rest but the
+quarter — the user retrains; **coda classes** are coming to the model, a
+repeat-mark kind for `core.mark` to approve when they do. **Done the same
+day**: granita v8's battuta variant (43 classes; the double sharp and the
+32nd/64th notes out too, the repeat marks in) copied into the shell; its
+context measures the note's body — API 1.3.8: `nearestNote.box`,
+`StylusSymbolContext.noteW/noteH`, `Mark`'s `repeatMark` kind. **Slurs
+and ties** (the user, the same day): a third mode, a bow from note to
+note, a tie for the same note and a slur otherwise — API 1.3.9: `Mark`'s
+`tie` and `slur` kinds, `nearestNote.pitch`.
+
+**Out of v1, to decide later.** The pedal (two signs); the double flat
+(the editor has none); the 32nd and 64th notes by hand (the cross writes
+notes exactly); handwriting on the desktop.
 
 ## Phase 10 — Tablets: iPadOS and Android (decided 2026-10-20)
 

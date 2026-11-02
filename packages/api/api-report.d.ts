@@ -1,4 +1,4 @@
-// @battuta/api 1.3.5 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
+// @battuta/api 1.3.9 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
 
 // ---- ../dist/.tsbuildinfo
 {"version":"5.9.3"}
@@ -492,7 +492,7 @@ export interface FormatsService {
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export declare const API_VERSION = "1.3.5";
+export declare const API_VERSION = "1.3.9";
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";
 export type { Disposable } from "./disposable.js";
@@ -508,7 +508,7 @@ export type { ExportContribution, ExportFile, ExportPayload, ImportContribution,
 export type { DirEntry, WatchEvent, WatchEventKind, WorkspaceService } from "./workspace.js";
 export type { StylusSample, StylusScorePoint, StylusEvent, StylusService, StylusSymbolContext, StylusRecognizeRequest, StylusRecognition } from "./stylus.js";
 export type { KeyPress, KeysService } from "./keys.js";
-export type { SetPitchesMessage, SetSylMessage, SetHarmMessage, EnterNoteMessage, AddChordNoteMessage, Mark, MarkMessage, CommandMessage, CommandMessageType } from "./messages.js";
+export type { SetPitchesMessage, SetSylMessage, SetHarmMessage, EnterNoteMessage, AddChordNoteMessage, Mark, MarkMessage, EraseMessage, CommandMessage, CommandMessageType } from "./messages.js";
 export { COMMAND_MESSAGE_TYPES } from "./messages.js";
 export type { MidiPort, MidiNoteEvent, MidiVirtualInput, MidiOutputs, MidiService } from "./midi.js";
 export type { KeymapEntry, ActionsService } from "./actions.js";
@@ -900,6 +900,26 @@ export type Mark = {
     kind: "rest";
     dur: string;
     dots?: number;
+}
+/** An ornament by name (1.3.7), where the ornament key cycles them: the same one again takes it off, another replaces it. The arpeggio needs a chord. */
+ | {
+    kind: "ornament";
+    ornament: "arpeg" | "trill" | "mordent" | "turn";
+}
+/** A repeat mark by name (1.3.8), where the coda key cycles them — the coda sign, "To Coda", the segno, Fine, D.S., D.C.: the same one again takes it off, another replaces it. */
+ | {
+    kind: "repeatMark";
+    mark: "coda" | "toCoda" | "segno" | "fine" | "dalSegno" | "daCapo";
+}
+/** A tie from the event to `endId` (1.3.9), either order, as the tie key ties a note to its neighbour: the same pitch on both, consecutive in their layer — or every event between them a link of the chain, as the key does over a run. The same again unties. Refused across staves or layers, and where the pitches differ. */
+ | {
+    kind: "tie";
+    endId: string;
+}
+/** A slur from the event to `endId` (1.3.9), either order, as the slur key spans a selection; the same again removes it. Notes and chords only. */
+ | {
+    kind: "slur";
+    endId: string;
 };
 /**
  * Put a mark on an event (1.3.5, the stylus). One undo step; labels itself.
@@ -910,7 +930,22 @@ export interface MarkMessage {
     eventId: string;
     mark: Mark;
 }
-export type CommandMessage = SetPitchesMessage | SetSylMessage | SetHarmMessage | EnterNoteMessage | AddChordNoteMessage | MarkMessage;
+/**
+ * Erase what stands at `id` (1.3.7, the stylus's eraser): a note or a chord
+ * — a chord's note names its chord — is deleted to rests, its time left as
+ * rests the way the Delete key leaves it; a mark that stands on its own
+ * (a dynamic, a fingering, a fermata, an ornament, a repeat mark —
+ * `StylusScorePoint.nearestMark`) is removed whatever its state. A rest,
+ * a pedal, and what is part of its note (an articulation, an accidental,
+ * a dot: the same mark again takes it off) are refused. One undo step;
+ * the caret goes to the rest that took the note's place, or to the event
+ * the mark was on.
+ */
+export interface EraseMessage {
+    type: "core.erase";
+    id: string;
+}
+export type CommandMessage = SetPitchesMessage | SetSylMessage | SetHarmMessage | EnterNoteMessage | AddChordNoteMessage | MarkMessage | EraseMessage;
 export type CommandMessageType = CommandMessage["type"];
 export declare const COMMAND_MESSAGE_TYPES: readonly CommandMessageType[];
 
@@ -1157,9 +1192,23 @@ export interface StylusScorePoint {
         left: number;
         right: number;
     };
-    /** The notehead nearest the point within 8 staff spaces (1.3.5): the note's own id — a chord's note names itself, not the chord — and its head's centre in page px. Null when none is that near. */
+    /** The note nearest the point within 8 staff spaces (1.3.5), by its body — its notehead, stem and flag; every head and the stem of its chord, for a chord's note; without accidentals, dots or articulations (1.3.8, as granita measures a note) — so a mark under a stem-down note finds it: the note's own id (a chord's note names itself, not the chord), its HEAD's centre in page px, where the pitch is, that body's `box` in page px (1.3.8), and its written `pitch` — a chord's note its own, with its accidental when written (1.3.9; null when the note has none). Null when none is that near. */
     nearestNote: {
         eventId: string;
+        x: number;
+        y: number;
+        box: {
+            left: number;
+            top: number;
+            right: number;
+            bottom: number;
+        };
+        pitch: Pitch | null;
+    } | null;
+    /** The mark nearest the point within 8 staff spaces, by its engraving (1.3.7): one that stands on its own beside its event — a dynamic, a fingering, a fermata, an ornament (trill, mordent, turn, arpeggio) or a repeat mark — with its id, which `core.erase` takes, and its centre in page px. Not a pedal, nor an articulation, accidental or dot, which are part of their note. Null when none is that near. */
+    nearestMark: {
+        id: string;
+        kind: "dynamic" | "fingering" | "fermata" | "ornament" | "repeatMark";
         x: number;
         y: number;
     } | null;
@@ -1204,7 +1253,7 @@ export type StylusEvent =
 /**
  * Where a symbol sits, in staff spaces — granita's `SymbolContext`, which the
  * shell turns into the model's vector (1.3.5). Everything in it comes from a
- * `StylusScorePoint`: the staff, the measure and the nearest notehead.
+ * `StylusScorePoint`: the staff, the measure and the nearest note's body.
  */
 export interface StylusSymbolContext {
     /** The symbol's centre from the staff's middle line; down is positive. */
@@ -1213,9 +1262,12 @@ export interface StylusSymbolContext {
     xMeasure: number;
     /** Distance to the nearest barline. */
     barline: number;
-    /** The centre minus the nearest notehead's centre; null with no notehead within 8 spaces. */
+    /** The centre minus the centre of the nearest note's body (`nearestNote.box`, 1.3.8; its head before); null with no note within 8 spaces. */
     noteDx: number | null;
     noteDy: number | null;
+    /** That body's width and height (1.3.8); null with no note. */
+    noteW: number | null;
+    noteH: number | null;
     /** The symbol's box. */
     width: number;
     height: number;

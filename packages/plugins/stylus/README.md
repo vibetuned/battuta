@@ -1,7 +1,11 @@
 # Stylus
 
-Write notes with the **Apple Pencil** or the **S Pen**, in edit view, on
-the iPad and Android tablets.
+Write with the **Apple Pencil** or the **S Pen**, in edit view, on the
+iPad and Android tablets — three ways, cycled by the **✎** item in the
+status bar: **the cross**, for notes; **handwriting**, for the symbols
+around them; and **slurs and ties**, drawn from note to note.
+
+## The cross
 
 - **Touch** a staff: a cross comes up at the tip, with a label saying
   what lifting the pen will write — the pitch under the pen, at the
@@ -28,19 +32,94 @@ a pitch the chord already has is refused.
 The key signature supplies the accidental. Every note is one undo step,
 and the caret goes to the note you wrote — or to the chord it joined.
 
-The pen writes **only on the score**: everywhere else — the toolbar, the
-panels, the on-screen keyboard, a menu open over the score — it taps like
-a finger. Fingers scroll and zoom as always, even while the pen writes.
+## Handwriting
+
+Tap **✎ cross** in the status bar: it reads **✎ hand**, and the pen
+writes symbols instead. Write one as you would on paper, at its natural
+size, where it belongs — a sharp just left of its note, a dot just right
+of it, a staccato above it, a fingering or a trill above the staff, a
+dynamic below it, a clef on the staff, a note with its head where the
+pitch is. The strokes that follow each other closely are one symbol: within
+about half a second of the last lift, and within reach of what is drawn
+— half its size, at least half a staff space, so a sharp's four strokes
+join while a staccato written right after one on the next note is its
+own. A moment after the last lift the symbol is read by **granita**,
+battuta's own classifier, which runs in the app and sends nothing
+anywhere.
+
+The strokes show in blue as you write, until the symbol is read. What it
+reads is put in the score as the keyboard would put it, one undo step,
+and a small label says what was read and how sure it was (`sharp ·
+93 %`), with a **✓ ✗** beside it for three seconds: tap ✓, or nothing,
+and it stays; tap ✗ and it is undone, and the other readings are offered
+to choose from. The caret goes to the event it was put on. The rules of
+notation settle what the shapes cannot: a dot is an augmentation dot on
+the note before it and a staccato on the note under or over it;
+accidentals go on the note after them; fingerings, dynamics and
+ornaments are never inside the staff; a clef only inside it, at the start
+of its measure.
+
+**The eraser.** A **quarter rest** is never written: it erases. Draw one
+on a note and the note becomes a rest of its length, as the Delete key
+does it (on one note of a chord, the whole chord); draw one on a
+fingering, a dynamic, a fermata or an ornament and that mark goes. The
+other rests are not written either — rests are what notes do not take: a
+shorter note entered with the cross leaves them.
+
+**When it isn't sure** — the best reading under 50 % — up to three
+choices appear beside the symbol, with their percentages: only readings
+that belong where you wrote (no fingering inside the staff, no rest above
+it). Tap one with the pen (or a finger) to write it, **none of these** —
+the last row — to discard the symbol, or write somewhere else to dismiss
+them. When nothing it read belongs there, a notice says
+so and names the best reading. Everything stays inside the measure you
+wrote in: beside the symbol, or to its left near a barline.
+
+**What it reads** (granita's battuta set, 43 symbols): the accidentals
+(sharp, flat, natural), staccato, tenuto, accent, staccatissimo and
+marcato, the augmentation dot, the fermata, fingerings 1–5, the ornaments
+(a trill, mordent or turn above its note, an arpeggio just left of its
+chord), the dynamics (`p` to `fff`, `sfz`, `sf`, `fz`), notes from whole
+to 16th (entered over the event under the head, at the head's pitch), the
+G, F and C clefs, the repeat marks (the coda and segno signs, *Fine*,
+*D.S.* and *D.C.*, above or below the staff, on the event under them) —
+and the quarter rest, which erases.
+
+A note is measured by its **body** — head, stem and flag, a chord's as
+one — so "left of the note", "above it" and "on it" are read against
+that box, half a space to spare: a staccato over the stem's end is above
+the note, a dot beside its head is right of it.
+
+## Slurs and ties
+
+Tap **✎ hand**: it reads **✎ slur**, and the pen draws bows. Touch a note
+(or a chord — its head, its stem, up to a space around), draw to another
+note and lift on it: the two are **tied** when they are the same note —
+the same written pitch, accidental included — and **slurred** otherwise.
+Either direction. A tie between notes that are not neighbours ties every
+note between them, as the keyboard's tie does over a selection, so all of
+them must be that pitch; the editor refuses anything else with a notice,
+as it refuses a tie between different pitches. The bow is written as it
+is lifted, with the ✓ ✗ of handwriting: ✗ undoes it and offers the other
+kind. Lifting off a note, or on the note you started from, writes
+nothing and says so; landing off a note draws nothing.
+
+In every mode the pen writes **only on the score**: everywhere else —
+the toolbar, the panels, the on-screen keyboard, a menu open over the
+score — it taps like a finger. Fingers scroll and zoom as always, even
+while the pen writes.
 
 ## Turning it on and off
 
 battuta menu → 🌣 shortcuts → **plugins** → *Stylus*. Off gives the pen
-back to the page everywhere. The switch is remembered. On the desktop and
-in a browser there is no stylus to capture, and the plugin does nothing.
+back to the page everywhere. The switch is remembered; the mode is not —
+every start is the cross. On the desktop and in a browser there is no
+stylus to capture, and the plugin does nothing, not even the ✎ item.
 
 ## Keys
 
-None: the pen is the whole interface.
+None: the pen is the whole interface. The ✎ item runs the plugin's one
+command, *Stylus: the cross or handwriting*.
 
 ## Settings and storage
 
@@ -53,9 +132,14 @@ The length is the editor's own input length; the plugin keeps none.
 
 ## What it does not do
 
-- **No accidentals or rests** yet: a tap on a note replaces it, and the
-  cross sets a duration and a staff step, keeping the input's dots,
-  nothing more.
-- **No handwriting.** Every stroke on a staff steers the cross; reading
-  written music is the plugin's later parts.
+- **No rests, pedal, double accidentals, 32nd or 64th notes, or barline
+  by hand**: rests are what notes leave and the quarter rest is the
+  eraser; a pedal needs the event it ends on; the editor has no double
+  flat and the double sharp, the short notes and the barline are not in
+  granita's set (the cross writes any note exactly).
+- **The eraser does not take an articulation, an accidental or a dot**:
+  they are part of their note — write the same mark again to remove it,
+  or erase the note.
+- **An arpeggio on a single note** is refused by the editor: it rolls a
+  chord.
 - **Not in page view**, where there are no measure tiles to write on.
