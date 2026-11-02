@@ -8,7 +8,7 @@
  * Off runs the plugin's deactivate and withdraws everything it
  * contributed (its bindings leave this very list); the switch persists.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { bindingText, type KeyBinding, type Keymap, type Layout } from "./keymap";
 import type { PluginInfo } from "./host";
 
@@ -28,6 +28,7 @@ export function ShortcutEditor({
   plugins,
   noPlugins,
   onTogglePlugin,
+  settingsOf,
 }: {
   keymap: Keymap;
   layout: Layout;
@@ -39,6 +40,8 @@ export function ShortcutEditor({
   /** The session started with ?plugins=off: nothing is registered. */
   noPlugins: boolean;
   onTogglePlugin: (id: string, on: boolean) => void;
+  /** A plugin's `pluginSettings` slot items (1.3.11), drawn under its row: the host's `<Slot pluginId>`. */
+  settingsOf?: (pluginId: string) => ReactNode;
 }) {
   const [capturing, setCapturing] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("shortcuts");
@@ -136,19 +139,22 @@ export function ShortcutEditor({
               <div data-plugins-empty style={{ color: "#89a", padding: "12px 0" }}>no plugins installed</div>
             ) : (
               plugins.map((p) => (
-                <div key={p.id} data-plugin-row={p.id} data-plugin-state={p.state} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: "1px solid #2a3542" }}>
-                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: p.state === "failed" ? "not-allowed" : "pointer" }} title={p.state === "failed" ? p.error ?? "failed" : p.enabled ? "turn off: deactivates now and forgets nothing" : "turn on"}>
-                    <input data-plugin-toggle={p.id} type="checkbox" checked={p.enabled} disabled={p.state === "failed"} onChange={(e) => onTogglePlugin(p.id, e.target.checked)} />
-                    <strong>{p.manifest.name}</strong>
-                  </label>
-                  <span style={{ color: "#678", fontFamily: "monospace", fontSize: 11 }}>
-                    {p.id} {p.manifest.version}
-                  </span>
-                  <span style={{ flex: 1, color: "#9ab", fontSize: 12 }}>{p.manifest.description ?? ""}</span>
-                  <span data-plugin-badge style={{ fontSize: 11, padding: "1px 7px", borderRadius: 10, background: p.state === "active" ? "#2d7d46" : p.state === "failed" ? "#7a2e2e" : "#28394e", color: "#fff" }} title={p.error ?? undefined}>
-                    {STATE_LABEL[p.state]}
-                  </span>
-                  {p.error && <span style={{ color: "#f99", fontSize: 12 }}>{p.error}</span>}
+                <div key={p.id} data-plugin-row={p.id} data-plugin-state={p.state} style={{ borderBottom: "1px solid #2a3542" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: p.state === "failed" ? "not-allowed" : "pointer" }} title={p.state === "failed" ? p.error ?? "failed" : p.enabled ? "turn off: deactivates now and forgets nothing" : "turn on"}>
+                      <input data-plugin-toggle={p.id} type="checkbox" checked={p.enabled} disabled={p.state === "failed"} onChange={(e) => onTogglePlugin(p.id, e.target.checked)} />
+                      <strong>{p.manifest.name}</strong>
+                    </label>
+                    <span style={{ color: "#678", fontFamily: "monospace", fontSize: 11 }}>
+                      {p.id} {p.manifest.version}
+                    </span>
+                    <span style={{ flex: 1, color: "#9ab", fontSize: 12 }}>{p.manifest.description ?? ""}</span>
+                    <span data-plugin-badge style={{ fontSize: 11, padding: "1px 7px", borderRadius: 10, background: p.state === "active" ? "#2d7d46" : p.state === "failed" ? "#7a2e2e" : "#28394e", color: "#fff" }} title={p.error ?? undefined}>
+                      {STATE_LABEL[p.state]}
+                    </span>
+                    {p.error && <span style={{ color: "#f99", fontSize: 12 }}>{p.error}</span>}
+                  </div>
+                  {settingsOf?.(p.id)}
                 </div>
               ))
             )}

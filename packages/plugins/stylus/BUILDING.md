@@ -44,21 +44,23 @@ The user's decisions, each taken as asked:
 | Which classes? | The user's list (2026-11-02): **no barline, pedal, double flat, `m` or `z` alone, and no rest but the quarter** — granita is retrained without them; the table lacks them, so a reading the old model still gives is not offered. Coda classes are coming to the model (a repeat-mark kind to approve when they do). |
 | The quarter rest? | **The eraser**: rests are what notes do not take; touching a note it deletes it to rests, touching a mark that stands on its own it removes the mark. |
 | Slurs and ties (the user, 2026-11-02) | **A third mode** on the same item: a bow drawn from a note to another — **a tie when they are the same note, a slur otherwise**; the editor judges the pitches. API 1.3.9: `Mark`'s `tie` and `slur` kinds (with `endId`) and `nearestNote.pitch` — **and nothing else**. |
+| The replies and the training (the user, 2026-11-02) | **Explicit replies only** — ✓ tapped, a chooser's pick, ✗ then a pick; never the silent ✓, never a bow. The replies **in the app's private data, with a share action**. The training as **plugin commands** — train, reset, share — each ending in a notice. API 1.3.10: `ctx.stylus.reply`, `train`, `resetTraining`, `shareReplies`, `StylusReply`, `StylusTraining` — **and nothing else**. battuta's iOS floor rises to 18 for the multi-function Core ML package. |
+| The replies in the plugins page (the user, 2026-11-02, on trying it) | The ✎ item **in the header with the other plugins' buttons** (the status bar before). **The replies' numbers and a train button in the plugins page, as the plugin's settings**: API 1.3.11's `pluginSettings` slot — an item under the plugin's own row — `ctx.stylus.replies()` (the counts, the training in use) and `deleteReplies()` (a delete button, asking first) — **and nothing else**. |
 | granita v8 (2026-11-02, the battuta variant, 43 classes) | The context measures the nearest note's **body** — head, stem and flag, a chord's as one, without accidentals, dots or articulations — and carries its size; the flags are "over" / "beside" the body within half a space. The host gives `nearestNote.box` (1.3.8), the plugin sends `noteW` / `noteH`, the natives build the vector from the body. The repeat marks (coda, segno, Fine, D.S., D.C.) came in: `core.mark { kind: "repeatMark" }` (1.3.8), the core setting one by name where the coda key cycles. |
 
 ## 2. Manifest
 
 ```
 id                battuta.stylus
-engines.battuta   ^1.3.5
+engines.battuta   ^1.3.11
 capabilities      stylus
 activation        onPointer:coarse
-contributes       one command, battuta.stylus.mode
+contributes       five commands: battuta.stylus.mode, .train, .resetTraining, .shareReplies, .deleteReplies
 ```
 
 `onPointer:coarse` wakes it on a tablet; `ctx.stylus.available` is false
 everywhere but the iOS and Android shells, and `activate` returns at once
-there. The one command is the mode, run by the status-bar item the plugin
+there. The mode command is run by the header item the plugin
 adds at RUNTIME (`ctx.slots.add`) once it knows there is a stylus: a
 declared slot item would be rendered on the desktop too, where there is
 no pen. No keys. Turning the plugin off in the plugins tab is how the pen
@@ -184,6 +186,18 @@ Three signals and a few plugin-held values (`index.tsx`):
   so does a mark with no note beside it, an arpeggio on a single note, and
   a reading the table lacks (`not a symbol the editor knows`).
 
+- A reply (1.3.10) is no message: `ctx.stylus.reply({ label, strokes,
+  staffSpace, context, read })` after a write the user confirmed — ✓
+  tapped, a chooser's pick, ✗ then a pick — with the symbol's strokes as
+  the pen gave them (`Symbol.samples`: every sample, time and pressure),
+  its context and the classifier's best answer. The silent ✓ sends none
+  (the user did not say), nor does a bow (no classifier). The shell
+  writes musicset's record; `train`, `resetTraining`, `shareReplies` and
+  `deleteReplies` (1.3.11, asking first) are the four commands, each
+  ending in a notice — and the four buttons of the plugin's section in the
+  plugins page (`Replies.tsx`, the `pluginSettings` slot), which shows
+  `ctx.stylus.replies()` re-read after each of them and after a reply.
+
 ## 6. Tests
 
 - `test/gesture.test.ts` — the cross as a pure function: at the touch, and
@@ -204,7 +218,8 @@ Three signals and a few plugin-held values (`index.tsx`):
   confidence; what cannot be written and why, the dropped classes among
   it; the head of a drawn note.
 - `test/stylus.test.ts` — the plugin against a fake context: nothing
-  without a stylus; capture, the three overlays and the status-bar item;
+  without a stylus; capture, the three overlays, the header item and the
+  plugins-page section;
   the cross's messages and notices; the mode switched by its command; a
   symbol gathered and read with its place, the mark written on the right
   neighbour; ✓ ✗ — ✗ undoing and the chooser taking over, ✓ and silence
@@ -212,7 +227,11 @@ Three signals and a few plugin-held values (`index.tsx`):
   tap elsewhere dismissing it; the eraser's target by distance; the
   third mode's bows — a slur, a tie, backwards, the refusals, ✗ offering
   the other kind; the rules' refusals, a refused mark and a failed
-  classifier as notices. The ink is drawn, not tested: it is a signal the
+  classifier as notices; a ✓ tapped and a chooser's pick as replies with
+  the symbol's samples as the pen gave them, the silent ✓, the discard row
+  and a bow as none; the three training commands and their notices; the
+  section's numbers read at activation and after a reply, a training and a
+  delete, which asks first. The ink is drawn, not tested: it is a signal the
   overlay reads, with no React in these tests.
 - The host's half is the editor's: `core.enterNote`, `core.addChordNote`
   and every kind of `core.mark` against real measures in

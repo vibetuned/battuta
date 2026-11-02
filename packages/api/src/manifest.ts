@@ -41,13 +41,16 @@ export const HOST_CAPABILITIES: readonly HostCapability[] = ["midi", "workspace"
 
 /**
  * UI slots a plugin may place an item in. `header` is the first header row
- * (tabs, view toggle); `docHeader` the second (title, tempo, and the player
- * in page view — where a playback plugin's controls go); `statusBar` the
- * bottom bar; `menu` the battuta menu. Panels are a separate mechanism.
+ * (tabs, view toggle — where the plugins' own buttons go); `docHeader` the
+ * second (title, tempo, and the player in page view — where a playback
+ * plugin's controls go); `statusBar` the bottom bar; `menu` the battuta
+ * menu; `pluginSettings` (1.3.11) the plugin's own row in the plugins page
+ * (🌣 shortcuts → plugins), under its name — its settings and its state,
+ * rendered by the plugin while it is active. Panels are a separate mechanism.
  */
-export type SlotName = "header" | "docHeader" | "statusBar" | "menu";
+export type SlotName = "header" | "docHeader" | "statusBar" | "menu" | "pluginSettings";
 
-export const SLOT_NAMES: readonly SlotName[] = ["header", "docHeader", "statusBar", "menu"];
+export const SLOT_NAMES: readonly SlotName[] = ["header", "docHeader", "statusBar", "menu", "pluginSettings"];
 
 export type KeyboardLayout = "qwerty" | "azerty";
 

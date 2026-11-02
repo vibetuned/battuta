@@ -126,8 +126,9 @@ npm run ios -- build --debug --target aarch64-sim         # the simulator (an iP
 
 `scripts/mobile.sh` finds Android's SDK and NDK where Android Studio puts
 them and a JDK 21 (Android Studio's bundled Java 25 is too new for the
-generated Gradle), for these commands only; granita's model, which both
-tablet apps carry for the stylus, comes from a granita checkout by
+generated Gradle), for these commands only; granita's model (and the anchors
+its training on the device holds to), which both tablet apps carry for the
+stylus, comes from a granita checkout by
 `sh src-tauri/plugins/battuta-mobile/scripts/copy-granita.sh <granita>`
 (`src-tauri/plugins/battuta-mobile/granita/VERSION` says which); Android Studio itself gets its
 JDK 21 from `gradle/gradle-daemon-jvm.properties`, fetched by the foojay

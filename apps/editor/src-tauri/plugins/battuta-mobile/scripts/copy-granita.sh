@@ -1,7 +1,7 @@
 #!/bin/sh
 # Copy granita's released model into this plugin (phase 11, M2): the Core ML
-# package for the iPad, the LiteRT model for Android, the sidecar for both,
-# and the fixtures the debug shell checks itself with. Tracked here on
+# package for the iPad, the LiteRT model for Android, the sidecar and the
+# anchors for both, and the fixtures the debug shell checks itself with. Tracked here on
 # purpose, so a build needs nothing outside the repo; this script and
 # granita/VERSION say which release they are.
 #
@@ -19,6 +19,9 @@ cp -R "$models/granitanet.mlpackage" "$here/ios/Resources/"
 cp "$models/granitanet.json" "$here/ios/Resources/granitanet.json"
 cp "$models/granitanet.json" "$here/android/src/main/assets/granitanet.json"
 cp "$models/granitanet.tflite" "$here/android/src/main/assets/granitanet.tflite"
+# The anchors (granita v8's personal layer, 2026-11-02): what the training on the device holds the layer to.
+cp "$models/anchors.json" "$here/ios/Resources/anchors.json"
+cp "$models/anchors.json" "$here/android/src/main/assets/anchors.json"
 cp "$models/fixtures.json" "$here/granita/fixtures.json"
 
 commit="$(git -C "$src" rev-parse HEAD 2>/dev/null || echo unknown)"

@@ -85,6 +85,22 @@ class RecognizeArgs {
 }
 
 @InvokeArg
+class ReadingArgs {
+    var label: String = ""
+    var confidence: Double = 0.0
+}
+
+/** A confirmed symbol (`ctx.stylus.reply`, 1.3.10): its samples `[x, y, t_ms, pressure]`. */
+@InvokeArg
+class ReplyArgs {
+    var label: String = ""
+    var strokes: Array<Array<DoubleArray>> = arrayOf()
+    var staffSpace: Double = 0.0
+    var context: ContextArgs? = null
+    var read: ReadingArgs? = null
+}
+
+@InvokeArg
 class ShareArgs {
     var name: String = ""
     var data: String = ""
@@ -194,6 +210,19 @@ class BattutaMobilePlugin(private val activity: Activity) : Plugin(activity) {
     /** Loaded on the first symbol; its own thread, the model call takes a few ms. */
     private val granitaThread = Executors.newSingleThreadExecutor()
     private var granita: GranitaModel? = null
+    /** The replies file (1.3.10) and the trained layer, in the app's files under `stylus/`. */
+    private val replies by lazy { Annotations(activity) }
+    private val headFile: File get() = File(replies.directory, "head.json")
+    private val trainingFile: File get() = File(replies.directory, "training.json")
+
+    /** The model, loaded once — with the trained layer, when the user trained one. */
+    private fun loadGranita(): GranitaModel = granita ?: GranitaModel(activity.assets).also { m ->
+        if (m.personal) HeadWeights.load(headFile)?.let { m.head = it }
+        granita = m
+    }
+
+    private fun vector(context: ContextArgs?): FloatArray =
+        context?.let { SymbolContext(it.yStaff, it.xMeasure, it.barline, it.noteDx, it.noteDy, it.width, it.height, it.noteW, it.noteH).vector() } ?: SymbolContext.UNKNOWN
 
     @Command
     fun stylusRecognize(invoke: Invoke) {
@@ -205,17 +234,157 @@ class BattutaMobilePlugin(private val activity: Activity) : Plugin(activity) {
         }
         granitaThread.execute {
             try {
-                val model = granita ?: GranitaModel(activity.assets).also { granita = it }
+                val model = loadGranita()
                 val fraction = StrokeRaster.fraction(strokes, args.staffSpace)
                 val pixels = StrokeRaster.render(strokes, fraction)
-                val vector = args.context?.let { SymbolContext(it.yStaff, it.xMeasure, it.barline, it.noteDx, it.noteDy, it.width, it.height, it.noteW, it.noteH).vector() } ?: SymbolContext.UNKNOWN
-                val top = model.predict(StrokeRaster.normalize(pixels), vector)
+                val answer = model.predict(StrokeRaster.normalize(pixels), vector(args.context))
                 val list = JSArray()
-                for (t in top) list.put(JSObject().apply { put("label", t.label); put("confidence", t.confidence.toDouble()) })
+                for (t in answer.top) list.put(JSObject().apply { put("label", t.label); put("confidence", t.confidence.toDouble()) })
                 invoke.resolve(JSObject().apply { put("top", list) })
             } catch (e: Exception) {
                 invoke.reject(e.message ?: e.toString())
             }
+        }
+    }
+
+    // --- the replies and the training (1.3.10): the dataset, and the last layer on the device ---
+
+    /** A confirmed symbol to the replies file, musicset's record; the count after it. */
+    @Command
+    fun stylusReply(invoke: Invoke) {
+        val args = invoke.parseArgs(ReplyArgs::class.java)
+        val samples = args.strokes.map { s -> s.filter { it.size >= 2 } }.filter { it.isNotEmpty() }
+        if (args.label.isEmpty() || samples.isEmpty() || args.staffSpace <= 0.0) {
+            invoke.reject("reply: a label, strokes and a positive staffSpace are needed")
+            return
+        }
+        val points = samples.map { s -> s.map { PointF(it[0].toFloat(), it[1].toFloat()) } }
+        val fraction = StrokeRaster.fraction(points, args.staffSpace)
+        val version = try { activity.packageManager.getPackageInfo(activity.packageName, 0).versionName ?: "?" } catch (e: Exception) { "?" }
+        val record = Reply(
+            label = args.label,
+            writer = replies.writer,
+            staffSpace = args.staffSpace,
+            strokes = samples.map { s -> s.map { p -> DoubleArray(minOf(p.size, 4)) { i -> when (i) { 2 -> Math.round(p[2] * 10) / 10.0; 3 -> Math.round(p[3] * 1000) / 1000.0; else -> p[i] } } } },
+            context = args.context?.let { SymbolContext(it.yStaff, it.xMeasure, it.barline, it.noteDx, it.noteDy, it.width, it.height, it.noteW, it.noteH) },
+            fraction = fraction,
+            predicted = args.read?.let { GranitaModel.Top(it.label, "", it.confidence.toFloat()) },
+            device = "s-pen",
+            app = "battuta/$version",
+            time = Annotations.now(),
+        )
+        granitaThread.execute {
+            try {
+                replies.append(record)
+                invoke.resolve(JSObject().apply { put("count", replies.count) })
+            } catch (e: Exception) {
+                invoke.reject("reply: ${e.message ?: e}")
+            }
+        }
+    }
+
+    /** The last layer retrained from every reply (`Trainer`), kept in the stylus folder and used from then on. */
+    @Command
+    fun stylusTrain(invoke: Invoke) {
+        granitaThread.execute {
+            try {
+                val model = loadGranita()
+                val original = model.sidecar.head?.let { HeadWeights(it.weight, it.bias) }
+                if (!model.personal || original == null) {
+                    invoke.reject("train: the model has no personal signature")
+                    return@execute
+                }
+                val records = replies.all()
+                val anchors = Anchors.load(activity.assets)?.anchors ?: emptyList()
+                val classes = model.sidecar.classes
+                val examples = ArrayList<Example>()
+                for (r in records) {
+                    val label = classes.indexOf(r.label)
+                    if (label < 0) continue
+                    val strokes = r.strokes.map { s -> s.map { PointF(it[0].toFloat(), it[1].toFloat()) } }.filter { it.isNotEmpty() }
+                    if (strokes.isEmpty()) continue
+                    val px = StrokeRaster.render(strokes, r.fraction)
+                    val p = model.predict(StrokeRaster.normalize(px), r.context?.vector() ?: SymbolContext.UNKNOWN)
+                    if (p.features.isNotEmpty()) examples.add(Example(p.features, label))
+                }
+                val head = original.copy()
+                val report = Trainer.train(head, original, ReplayBuffer(examples), anchors)
+                model.head = head
+                head.save(headFile)
+                val record = TrainingRecord(records.size, report.examples, report.anchors, report.loss.toDouble(), report.accuracy.toDouble(), report.anchorDrift.toDouble())
+                record.save(trainingFile)
+                invoke.resolve(record.into(JSObject()))
+            } catch (e: Exception) {
+                invoke.reject("train: ${e.message ?: e}")
+            }
+        }
+    }
+
+    /** The original layer back, the trained one forgotten. */
+    @Command
+    fun stylusResetTraining(invoke: Invoke) {
+        granitaThread.execute {
+            try {
+                val model = loadGranita()
+                model.sidecar.head?.let { model.head = HeadWeights(it.weight, it.bias) }
+                headFile.delete()
+                trainingFile.delete()
+                invoke.resolve(JSObject())
+            } catch (e: Exception) {
+                invoke.reject("resetTraining: ${e.message ?: e}")
+            }
+        }
+    }
+
+    /** The replies on the device, how many the replay buffer would take of them, and the last training while its layer is the one reading (1.3.11). */
+    @Command
+    fun stylusReplies(invoke: Invoke) {
+        granitaThread.execute {
+            try {
+                val classes = loadGranita().sidecar.classes
+                val examples = replies.all().mapNotNull { r -> classes.indexOf(r.label).takeIf { it >= 0 }?.let { Example(FloatArray(0), it) } }
+                val buffer = ReplayBuffer(examples).examples.size
+                val training = if (headFile.isFile) TrainingRecord.load(trainingFile) else null
+                invoke.resolve(JSObject().apply {
+                    put("replies", replies.count)
+                    put("buffer", buffer)
+                    put("training", training?.into(JSObject()) ?: org.json.JSONObject.NULL)
+                })
+            } catch (e: Exception) {
+                invoke.reject("replies: ${e.message ?: e}")
+            }
+        }
+    }
+
+    /** Every reply deleted; the layer in use is left alone (1.3.11). */
+    @Command
+    fun stylusDeleteReplies(invoke: Invoke) {
+        granitaThread.execute {
+            replies.deleteAll()
+            invoke.resolve(JSObject())
+        }
+    }
+
+    /** The replies file on the share sheet, through the share folder the FileProvider serves. */
+    @Command
+    fun stylusShareReplies(invoke: Invoke) {
+        if (!replies.file.isFile || replies.count == 0) {
+            invoke.reject("no replies yet")
+            return
+        }
+        try {
+            val dir = File(activity.cacheDir, "share").apply { mkdirs() }
+            val file = File(dir, Annotations.FILE_NAME)
+            replies.file.copyTo(file, overwrite = true)
+            val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.battuta.share", file)
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "application/json"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivityForResult(invoke, Intent.createChooser(send, null), "shareResult")
+        } catch (e: Exception) {
+            invoke.reject(e.message ?: "could not share the replies")
         }
     }
 

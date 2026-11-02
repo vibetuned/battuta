@@ -11,7 +11,8 @@
  * is the editor's (`apps/editor/test/stylus.test.ts`, `host.test.ts`).
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
-import type { CommandHandler, CommandMessage, OverlaySpec, PluginContext, SlotItem, SlotName, StylusEvent, StylusRecognition, StylusRecognizeRequest, StylusScorePoint } from "@battuta/api";
+import type { ReactElement } from "react";
+import type { CommandHandler, CommandMessage, OverlaySpec, PluginContext, SlotItem, SlotName, Store, StylusEvent, StylusRecognition, StylusRecognizeRequest, StylusReplies, StylusReply, StylusScorePoint, StylusTraining } from "@battuta/api";
 import plugin from "../src/index";
 import { STEP_X } from "../src/gesture";
 import { GAP_MS } from "../src/handwriting";
@@ -33,6 +34,11 @@ function fixture(available: boolean, refuse = false) {
   const notices: string[] = [];
   const actions: string[] = [];
   const requests: StylusRecognizeRequest[] = [];
+  const replies: StylusReply[] = [];
+  const shell: string[] = [];
+  const confirms: string[] = [];
+  let confirmAnswer = true;
+  let trained: StylusTraining | null = null;
   let answers: StylusRecognition[] | Error = [];
   let point: StylusScorePoint | null = null;
   let listener: ((e: StylusEvent) => void) | null = null;
@@ -50,7 +56,14 @@ function fixture(available: boolean, refuse = false) {
         if (answers instanceof Error) throw answers;
         return answers;
       },
+      reply: async (r: StylusReply) => (replies.push(r), replies.length),
+      train: async () => (shell.push("train"), (trained = { replies: 12, buffer: 9, anchors: 152, loss: 0.21, accuracy: 0.89, drift: 0.0012 })),
+      resetTraining: async () => void (shell.push("reset"), (trained = null)),
+      shareReplies: async () => (shell.push("share"), true),
+      replies: async () => ({ replies: replies.length, buffer: Math.min(replies.length, 8), training: trained }),
+      deleteReplies: async () => void (shell.push("delete"), (replies.length = 0)),
     },
+    confirm: async (message: string) => (confirms.push(message), confirmAnswer),
     overlays: { add: (spec: OverlaySpec) => (overlays.push(spec), { dispose: () => {} }) },
     slots: { add: (slot: SlotName, item: SlotItem) => (items.push({ slot, item }), { dispose: () => {} }) },
     registerCommand: (id: string, handler: CommandHandler) => ((commands[id] = handler), { dispose: () => {} }),
@@ -80,9 +93,14 @@ function fixture(available: boolean, refuse = false) {
     notices,
     actions,
     requests,
+    replies,
+    shell,
+    confirms,
+    answerConfirm: (yes: boolean) => (confirmAnswer = yes),
     pen,
     listening: () => listener !== null,
     toggle: () => commands["battuta.stylus.mode"]?.(),
+    commands,
     answer: (a: StylusRecognition[] | Error) => (answers = a),
     place: (p: StylusScorePoint | null) => (point = p),
   };
@@ -110,11 +128,14 @@ describe("the stylus plugin", () => {
     expect(f.listening()).toBe(false);
   });
 
-  it("captures the pen, puts its cross, its ink and its feedback on the overlays point, and its mode item in the status bar", () => {
+  it("captures the pen, puts its cross, its ink and its feedback on the overlays point, its mode item in the header and its section in the plugins page", () => {
     const f = fixture(true);
     expect(f.captures).toEqual([true]);
     expect(f.overlays.map((o) => o.id)).toEqual(["cross", "ink", "handwriting"]);
-    expect(f.items.map((i) => [i.slot, i.item.id])).toEqual([["statusBar", "mode"]]);
+    expect(f.items.map((i) => [i.slot, i.item.id])).toEqual([
+      ["header", "mode"],
+      ["pluginSettings", "replies"],
+    ]);
     expect(f.listening()).toBe(true);
   });
 
@@ -337,5 +358,99 @@ describe("slurs and ties", () => {
     const cx = Math.max(100, 300 - 8 - OPTION_W) + OPTION_W / 2, cy = Math.min(230, 310 - 2 * (OPTION_H + OPTION_GAP)) + OPTION_H / 2;
     f.pen(stroke("down", 10, cx, at(4), cy), stroke("up", 10, cx, at(4), cy));
     expect(f.executed[1]).toEqual({ type: "core.mark", eventId: "n1", mark: { kind: "tie", endId: "n2" } });
+  });
+});
+
+describe("the replies and the training (1.3.10)", () => {
+  it("a ✓ tapped is a reply with the class written, the symbol's samples as the pen gave them, its place and what was read; a silent ✓ is not", async () => {
+    vi.useFakeTimers();
+    const f = fixture(true);
+    f.toggle();
+    f.place(at(4));
+    f.answer([{ label: "accidentalSharp", confidence: 0.9 }, { label: "accidentalNatural", confidence: 0.08 }]);
+    await write(f, [[[276, 235], [276, 265]]]);
+    // ✓: right of the symbol's box (276 + 8, 235), the first button.
+    f.pen(stroke("down", 9, 284 + CONFIRM_W / 2, at(4), 235 + 13), stroke("up", 9, 284 + CONFIRM_W / 2, at(4), 235 + 13));
+    expect(f.replies).toHaveLength(1);
+    const r = f.replies[0]!;
+    expect(r.label).toBe("accidentalSharp");
+    expect(r.staffSpace).toBe(10);
+    expect(r.read).toEqual({ label: "accidentalSharp", confidence: 0.9 });
+    expect(r.context).toMatchObject({ noteDx: -2.4 });
+    // One stroke, three samples (down, move, up), each the pen's seven values.
+    expect(r.strokes).toHaveLength(1);
+    expect(r.strokes[0]).toHaveLength(3);
+    expect(r.strokes[0]![0]).toEqual([276, 235, 0, 0.5, 1, 0, null]);
+    // Left alone for three seconds: written, not a reply.
+    await write(f, [[[276, 235], [276, 265]]]);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(f.executed).toHaveLength(2);
+    expect(f.replies).toHaveLength(1);
+  });
+
+  it("a chooser's pick is a reply with the class picked; ✗ then a pick likewise; the discard row and a bow are not", async () => {
+    vi.useFakeTimers();
+    const f = fixture(true);
+    f.toggle();
+    f.place(at(4));
+    f.answer([{ label: "accidentalFlat", confidence: 0.4 }, { label: "accidentalSharp", confidence: 0.35 }]);
+    await write(f, [[[276, 235], [276, 265]]]);
+    const top = Math.min(235, 310 - 3 * (OPTION_H + OPTION_GAP));
+    const row = (i: number): number => top + i * (OPTION_H + OPTION_GAP) + OPTION_H / 2;
+    f.pen(stroke("down", 9, 284 + OPTION_W / 2, at(4), row(1)), stroke("up", 9, 284 + OPTION_W / 2, at(4), row(1)));
+    expect(f.replies.map((r) => r.label)).toEqual(["accidentalSharp"]);
+    // ✗ on a sure one, then the other answer picked.
+    f.answer([{ label: "accidentalSharp", confidence: 0.9 }, { label: "accidentalNatural", confidence: 0.08 }]);
+    await write(f, [[[276, 235], [276, 265]]]);
+    const nx = 284 + CONFIRM_W + 4 + CONFIRM_W / 2;
+    f.pen(stroke("down", 10, nx, at(4), 235 + 13), stroke("up", 10, nx, at(4), 235 + 13));
+    const oy = Math.min(235, 310 - 2 * (OPTION_H + OPTION_GAP)) + OPTION_H / 2;
+    f.pen(stroke("down", 11, 284 + OPTION_W / 2, at(4), oy), stroke("up", 11, 284 + OPTION_W / 2, at(4), oy));
+    expect(f.replies.map((r) => r.label)).toEqual(["accidentalSharp", "accidentalNatural"]);
+    // The discard row writes nothing and replies nothing.
+    await write(f, [[[276, 235], [276, 265]]]);
+    f.pen(stroke("down", 12, nx, at(4), 235 + 13), stroke("up", 12, nx, at(4), 235 + 13));
+    f.pen(stroke("down", 13, 284 + OPTION_W / 2, at(4), oy + OPTION_H + OPTION_GAP), stroke("up", 13, 284 + OPTION_W / 2, at(4), oy + OPTION_H + OPTION_GAP));
+    expect(f.replies).toHaveLength(2);
+  });
+
+  it("the three commands go to the shell and say what happened", async () => {
+    const f = fixture(true);
+    await f.commands["battuta.stylus.train"]?.();
+    await f.commands["battuta.stylus.resetTraining"]?.();
+    await f.commands["battuta.stylus.shareReplies"]?.();
+    await Promise.resolve();
+    expect(f.shell).toEqual(["train", "reset", "share"]);
+    expect(f.notices).toEqual(["training on the replies…", "trained on 12 replies — 9 in the buffer, 152 anchors: 89 % of the buffer right, anchor drift 0.0012", "the original classifier is back", "the replies were shared"]);
+  });
+
+  it("the plugins-page section: the replies read at activation, again after a reply, a training and a delete — which asks first, and a no leaves them", async () => {
+    vi.useFakeTimers();
+    const f = fixture(true);
+    const section = f.items.find((i) => i.slot === "pluginSettings")!.item.render() as ReactElement<{ state: Store<StylusReplies | null> }>;
+    const state = () => section.props.state.get();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(state()).toEqual({ replies: 0, buffer: 0, training: null });
+    f.toggle();
+    f.place(at(4));
+    f.answer([{ label: "accidentalSharp", confidence: 0.9 }, { label: "accidentalNatural", confidence: 0.08 }]);
+    await write(f, [[[276, 235], [276, 265]]]);
+    f.pen(stroke("down", 9, 284 + CONFIRM_W / 2, at(4), 235 + 13), stroke("up", 9, 284 + CONFIRM_W / 2, at(4), 235 + 13));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(state()).toEqual({ replies: 1, buffer: 1, training: null });
+    await f.commands["battuta.stylus.train"]?.();
+    expect(state()).toEqual({ replies: 1, buffer: 1, training: { replies: 12, buffer: 9, anchors: 152, loss: 0.21, accuracy: 0.89, drift: 0.0012 } });
+    f.answerConfirm(false);
+    await f.commands["battuta.stylus.deleteReplies"]?.();
+    expect(f.confirms).toEqual(["delete the 1 reply kept on this tablet? The classifier keeps what it learnt until you reset it."]);
+    expect(f.shell).not.toContain("delete");
+    expect(state()?.replies).toBe(1);
+    f.answerConfirm(true);
+    await f.commands["battuta.stylus.deleteReplies"]?.();
+    expect(f.shell).toContain("delete");
+    expect(f.notices[f.notices.length - 1]).toBe("the replies were deleted");
+    expect(state()).toEqual({ replies: 0, buffer: 0, training: { replies: 12, buffer: 9, anchors: 152, loss: 0.21, accuracy: 0.89, drift: 0.0012 } });
+    await f.commands["battuta.stylus.resetTraining"]?.();
+    expect(state()?.training).toBeNull();
   });
 });

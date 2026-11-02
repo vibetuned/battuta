@@ -279,6 +279,13 @@ export function createHost(options: HostOptions = {}): Host {
       // 1.3.5: the service answers once loaded (the first capture or on loads it).
       at: (x, y) => stylusLoaded?.at(x, y) ?? null,
       recognize: (request) => (stylusAvailable() ? stylusImpl().then((s) => s.recognize(request)) : Promise.reject(new Error("ctx.stylus.recognize: no stylus shell"))),
+      // 1.3.10: the replies and the training live in the shell; the service only carries them.
+      reply: (reply) => (stylusAvailable() ? stylusImpl().then((s) => s.reply(reply)) : Promise.reject(new Error("ctx.stylus.reply: no stylus shell"))),
+      train: () => (stylusAvailable() ? stylusImpl().then((s) => s.train()) : Promise.reject(new Error("ctx.stylus.train: no stylus shell"))),
+      resetTraining: () => (stylusAvailable() ? stylusImpl().then((s) => s.resetTraining()) : Promise.reject(new Error("ctx.stylus.resetTraining: no stylus shell"))),
+      shareReplies: () => (stylusAvailable() ? stylusImpl().then((s) => s.shareReplies()) : Promise.reject(new Error("ctx.stylus.shareReplies: no stylus shell"))),
+      replies: () => (stylusAvailable() ? stylusImpl().then((s) => s.replies()) : Promise.reject(new Error("ctx.stylus.replies: no stylus shell"))),
+      deleteReplies: () => (stylusAvailable() ? stylusImpl().then((s) => s.deleteReplies()) : Promise.reject(new Error("ctx.stylus.deleteReplies: no stylus shell"))),
     };
   };
 

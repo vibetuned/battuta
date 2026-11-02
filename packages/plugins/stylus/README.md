@@ -2,7 +2,7 @@
 
 Write with the **Apple Pencil** or the **S Pen**, in edit view, on the
 iPad and Android tablets — three ways, cycled by the **✎** item in the
-status bar: **the cross**, for notes; **handwriting**, for the symbols
+header, beside the other plugins' buttons: **the cross**, for notes; **handwriting**, for the symbols
 around them; and **slurs and ties**, drawn from note to note.
 
 ## The cross
@@ -34,7 +34,7 @@ and the caret goes to the note you wrote — or to the chord it joined.
 
 ## Handwriting
 
-Tap **✎ cross** in the status bar: it reads **✎ hand**, and the pen
+Tap **✎ cross** in the header: it reads **✎ hand**, and the pen
 writes symbols instead. Write one as you would on paper, at its natural
 size, where it belongs — a sharp just left of its note, a dot just right
 of it, a staccato above it, a fingering or a trill above the staff, a
@@ -109,6 +109,36 @@ the toolbar, the panels, the on-screen keyboard, a menu open over the
 score — it taps like a finger. Fingers scroll and zoom as always, even
 while the pen writes.
 
+## Replies and training
+
+The classifier learns from you — when you tell it. A reading you confirm
+with **✓**, pick from the chooser, or pick after a **✗** is a **reply**:
+the class the symbol was, with the strokes as the pen gave them (every
+sample, its time and pressure), where it sat, and what the classifier
+read. A reading you leave alone is not: you did not say. Replies are kept
+on the tablet, in the app's own data (`stylus/replies.jsonl`, one a line
+in musicset's contribution format), never sent anywhere; they are
+battuta's dataset for the next granita.
+
+The plugin's row in battuta menu → 🌣 shortcuts → **plugins** shows the
+replies kept on this tablet, how many of them the buffer would take, and
+the layer reading now — the released classifier, or the last training
+with its numbers — and four buttons: **train**, **reset**, **share** and
+**delete replies** (it asks first; the classifier keeps what it learnt
+until you reset it). The same as commands, bindable to a key in 🌣
+shortcuts:
+
+- **Stylus: train on my replies** retrains the classifier's last layer
+  on the tablet from every reply — well under a second — and reads with
+  it from then on; the notice says how many replies, how many of the
+  newest eight of each class it trained on, and how far it drifted from
+  the released model's answers, which it is held to.
+- **Stylus: reset the training** puts the released classifier back. The
+  replies stay.
+- **Stylus: share my replies** puts the file on the share sheet — AirDrop,
+  Mail, Files, another app — to contribute it.
+- **Stylus: delete my replies** deletes the file, after asking.
+
 ## Turning it on and off
 
 battuta menu → 🌣 shortcuts → **plugins** → *Stylus*. Off gives the pen
@@ -118,8 +148,9 @@ stylus to capture, and the plugin does nothing, not even the ✎ item.
 
 ## Keys
 
-None: the pen is the whole interface. The ✎ item runs the plugin's one
-command, *Stylus: the cross or handwriting*.
+None: the pen is the whole interface. The ✎ item runs *Stylus: the cross,
+handwriting or slurs*; the four replies commands above have no key of
+their own.
 
 ## Settings and storage
 

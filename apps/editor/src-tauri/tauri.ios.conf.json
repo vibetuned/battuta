@@ -3,7 +3,7 @@
   "bundle": {
     "iOS": {
       "developmentTeam": "47D2CT68R2",
-      "minimumSystemVersion": "15.0"
+      "minimumSystemVersion": "18.0"
     }
   }
 }

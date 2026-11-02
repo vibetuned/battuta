@@ -74,6 +74,39 @@ pub struct Recognition {
     pub confidence: f64,
 }
 
+/// A handwritten symbol with the class the user confirmed (`ctx.stylus.reply`, 1.3.10):
+/// the strokes as the pen gave them (`[x, y, t_ms, pressure]` per sample), the staff space,
+/// the context, what the classifier read. The native side writes musicset's record.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StylusReply {
+    pub label: String,
+    pub strokes: Vec<Vec<Vec<f64>>>,
+    pub staff_space: f64,
+    pub context: Option<SymbolContext>,
+    pub read: Option<Recognition>,
+}
+
+/// What training on the replies did (`ctx.stylus.train`, 1.3.10).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Training {
+    pub replies: u64,
+    pub buffer: u64,
+    pub anchors: u64,
+    pub loss: f64,
+    pub accuracy: f64,
+    pub drift: f64,
+}
+
+/// The replies on the device and the layer in use (`ctx.stylus.replies`, 1.3.11): how many the
+/// replay buffer would take, and the last training while its layer is the one reading.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Replies {
+    pub replies: u64,
+    pub buffer: u64,
+    pub training: Option<Training>,
+}
+
 /// One entry of a listed folder (Android document trees).
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -191,6 +224,44 @@ impl<R: Runtime> BattutaMobile<R> {
             top: Vec<Recognition>,
         }
         self.call::<Answer>("stylusRecognize", Args { strokes, staff_space, context }).map(|a| a.top)
+    }
+
+    /// A confirmed symbol appended to the shell's replies file; the replies it holds.
+    pub fn stylus_reply(&self, reply: StylusReply) -> Result<u64, String> {
+        #[derive(Deserialize)]
+        struct Answer {
+            count: u64,
+        }
+        self.call::<Answer>("stylusReply", reply).map(|a| a.count)
+    }
+
+    /// The classifier's last layer retrained on the device from every reply.
+    pub fn stylus_train(&self) -> Result<Training, String> {
+        self.call::<Training>("stylusTrain", ())
+    }
+
+    /// The original layer back.
+    pub fn stylus_reset_training(&self) -> Result<(), String> {
+        #[derive(Deserialize)]
+        struct Nothing {}
+        self.call::<Nothing>("stylusResetTraining", ()).map(|_| ())
+    }
+
+    /// The replies file on the share sheet; true when the user sent it somewhere.
+    pub fn stylus_share_replies(&self) -> Result<bool, String> {
+        self.call::<SharedOut>("stylusShareReplies", ()).map(|o| o.completed)
+    }
+
+    /// The replies on the device and the layer in use.
+    pub fn stylus_replies(&self) -> Result<Replies, String> {
+        self.call::<Replies>("stylusReplies", ())
+    }
+
+    /// Every reply deleted; the layer in use is left alone.
+    pub fn stylus_delete_replies(&self) -> Result<(), String> {
+        #[derive(Deserialize)]
+        struct Nothing {}
+        self.call::<Nothing>("stylusDeleteReplies", ()).map(|_| ())
     }
 
     /// The system folder picker. iPadOS: a path, its scope started and a

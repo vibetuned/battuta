@@ -22,7 +22,7 @@
  *     event nearest it across, and the pitch at that height from the
  *     staff's drawn lines and the clef in force.
  */
-import type { ClefContext, Disposable, Pitch, StaffContext, StylusEvent, StylusRecognition, StylusRecognizeRequest, StylusSample, StylusScorePoint } from "@battuta/api";
+import type { ClefContext, Disposable, Pitch, StaffContext, StylusEvent, StylusRecognition, StylusRecognizeRequest, StylusSample, StylusScorePoint, StylusReply, StylusReplies, StylusTraining } from "@battuta/api";
 import { shellPlatform, tauriInvoke } from "./shell";
 
 // --- the score under the pen ----------------------------------------------------
@@ -423,6 +423,68 @@ export class StylusService {
     return invoke("stylus_recognize", { strokes: request.strokes.map((s) => s.map((p) => [p[0], p[1]])), staffSpace: request.staffSpace, context }).then((answer) =>
       (Array.isArray(answer) ? answer : []).map((a: { label?: unknown; confidence?: unknown }) => ({ label: String(a.label), confidence: Number(a.confidence) })),
     );
+  }
+
+  /** A confirmed symbol to the shell's replies file (1.3.10): the samples as the pen gave them, trimmed to what musicset keeps. */
+  reply(reply: StylusReply): Promise<number> {
+    const invoke = tauriInvoke();
+    if (!invoke || !this.available) return Promise.reject(new Error("reply: no stylus shell"));
+    if (typeof reply.label !== "string" || reply.label === "") return Promise.reject(new Error("reply: label must name a class"));
+    const strokes = reply.strokes;
+    if (!Array.isArray(strokes) || strokes.length === 0 || !strokes.every((s) => Array.isArray(s) && s.length > 0)) return Promise.reject(new Error("reply: strokes must be non-empty arrays of samples"));
+    if (!(Number.isFinite(reply.staffSpace) && reply.staffSpace > 0)) return Promise.reject(new Error("reply: staffSpace must be a positive number"));
+    const c = reply.context;
+    return invoke("stylus_reply", {
+      label: reply.label,
+      strokes: strokes.map((s: readonly StylusSample[]) => s.map((p) => [p[0], p[1], p[2], p[3]])),
+      staffSpace: reply.staffSpace,
+      context: c ? { yStaff: Number(c.yStaff), xMeasure: Number(c.xMeasure), barline: Number(c.barline), noteDx: c.noteDx == null ? null : Number(c.noteDx), noteDy: c.noteDy == null ? null : Number(c.noteDy), noteW: c.noteW == null ? null : Number(c.noteW), noteH: c.noteH == null ? null : Number(c.noteH), width: Number(c.width), height: Number(c.height) } : null,
+      read: reply.read ? { label: String(reply.read.label), confidence: Number(reply.read.confidence) } : null,
+    }).then((n) => Number(n));
+  }
+
+  /** The last layer retrained on the device from every reply (1.3.10). */
+  train(): Promise<StylusTraining> {
+    const invoke = tauriInvoke();
+    if (!invoke || !this.available) return Promise.reject(new Error("train: no stylus shell"));
+    return invoke("stylus_train").then((r) => {
+      const t = r as Partial<StylusTraining>;
+      return { replies: Number(t.replies), buffer: Number(t.buffer), anchors: Number(t.anchors), loss: Number(t.loss), accuracy: Number(t.accuracy), drift: Number(t.drift) };
+    });
+  }
+
+  resetTraining(): Promise<void> {
+    const invoke = tauriInvoke();
+    if (!invoke || !this.available) return Promise.reject(new Error("resetTraining: no stylus shell"));
+    return invoke("stylus_reset_training").then(() => undefined);
+  }
+
+  shareReplies(): Promise<boolean> {
+    const invoke = tauriInvoke();
+    if (!invoke || !this.available) return Promise.reject(new Error("shareReplies: no stylus shell"));
+    return invoke("stylus_share_replies").then((sent) => sent === true);
+  }
+
+  /** The replies on the device, how many the buffer would take, and the training in use (1.3.11). */
+  replies(): Promise<StylusReplies> {
+    const invoke = tauriInvoke();
+    if (!invoke || !this.available) return Promise.reject(new Error("replies: no stylus shell"));
+    return invoke("stylus_replies").then((r) => {
+      const a = r as { replies?: unknown; buffer?: unknown; training?: Partial<StylusTraining> | null };
+      const t = a.training;
+      return {
+        replies: Number(a.replies),
+        buffer: Number(a.buffer),
+        training: t ? { replies: Number(t.replies), buffer: Number(t.buffer), anchors: Number(t.anchors), loss: Number(t.loss), accuracy: Number(t.accuracy), drift: Number(t.drift) } : null,
+      };
+    });
+  }
+
+  /** Every reply on the device deleted; the layer in use stays (1.3.11). */
+  deleteReplies(): Promise<void> {
+    const invoke = tauriInvoke();
+    if (!invoke || !this.available) return Promise.reject(new Error("deleteReplies: no stylus shell"));
+    return invoke("stylus_delete_replies").then(() => undefined);
   }
 
   /** Every event, read against the score; the disposable unsubscribes. */

@@ -3071,6 +3071,7 @@ export default function App() {
           }}
           onClose={() => setShortcutsOpen(false)}
           plugins={plugins}
+          settingsOf={(id) => <Slot store={host.slots} name="pluginSettings" pluginId={id} onCommand={runPluginCommand} plugins={host.registry} />}
           noPlugins={host.noPlugins}
           onTogglePlugin={(id, on) => {
             void host.registry.setEnabled(id, on).then(() => {

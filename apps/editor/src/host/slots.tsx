@@ -1,7 +1,9 @@
 /**
- * UI slots: the four places a plugin may put an item (the first header
+ * UI slots: the five places a plugin may put an item (the first header
  * row, the second — title, tempo, the player —, the status bar, the
- * battuta menu) and the two panel areas (bottom, side). Plugins hand over
+ * battuta menu, and its own row in the plugins page — `pluginSettings`,
+ * 1.3.11, drawn by `<Slot pluginId>` under that plugin alone) and the two
+ * panel areas (bottom, side). Plugins hand over
  * a render function; the host owns the React tree. An empty slot renders
  * nothing at all, so a host without plugins has exactly the DOM it had
  * before slots existed.
@@ -24,11 +26,11 @@ export interface DeclaredSlotItem extends SlotItemContribution {
   pluginId: string;
 }
 
-type AnyItem = (SlotItem & { declared?: undefined }) | (DeclaredSlotItem & { render?: undefined; declared: true });
+type AnyItem = (SlotItem & { declared?: undefined; pluginId?: string }) | (DeclaredSlotItem & { render?: undefined; declared: true });
 
 const byOrder = <T extends { order?: number }>(list: readonly T[]): T[] => [...list].sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
 
-const SLOTS: readonly SlotName[] = ["header", "docHeader", "statusBar", "menu"];
+const SLOTS: readonly SlotName[] = ["header", "docHeader", "statusBar", "menu", "pluginSettings"];
 
 /**
  * Per slot, two maps keyed by item key (`<pluginId>:<id>` for anything a
@@ -42,12 +44,12 @@ const SLOTS: readonly SlotName[] = ["header", "docHeader", "statusBar", "menu"];
 export class SlotStore {
   private readonly declared = new Map<SlotName, Map<string, AnyItem>>(SLOTS.map((s) => [s, new Map()]));
   private readonly runtime = new Map<SlotName, Map<string, AnyItem>>(SLOTS.map((s) => [s, new Map()]));
-  readonly items = createStore<Record<SlotName, readonly AnyItem[]>>({ header: [], docHeader: [], statusBar: [], menu: [] });
+  readonly items = createStore<Record<SlotName, readonly AnyItem[]>>({ header: [], docHeader: [], statusBar: [], menu: [], pluginSettings: [] });
 
   /** A runtime item. With `pluginId`, keyed like a declared one so it can replace the plugin's declared face. */
   add(slot: SlotName, item: SlotItem, pluginId?: string): Disposable {
     const key = pluginId ? `${pluginId}:${item.id}` : item.id;
-    const entry = { ...item, id: key } as AnyItem;
+    const entry = { ...item, id: key, pluginId } as AnyItem;
     this.runtime.get(slot)!.set(key, entry);
     this.publish(slot);
     return toDisposable(() => {
@@ -104,8 +106,9 @@ const IDLE: React.CSSProperties = { opacity: 0.45 };
 export const dimsDeclared = (item: { dimUntilActive?: boolean; pluginId: string }, plugins: readonly PluginInfo[]): boolean =>
   Boolean(item.dimUntilActive) && !plugins.some((p) => p.id === item.pluginId && p.state === "active");
 
-export function Slot({ store, name, onCommand, plugins }: { store: SlotStore; name: SlotName; onCommand?: (commandId: string) => void; plugins?: Store<readonly PluginInfo[]> }) {
-  const items = useStore(store.items)[name];
+export function Slot({ store, name, onCommand, plugins, pluginId }: { store: SlotStore; name: SlotName; onCommand?: (commandId: string) => void; plugins?: Store<readonly PluginInfo[]>; /** Only this plugin's items — the plugins page draws each plugin's own `pluginSettings` under its row. */ pluginId?: string }) {
+  const all = useStore(store.items)[name];
+  const items = pluginId === undefined ? all : all.filter((i) => i.pluginId === pluginId);
   const registered = useStore(plugins ?? NO_PLUGINS);
   if (!items.length) return null;
   return (

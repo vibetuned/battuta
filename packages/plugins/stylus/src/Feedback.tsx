@@ -127,8 +127,6 @@ export function FeedbackLayer({ tile, state, onPick, onConfirm }: { tile: TileOv
   );
 }
 
-const ITEM: CSSProperties = { font: "inherit", background: "transparent", border: "1px solid currentColor", borderRadius: 4, padding: "0 6px", cursor: "pointer", color: "inherit", opacity: 0.85 };
-
 /** The three modes as the item shows them, in the order a tap cycles them. */
 export const MODES: Record<Mode, { text: string; title: string }> = {
   cross: { text: "✎ cross", title: "The pen writes notes with the cross; tap for handwriting" },
@@ -136,11 +134,11 @@ export const MODES: Record<Mode, { text: string; title: string }> = {
   slur: { text: "✎ slur", title: "The pen draws slurs and ties from note to note; tap for the cross" },
 };
 
-/** The status-bar item: the mode, tapped to switch (the user's choice over a pen gesture). */
+/** The header item, beside the other plugins' buttons (the status bar until 1.3.11): the mode, tapped to switch (the user's choice over a pen gesture). */
 export function ModeItem({ mode, onToggle }: { mode: Store<Mode>; onToggle: () => void }) {
   const m = useStore(mode);
   return (
-    <button type="button" data-stylus-mode={m} style={ITEM} title={MODES[m].title} onClick={onToggle}>
+    <button type="button" data-stylus-mode={m} title={MODES[m].title} onClick={onToggle}>
       {MODES[m].text}
     </button>
   );

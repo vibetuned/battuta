@@ -109,6 +109,24 @@ and ties** (the user, the same day): a third mode, a bow from note to
 note, a tie for the same note and a slur otherwise — API 1.3.9: `Mark`'s
 `tie` and `slur` kinds, `nearestNote.pitch`.
 
+**The replies and the training (the user, 2026-11-02; API 1.3.10).**
+granita's shells proved it first: a reply saved in musicset's contribution
+format, and the model's last layer retrained on the tablet from the
+replies (a tiny replay buffer, the anchors' answers held, an L2 anchor).
+In battuta: a reply is **explicit only** — ✓ tapped, a chooser's pick, ✗
+then a pick; never the silent ✓, never a bow; the replies in **the app's
+private data, with a share action**; the training as **plugin commands**
+(train, reset, share). API 1.3.10: `ctx.stylus.reply`, `train`,
+`resetTraining`, `shareReplies`, `StylusReply`, `StylusTraining` — and
+nothing else. **battuta's iOS floor rises to 18** (from 15): the
+multi-function Core ML package — its `personal` function takes the layer
+as inputs — needs it. **Then (the user, on trying it; API 1.3.11):** the ✎
+item in the header **with the other plugins' buttons**; the replies'
+numbers and a train button **in the plugins page, as the plugin's
+settings** — the `pluginSettings` slot, an item under the plugin's own
+row; `ctx.stylus.replies()`, `deleteReplies()` (a delete button, asking
+first) — and nothing else.
+
 **Out of v1, to decide later.** The pedal (two signs); the double flat
 (the editor has none); the 32nd and 64th notes by hand (the cross writes
 notes exactly); handwriting on the desktop.

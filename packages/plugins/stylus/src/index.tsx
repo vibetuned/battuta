@@ -18,13 +18,14 @@
  *     written as `core.mark` with the ✓ ✗ of handwriting — ✗ offering the
  *     other kind.
  */
-import { definePlugin, type PluginContext, type StylusEvent, type StylusRecognition, type StylusScorePoint } from "@battuta/api";
+import { definePlugin, type PluginContext, type StylusEvent, type StylusRecognition, type StylusReplies, type StylusScorePoint } from "@battuta/api";
 import { Cross } from "./Cross";
 import { bowKind, bowStep, boxOf, type Bow, type BowDone } from "./bow";
 import { chooserHeight, confirmRect, FeedbackLayer, InkLayer, ModeItem, OPTION_W, optionRect, type Feedback, type Ink, type Mode, type Option } from "./Feedback";
 import { IDLE, lengthOf, next, type Gesture } from "./gesture";
 import { group, tick, type Point, type Symbol, type Writing } from "./handwriting";
-import { FEEDBACK_ID, INK_ID, MODE_COMMAND, OVERLAY_ID } from "./manifest";
+import { DELETE_REPLIES_COMMAND, FEEDBACK_ID, INK_ID, MODE_COMMAND, OVERLAY_ID, RESET_TRAINING_COMMAND, SHARE_REPLIES_COMMAND, TRAIN_COMMAND } from "./manifest";
+import { RepliesSection } from "./Replies";
 import { choose, contextOf, headOf, nameOf, NOTE_MARGIN, writeAs, type Outcome, type Targets } from "./rules";
 import { signal } from "./store";
 
@@ -40,6 +41,10 @@ interface Reading {
   options: readonly Option[];
   /** A chosen option as a message: granita's rules for a handwritten symbol, the bow's own two kinds for a bow. */
   write: (o: Option) => Outcome;
+  /** The class that was written, when one was — what ✓ confirms. */
+  written?: string;
+  /** A confirmed class to the shell's replies (1.3.10): handwriting only, never a bow. */
+  reply?: (label: string) => void;
 }
 
 /** What a tap on the mode item goes to. */
@@ -69,6 +74,14 @@ export default definePlugin({
     let pressing: (() => void) | null = null;
 
     const say = (what: string, err: unknown): void => ctx.notice(`${what}: ${err instanceof Error ? err.message : String(err)}`);
+    // The plugins-page section (1.3.11): the replies on the device, re-read after anything that changes them.
+    const replies = signal<StylusReplies | null>(null);
+    const busy = signal(false);
+    const refresh = (): Promise<void> =>
+      ctx.stylus.replies().then(
+        (r) => replies.set(r),
+        () => replies.set(null),
+      );
 
     // --- the cross ---------------------------------------------------------------
 
@@ -145,7 +158,7 @@ export default definePlugin({
         ctx.notice(outcome.reason);
         return;
       }
-      if (execute(outcome.name, outcome)) showWritten(r, outcome.name, outcome.confidence);
+      if (execute(outcome.name, outcome)) showWritten({ ...r, written: outcome.label }, outcome.name, outcome.confidence);
       else clearShown();
     };
 
@@ -182,7 +195,15 @@ export default definePlugin({
         .then((top) => {
           const outcome = choose(top, context, targets, headPitch);
           const options = toOptions(outcome.kind === "nothing" ? [...top].sort((a, b) => b.confidence - a.confidence).slice(0, 3) : outcome.options);
-          show({ symbol: s, at, options, write: (o) => writeAs(o.label, o.confidence, targets, headPitch, []) }, outcome);
+          // A reply (1.3.10): the class the user confirms, with the symbol as the pen gave it, to the shell's dataset.
+          const read = [...top].sort((a, b) => b.confidence - a.confidence)[0] ?? null;
+          const reply = (label: string): void => {
+            ctx.stylus.reply({ label, strokes: s.samples, staffSpace: space, context, read }).then(
+              () => refresh(),
+              (err) => say("reply", err),
+            );
+          };
+          show({ symbol: s, at, options, write: (o) => writeAs(o.label, o.confidence, targets, headPitch, []), reply }, outcome);
         })
         .catch((err) => {
           ink.set(null);
@@ -219,15 +240,18 @@ export default definePlugin({
       if (!o) return;
       const outcome = r.write(o);
       if (outcome.kind === "nothing") ctx.notice(outcome.reason);
-      else if (outcome.kind === "write") execute(outcome.name, outcome);
+      else if (outcome.kind === "write" && execute(outcome.name, outcome)) r.reply?.(o.label);
     };
 
-    /** ✓ keeps what was written; ✗ undoes it and offers the other answers. */
+    /** ✓ keeps what was written — and says so to the shell, a reply; ✗ undoes it and offers the other answers. */
     const confirm = (yes: boolean): void => {
       if (shown?.kind !== "confirm") return;
       const r = shown.reading;
       clearShown();
-      if (yes) return;
+      if (yes) {
+        if (r.written) r.reply?.(r.written);
+        return;
+      }
       if (!ctx.actions.run("undo")) ctx.notice("could not undo");
       showChooser(r);
     };
@@ -256,7 +280,7 @@ export default definePlugin({
       const kind = bowKind(d.from, to);
       const write = (o: Option): Extract<Outcome, { kind: "write" }> => ({ kind: "write", label: o.label, name: o.name, confidence: 1, message: { type: "core.mark", eventId: d.from.eventId, mark: { kind: o.label === "tie" ? "tie" : "slur", endId: to.eventId } }, options: [] });
       const other = kind === "tie" ? "slur" : "tie";
-      const r: Reading = { symbol: { strokes: [d.points], box: boxOf(d.points), landing: d.landing }, at: d.landing.at, options: [{ label: other, name: other, confidence: 1 }], write };
+      const r: Reading = { symbol: { strokes: [d.points], samples: [], box: boxOf(d.points), landing: d.landing }, at: d.landing.at, options: [{ label: other, name: other, confidence: 1 }], write };
       if (execute(kind, write({ label: kind, name: kind, confidence: 1 }))) showWritten(r, kind, null);
       else clearShown();
     };
@@ -305,7 +329,51 @@ export default definePlugin({
     ctx.overlays.add({ id: INK_ID, render: (tile) => <InkLayer tile={tile} state={ink} /> });
     ctx.overlays.add({ id: FEEDBACK_ID, render: (tile) => <FeedbackLayer tile={tile} state={feedback} onPick={pick} onConfirm={confirm} /> });
     ctx.registerCommand(MODE_COMMAND, toggle);
-    ctx.slots.add("statusBar", { id: "mode", render: () => <ModeItem mode={mode} onToggle={toggle} /> });
+    // The replies and the training (1.3.10): the commands — and the buttons of the
+    // plugins-page section (1.3.11) — each ending in a notice and a re-read of the numbers.
+    const train = (): Promise<void> => {
+      busy.set(true);
+      ctx.notice("training on the replies…");
+      return ctx.stylus
+        .train()
+        .then((t) => ctx.notice(`trained on ${t.replies} replies — ${t.buffer} in the buffer, ${t.anchors} anchors: ${Math.round(t.accuracy * 100)} % of the buffer right, anchor drift ${t.drift.toFixed(4)}`))
+        .catch((err) => say("training", err))
+        .then(() => {
+          busy.set(false);
+          return refresh();
+        });
+    };
+    const resetTraining = (): Promise<void> =>
+      ctx.stylus
+        .resetTraining()
+        .then(() => ctx.notice("the original classifier is back"))
+        .catch((err) => say("reset", err))
+        .then(() => refresh());
+    const shareReplies = (): Promise<void> =>
+      ctx.stylus
+        .shareReplies()
+        .then((sent) => ctx.notice(sent ? "the replies were shared" : "the replies were not shared"))
+        .catch((err) => say("share", err));
+    /** Asks first: the replies are the user's dataset. The layer keeps what it learnt until a reset. */
+    const deleteReplies = (): Promise<void> => {
+      const n = replies.get()?.replies ?? 0;
+      return ctx.confirm(`delete the ${n} ${n === 1 ? "reply" : "replies"} kept on this tablet? The classifier keeps what it learnt until you reset it.`, "Stylus").then((yes) => {
+        if (!yes) return;
+        return ctx.stylus
+          .deleteReplies()
+          .then(() => ctx.notice("the replies were deleted"))
+          .catch((err) => say("delete", err))
+          .then(() => refresh());
+      });
+    };
+    ctx.registerCommand(TRAIN_COMMAND, train);
+    ctx.registerCommand(RESET_TRAINING_COMMAND, resetTraining);
+    ctx.registerCommand(SHARE_REPLIES_COMMAND, shareReplies);
+    ctx.registerCommand(DELETE_REPLIES_COMMAND, deleteReplies);
+    // The ✎ item with the other plugins' buttons (the user, 2026-11-02; the status bar before), and the section in the plugins page.
+    ctx.slots.add("header", { id: "mode", render: () => <ModeItem mode={mode} onToggle={toggle} /> });
+    ctx.slots.add("pluginSettings", { id: "replies", render: () => <RepliesSection state={replies} busy={busy} onTrain={() => void train()} onReset={() => void resetTraining()} onShare={() => void shareReplies()} onDelete={() => void deleteReplies()} /> });
+    void refresh();
     ctx.stylus.on((e) => (mode.get() === "cross" ? crossEvent(e) : penEvent(e)));
     ctx.subscriptions.add({
       dispose: () => {

@@ -91,6 +91,46 @@ export interface StylusRecognition {
   confidence: number;
 }
 
+/**
+ * A handwritten symbol with the class the user confirmed (1.3.10): what
+ * `ctx.stylus.reply` saves for the dataset — the shell writes musicset's
+ * contribution record (label, writer, staff space, the strokes with their
+ * times and pressures, the context, what the classifier read) to its replies
+ * file. A label a person chose: ✓ tapped, a choice picked — never a silence.
+ */
+export interface StylusReply {
+  /** granita's class the user confirmed. */
+  label: string;
+  /** The symbol's strokes as the pen gave them: every sample, time and pressure included. */
+  strokes: readonly (readonly StylusSample[])[];
+  staffSpace: number;
+  context: StylusSymbolContext | null;
+  /** What the classifier read first, before the user replied; null when it read nothing. */
+  read: StylusRecognition | null;
+}
+
+/** What `ctx.stylus.train` did (1.3.10). */
+export interface StylusTraining {
+  /** Replies on the device, and how many the replay buffer took (the newest few of each class). */
+  replies: number;
+  buffer: number;
+  /** The anchors the layer was held to. */
+  anchors: number;
+  /** Mean cross-entropy over the buffer, the share of it the trained layer gets right, and the mean drift from the original layer's answers on the anchors. */
+  loss: number;
+  accuracy: number;
+  drift: number;
+}
+
+/** The replies on the device and the layer in use (`ctx.stylus.replies`, 1.3.11). */
+export interface StylusReplies {
+  /** Replies kept on the device, and how many the replay buffer would take of them (the newest few of each class the classifier knows). */
+  replies: number;
+  buffer: number;
+  /** The last training, while its layer is in use; null with the released classifier. */
+  training: StylusTraining | null;
+}
+
 export interface StylusService {
   /** True in the iOS and Android shells, which capture the stylus; false on the desktop and in a browser — do nothing there. */
   readonly available: boolean;
@@ -102,4 +142,16 @@ export interface StylusService {
   at(x: number, y: number): StylusScorePoint | null;
   /** The shell's classifier, granita, on a symbol (1.3.5): its classes by confidence, best first. Rejects on the desktop and in a shell without the model. */
   recognize(request: StylusRecognizeRequest): Promise<readonly StylusRecognition[]>;
+  /** Save a confirmed symbol for the dataset (1.3.10): the shell appends musicset's record to its replies file; resolves to the replies it holds. */
+  reply(reply: StylusReply): Promise<number>;
+  /** Retrain the classifier's last layer on the device from every reply (1.3.10): a small replay buffer of them, held to the model's anchors and its original weights. The trained layer is kept and `recognize` uses it from then on, until `resetTraining`. */
+  train(): Promise<StylusTraining>;
+  /** The original layer back, the trained one forgotten (1.3.10). */
+  resetTraining(): Promise<void>;
+  /** The replies file handed to the system share sheet (1.3.10); true when the user sent it somewhere. */
+  shareReplies(): Promise<boolean>;
+  /** The replies on the device, how many the buffer would take, and the training in use (1.3.11). Rejects where there is no stylus shell. */
+  replies(): Promise<StylusReplies>;
+  /** Every reply on the device deleted; the layer in use is left alone — `resetTraining` for that (1.3.11). */
+  deleteReplies(): Promise<void>;
 }

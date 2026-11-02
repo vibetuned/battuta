@@ -6,7 +6,7 @@ let package = Package(
     name: "tauri-plugin-battuta-mobile",
     platforms: [
         .macOS(.v10_13),
-        .iOS(.v15),
+        .iOS("18.0"), // the multi-function Core ML package (the `personal` function), since granita v8's personal layer; the string form: `.v18` needs newer tools than this manifest's
     ],
     products: [
         .library(

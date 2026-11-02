@@ -241,6 +241,58 @@ Phase 11). Its first slice is the bridge they all stand on.
   origin of every tile the pen crosses (`origins`), and each tile's ink
   layer draws the strokes in its own frame: a bow or a symbol shows all
   over the row, in handwriting too. Plugin 52 tests.
+- **The replies and the training on the device, API 1.3.10 (2026-11-02).**
+  granita's test shells had proved it first — a reply saved as musicset's
+  contribution record, and the model's last layer retrained on the tablet
+  from those replies — and the user: "let's start the work in battuta".
+  Decided with the user: a reply is **explicit only** — ✓ tapped, a
+  chooser's pick, ✗ then a pick; never the silent ✓, never a bow; the
+  replies live **in the app's private data** (`stylus/replies.jsonl`
+  beside `shell.log` on the iPad, under the app's files on Android; one
+  record a line, snake_case: `label`, `writer` — this install's UUID —
+  `staff_space`, the `strokes` as the pen gave them with time and
+  pressure, the `context`, `fraction`, `predicted`, `device`, `app`,
+  `time`) with a **share action**; and the training is **plugin
+  commands** — *Stylus: train on my replies*, *reset the training*,
+  *share my replies* — each ending in a notice. API 1.3.10:
+  `ctx.stylus.reply({ label, strokes, staffSpace, context, read })`,
+  `train()` (a `StylusTraining`: replies, buffer, anchors, loss,
+  accuracy, drift), `resetTraining()`, `shareReplies()`; `StylusReply`
+  and `StylusTraining` — and nothing else. The natives are the shells'
+  lifted whole: `Head.swift` / `Head.kt` (the layer, the replay buffer of
+  the newest eight a class, the anchors' answers held by their KL, the L2
+  anchor, thirty epochs), `Annotations.swift` / `.kt` (the record and the
+  file), the loader through the package's `personal` function / the
+  tflite's `personal` signature with the layer as inputs and the features
+  out, a trained layer saved as `stylus/head.json` and loaded with the
+  model from then on. granita's export (commit 2230dde, the same run) and
+  its `anchors.json` (152 drawings of the val split, four a class) copied
+  by `copy-granita.sh`. **battuta's iOS floor is 18** now, from 15 (the
+  user's decision, 2026-11-02): the multi-function Core ML package needs
+  it (`MLModelConfiguration.functionName`) — `tauri.ios.conf.json`'s
+  `minimumSystemVersion`, which the CLI compiles the plugin's Swift
+  against, `project.yml` and the package's floor. The handwriting keeps every
+  sample of a symbol (`Writing.samples`) for the reply; the `Reading`
+  carries what was written and how to reply. Plugin 55 tests; the
+  initial chunk 400.9 kB.
+- **The replies in the plugins page, API 1.3.11 (2026-11-02).** The user,
+  on trying it: the ✎ item belongs **with the other plugins' buttons**
+  (the header, beside 🎹 and the panels' toggles — it was in the status
+  bar); a **train button and the replies' numbers in the plugins page**,
+  "as plugin settings"; the shells' replies copied onto both tablets to
+  test with (70 each, `models/battuta/replies`, into the app's
+  `stylus/replies.jsonl`); and a **delete replies** button. API 1.3.11:
+  the **`pluginSettings` slot** — an item a plugin adds renders under its
+  own row in 🌣 shortcuts → plugins (`<Slot pluginId>` draws one plugin's
+  items; a runtime item now remembers its plugin); `ctx.stylus.replies()`
+  (a `StylusReplies`: the replies kept, how many the buffer would take,
+  the training in use or null); `ctx.stylus.deleteReplies()` — and
+  nothing else. The plugin's section: the counts, the layer reading, four
+  buttons — train, reset, share, delete replies (it asks first; the layer
+  keeps what it learnt until a reset) — the same four commands, and the
+  numbers re-read after a reply, a training, a reset or a delete. The
+  natives keep the last training beside the layer (`stylus/training.json`)
+  so the page shows it after a restart. Plugin 56 tests.
 - **M2: granita in the shell (2026-11-01).** `plugins/battuta-mobile`
   carries granita's released model, copied by
   `scripts/copy-granita.sh <granita checkout>` and named in

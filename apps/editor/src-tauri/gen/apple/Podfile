@@ -1,7 +1,7 @@
 # Uncomment the next line to define a global platform for your project
 
 target 'battuta-editor_iOS' do
-platform :ios, '15.0'
+platform :ios, '18.0'
   # Pods for battuta-editor_iOS
 end
 

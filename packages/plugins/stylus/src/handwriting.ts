@@ -11,7 +11,7 @@
  * elsewhere, or the clock running out (`tick`), ends the symbol. The plugin
  * keeps the clock (`index.tsx`); nothing here does.
  */
-import type { StylusEvent, StylusScorePoint } from "@battuta/api";
+import type { StylusEvent, StylusSample, StylusScorePoint } from "@battuta/api";
 
 /** A page point, px. */
 export type Point = readonly [x: number, y: number];
@@ -42,7 +42,9 @@ export const crossing = (origins: Origins, at: StylusScorePoint | null, p: Point
 /** A symbol under the pen: its finished strokes, the stroke being drawn, where the first landed. */
 export interface Writing {
   strokes: Point[][];
-  live: { id: number; points: Point[] } | null;
+  /** The same strokes as the pen gave them — every sample, time and pressure included — for a reply (1.3.10). */
+  samples: StylusSample[][];
+  live: { id: number; points: Point[]; samples: StylusSample[] } | null;
   box: Box;
   /** Where the first stroke landed: its page point and the host's reading of it. */
   landing: { point: Point; at: StylusScorePoint };
@@ -55,6 +57,7 @@ export interface Writing {
 /** A finished symbol: at least one stroke of at least one point. */
 export interface Symbol {
   strokes: Point[][];
+  samples: StylusSample[][];
   box: Box;
   landing: Writing["landing"];
 }
@@ -75,7 +78,7 @@ export const near = (b: Box, p: Point, margin: number): boolean => p[0] >= b.min
 /** How far beyond its box a symbol reaches for its next stroke, px: proportional to the drawing, never under half a space. */
 export const marginOf = (b: Box, staffSpace: number): number => Math.max(GAP_MIN_SPACES * staffSpace, GAP_RATIO * Math.max(b.maxX - b.minX, b.maxY - b.minY));
 
-const finish = (w: Writing): Symbol | undefined => (w.strokes.length > 0 ? { strokes: w.strokes, box: w.box, landing: w.landing } : undefined);
+const finish = (w: Writing): Symbol | undefined => (w.strokes.length > 0 ? { strokes: w.strokes, samples: w.samples, box: w.box, landing: w.landing } : undefined);
 
 /** The symbol after one stroke event, at `now` ms. */
 export function group(w: Writing | null, e: StylusEvent, now: number): Grouped {
@@ -86,19 +89,19 @@ export function group(w: Writing | null, e: StylusEvent, now: number): Grouped {
     if (!sample || !e.at) return { writing: w }; // off the score: the page's, not a symbol's
     const p: Point = [sample[0], sample[1]];
     if (w && !w.live && (w.deadline === null || now <= w.deadline) && near(w.box, p, marginOf(w.box, w.landing.at.staff.space))) {
-      return { writing: { ...w, live: { id: e.id, points: [p] }, box: grow(w.box, p), origins: crossing(w.origins, e.at, p), deadline: null } };
+      return { writing: { ...w, live: { id: e.id, points: [p], samples: [sample] }, box: grow(w.box, p), origins: crossing(w.origins, e.at, p), deadline: null } };
     }
     const done = w ? finish(w) : undefined;
-    return { writing: { strokes: [], live: { id: e.id, points: [p] }, box: boxOf(p), landing: { point: p, at: e.at }, origins: { [e.at.measureIndex]: originAt(e.at, p) }, deadline: null }, ...(done && { done }) };
+    return { writing: { strokes: [], samples: [], live: { id: e.id, points: [p], samples: [sample] }, box: boxOf(p), landing: { point: p, at: e.at }, origins: { [e.at.measureIndex]: originAt(e.at, p) }, deadline: null }, ...(done && { done }) };
   }
   if (!w?.live || w.live.id !== e.id) return { writing: w };
   const last = points[points.length - 1];
   if (e.phase === "move") {
-    return { writing: { ...w, live: { id: e.id, points: [...w.live.points, ...points] }, box: points.reduce(grow, w.box), origins: crossing(w.origins, e.at, last) } };
+    return { writing: { ...w, live: { id: e.id, points: [...w.live.points, ...points], samples: [...w.live.samples, ...e.samples] }, box: points.reduce(grow, w.box), origins: crossing(w.origins, e.at, last) } };
   }
   if (e.phase === "up") {
     const stroke = [...w.live.points, ...points];
-    return { writing: { ...w, strokes: [...w.strokes, stroke], live: null, box: points.reduce(grow, w.box), origins: crossing(w.origins, e.at, last), deadline: now + GAP_MS } };
+    return { writing: { ...w, strokes: [...w.strokes, stroke], samples: [...w.samples, [...w.live.samples, ...e.samples]], live: null, box: points.reduce(grow, w.box), origins: crossing(w.origins, e.at, last), deadline: now + GAP_MS } };
   }
   // cancel: the stroke is lost; what was written before it stays, on the clock.
   if (w.strokes.length === 0) return { writing: null };

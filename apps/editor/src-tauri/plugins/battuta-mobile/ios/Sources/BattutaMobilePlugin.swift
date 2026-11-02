@@ -42,6 +42,20 @@ class RecognizeArgs: Decodable {
   let context: ContextArgs?
 }
 
+class ReadingArgs: Decodable {
+  let label: String
+  let confidence: Double
+}
+
+/// A confirmed symbol (`ctx.stylus.reply`, 1.3.10): its samples `[x, y, t_ms, pressure]`.
+class ReplyArgs: Decodable {
+  let label: String
+  let strokes: [[[Double]]]
+  let staffSpace: Double
+  let context: ContextArgs?
+  let read: ReadingArgs?
+}
+
 /// battuta's native iPadOS services (phase 10, M1): the share sheet, and
 /// folders the user picks.
 ///
@@ -102,6 +116,27 @@ class BattutaMobilePlugin: Plugin, UIDocumentPickerDelegate {
   private var granita: GranitaModel?
   private let granitaQueue = DispatchQueue(label: "com.vibetuned.battuta.granita")
 
+  /// The shell's stylus folder: the replies and the trained layer, in the app's data beside `shell.log`.
+  private var stylusDirectory: URL {
+    FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("com.vibetuned.battuta/stylus", isDirectory: true)
+  }
+  private var headURL: URL { stylusDirectory.appendingPathComponent("head.json") }
+  private var trainingURL: URL { stylusDirectory.appendingPathComponent("training.json") }
+  private lazy var replies = Annotations(directory: stylusDirectory)
+
+  /// The model, loaded once — with the trained layer, when the user trained one.
+  private func loadGranita() throws -> GranitaModel {
+    if let model = granita { return model }
+    let model = try GranitaModel()
+    if model.personal, let saved = HeadWeights.load(from: headURL) { model.head = saved }
+    granita = model
+    return model
+  }
+
+  private func vector(_ context: ContextArgs?) -> [Float] {
+    context.map { SymbolContext(yStaff: $0.yStaff, xMeasure: $0.xMeasure, barline: $0.barline, noteDx: $0.noteDx, noteDy: $0.noteDy, width: $0.width, height: $0.height, noteW: $0.noteW, noteH: $0.noteH).vector } ?? SymbolContext.unknown
+  }
+
   @objc public func stylusRecognize(_ invoke: Invoke) throws {
     let args = try invoke.parseArgs(RecognizeArgs.self)
     let strokes = args.strokes.map { $0.filter { $0.count == 2 }.map { CGPoint(x: $0[0], y: $0[1]) } }.filter { !$0.isEmpty }
@@ -111,20 +146,136 @@ class BattutaMobilePlugin: Plugin, UIDocumentPickerDelegate {
     }
     granitaQueue.async {
       do {
-        let model = try self.granita ?? GranitaModel()
-        self.granita = model
+        let model = try self.loadGranita()
         let fraction = StrokeRaster.fraction(of: strokes, staffSpace: args.staffSpace)
         let pixels = StrokeRaster.render(strokes, fraction: fraction)
-        let vector =
-          args.context.map {
-            SymbolContext(yStaff: $0.yStaff, xMeasure: $0.xMeasure, barline: $0.barline, noteDx: $0.noteDx, noteDy: $0.noteDy, width: $0.width, height: $0.height, noteW: $0.noteW, noteH: $0.noteH).vector
-          } ?? SymbolContext.unknown
-        let top = try model.predict(input: StrokeRaster.normalize(pixels), context: vector)
-        invoke.resolve(["top": top.map { ["label": $0.label, "confidence": Double($0.confidence)] }])
+        let answer = try model.predict(input: StrokeRaster.normalize(pixels), context: self.vector(args.context))
+        invoke.resolve(["top": answer.top.map { ["label": $0.label, "confidence": Double($0.confidence)] }])
       } catch {
         invoke.reject("\(error)")
       }
     }
+  }
+
+  // MARK: the replies and the training (1.3.10): the dataset, and the last layer on the device
+
+  /// A confirmed symbol to the replies file, musicset's record; the count after it.
+  @objc public func stylusReply(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(ReplyArgs.self)
+    let samples = args.strokes.map { $0.filter { $0.count >= 2 } }.filter { !$0.isEmpty }
+    guard !args.label.isEmpty, !samples.isEmpty, args.staffSpace > 0 else {
+      invoke.reject("reply: a label, strokes and a positive staffSpace are needed")
+      return
+    }
+    let points = samples.map { $0.map { CGPoint(x: $0[0], y: $0[1]) } }
+    let fraction = StrokeRaster.fraction(of: points, staffSpace: args.staffSpace)
+    let version = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "?"
+    let record = Reply(
+      label: args.label,
+      writer: replies.writer,
+      staffSpace: args.staffSpace,
+      strokes: samples.map { $0.map { p in Array(p.prefix(4)).enumerated().map { i, v in i == 2 ? (v * 10).rounded() / 10 : i == 3 ? (v * 1000).rounded() / 1000 : v } } },
+      context: args.context.map { Reply.Context(SymbolContext(yStaff: $0.yStaff, xMeasure: $0.xMeasure, barline: $0.barline, noteDx: $0.noteDx, noteDy: $0.noteDy, width: $0.width, height: $0.height, noteW: $0.noteW, noteH: $0.noteH)) },
+      fraction: fraction,
+      predicted: args.read.map { Reply.Predicted(label: $0.label, confidence: Float($0.confidence)) },
+      device: "apple-pencil",
+      app: "battuta/\(version)",
+      time: Annotations.now())
+    granitaQueue.async {
+      do {
+        try self.replies.append(record)
+        invoke.resolve(["count": self.replies.count])
+      } catch {
+        invoke.reject("reply: \(error)")
+      }
+    }
+  }
+
+  /// The last layer retrained from every reply (`Trainer`), kept in the stylus folder and used from then on.
+  @objc public func stylusTrain(_ invoke: Invoke) throws {
+    granitaQueue.async {
+      do {
+        let model = try self.loadGranita()
+        guard model.personal, let sidecarHead = model.sidecar.head else {
+          invoke.reject("train: the model has no personal function")
+          return
+        }
+        let origin = HeadWeights(sidecarHead)
+        let records = self.replies.all()
+        let anchors = Anchors.load(from: Bundle.main)?.anchors ?? []
+        let classes = model.sidecar.classes
+        var examples: [Example] = []
+        for r in records {
+          guard let label = classes.firstIndex(of: r.label) else { continue }
+          let strokes = r.strokes.map { $0.map { CGPoint(x: $0[0], y: $0[1]) } }.filter { !$0.isEmpty }
+          guard !strokes.isEmpty else { continue }
+          let px = StrokeRaster.render(strokes, fraction: r.fraction)
+          let vector = r.context.map { SymbolContext($0).vector } ?? SymbolContext.unknown
+          let answer = try model.predict(input: StrokeRaster.normalize(px), context: vector)
+          examples.append(Example(features: answer.features, label: label))
+        }
+        var head = origin
+        let report = Trainer.train(&head, origin: origin, buffer: ReplayBuffer(replies: examples), anchors: anchors)
+        model.head = head
+        try head.save(to: self.headURL)
+        let record = TrainingRecord(replies: records.count, buffer: report.examples, anchors: report.anchors, loss: Double(report.loss), accuracy: Double(report.accuracy), drift: Double(report.anchorDrift))
+        try record.save(to: self.trainingURL)
+        invoke.resolve(record.json)
+      } catch {
+        invoke.reject("train: \(error)")
+      }
+    }
+  }
+
+  /// The original layer back, the trained one forgotten.
+  @objc public func stylusResetTraining(_ invoke: Invoke) throws {
+    granitaQueue.async {
+      do {
+        let model = try self.loadGranita()
+        if let original = model.sidecar.head { model.head = HeadWeights(original) }
+        try? FileManager.default.removeItem(at: self.headURL)
+        try? FileManager.default.removeItem(at: self.trainingURL)
+        invoke.resolve([:])
+      } catch {
+        invoke.reject("resetTraining: \(error)")
+      }
+    }
+  }
+
+  /// The replies on the device, how many the replay buffer would take of them, and the last
+  /// training while its layer is the one reading (1.3.11).
+  @objc public func stylusReplies(_ invoke: Invoke) throws {
+    granitaQueue.async {
+      do {
+        let classes = try self.loadGranita().sidecar.classes
+        let examples = self.replies.all().compactMap { r in classes.firstIndex(of: r.label).map { Example(features: [], label: $0) } }
+        let buffer = ReplayBuffer(replies: examples).examples.count
+        let training = FileManager.default.fileExists(atPath: self.headURL.path) ? TrainingRecord.load(from: self.trainingURL) : nil
+        var answer: [String: Any] = ["replies": self.replies.count, "buffer": buffer]
+        answer["training"] = training.map { $0.json } ?? NSNull()
+        invoke.resolve(answer)
+      } catch {
+        invoke.reject("replies: \(error)")
+      }
+    }
+  }
+
+  /// Every reply deleted; the layer in use is left alone (1.3.11).
+  @objc public func stylusDeleteReplies(_ invoke: Invoke) throws {
+    granitaQueue.async {
+      self.replies.deleteAll()
+      invoke.resolve([:])
+    }
+  }
+
+  /// The replies file on the share sheet.
+  @objc public func stylusShareReplies(_ invoke: Invoke) throws {
+    let file = replies.url
+    guard FileManager.default.fileExists(atPath: file.path), replies.count > 0 else {
+      invoke.reject("no replies yet")
+      return
+    }
+    present(file, invoke)
   }
 
   // MARK: the share sheet
@@ -139,6 +290,11 @@ class BattutaMobilePlugin: Plugin, UIDocumentPickerDelegate {
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let file = dir.appendingPathComponent((args.name as NSString).lastPathComponent)
     try bytes.write(to: file, options: .atomic)
+    present(file, invoke)
+  }
+
+  /// A file on the share sheet; the invoke resolves with whether the user sent it somewhere.
+  private func present(_ file: URL, _ invoke: Invoke) {
     DispatchQueue.main.async {
       let sheet = UIActivityViewController(activityItems: [file], applicationActivities: nil)
       sheet.completionWithItemsHandler = { _, completed, _, error in

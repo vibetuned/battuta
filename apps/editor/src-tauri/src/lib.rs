@@ -408,6 +408,61 @@ async fn stylus_recognize(app: tauri::AppHandle, strokes: Vec<Vec<[f64; 2]>>, st
     app.battuta_mobile().stylus_recognize(strokes, staff_space, context)
 }
 
+/// A confirmed symbol to the shell's replies file (`ctx.stylus.reply`, 1.3.10): the replies it holds.
+#[cfg(mobile)]
+#[tauri::command]
+async fn stylus_reply(
+    app: tauri::AppHandle,
+    label: String,
+    strokes: Vec<Vec<Vec<f64>>>,
+    staff_space: f64,
+    context: Option<tauri_plugin_battuta_mobile::SymbolContext>,
+    read: Option<tauri_plugin_battuta_mobile::Recognition>,
+) -> Result<u64, String> {
+    use tauri_plugin_battuta_mobile::BattutaMobileExt;
+    app.battuta_mobile().stylus_reply(tauri_plugin_battuta_mobile::StylusReply { label, strokes, staff_space, context, read })
+}
+
+/// The classifier's last layer retrained on the device from the replies (`ctx.stylus.train`, 1.3.10).
+#[cfg(mobile)]
+#[tauri::command]
+async fn stylus_train(app: tauri::AppHandle) -> Result<tauri_plugin_battuta_mobile::Training, String> {
+    use tauri_plugin_battuta_mobile::BattutaMobileExt;
+    app.battuta_mobile().stylus_train()
+}
+
+/// The original layer back (`ctx.stylus.resetTraining`, 1.3.10).
+#[cfg(mobile)]
+#[tauri::command]
+async fn stylus_reset_training(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_battuta_mobile::BattutaMobileExt;
+    app.battuta_mobile().stylus_reset_training()
+}
+
+/// The replies file on the share sheet (`ctx.stylus.shareReplies`, 1.3.10).
+#[cfg(mobile)]
+#[tauri::command]
+async fn stylus_share_replies(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri_plugin_battuta_mobile::BattutaMobileExt;
+    app.battuta_mobile().stylus_share_replies()
+}
+
+/// The replies on the device and the layer in use (`ctx.stylus.replies`, 1.3.11).
+#[cfg(mobile)]
+#[tauri::command]
+async fn stylus_replies(app: tauri::AppHandle) -> Result<tauri_plugin_battuta_mobile::Replies, String> {
+    use tauri_plugin_battuta_mobile::BattutaMobileExt;
+    app.battuta_mobile().stylus_replies()
+}
+
+/// Every reply deleted (`ctx.stylus.deleteReplies`, 1.3.11).
+#[cfg(mobile)]
+#[tauri::command]
+async fn stylus_delete_replies(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_battuta_mobile::BattutaMobileExt;
+    app.battuta_mobile().stylus_delete_replies()
+}
+
 /// The system share sheet (tablets): AirDrop, Mail, another app.
 #[cfg(mobile)]
 #[tauri::command]
@@ -1245,12 +1300,12 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool {
 /// The iPad answers MIDI too (CoreMIDI, M3): its WebKit has no Web MIDI.
 #[cfg(target_os = "ios")]
 fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool {
-    tauri::generate_handler![bench_echo, bench_report, js_log, save_score, file_mtime, initial_score, share_file, midi_open_outputs, midi_close_outputs, midi_send, midi_bluetooth, workspace_home, workspace_pick_folder, workspace_open_folder, workspace_read_dir, workspace_read_file, workspace_rename, workspace_create_folder, workspace_create_file, stylus_capture, stylus_area, stylus_recognize]
+    tauri::generate_handler![bench_echo, bench_report, js_log, save_score, file_mtime, initial_score, share_file, midi_open_outputs, midi_close_outputs, midi_send, midi_bluetooth, workspace_home, workspace_pick_folder, workspace_open_folder, workspace_read_dir, workspace_read_file, workspace_rename, workspace_create_folder, workspace_create_file, stylus_capture, stylus_area, stylus_recognize, stylus_reply, stylus_train, stylus_reset_training, stylus_share_replies, stylus_replies, stylus_delete_replies]
 }
 /// Android's WebView has Web MIDI: the page talks to the devices itself.
 #[cfg(target_os = "android")]
 fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool {
-    tauri::generate_handler![bench_echo, bench_report, js_log, save_score, file_mtime, initial_score, share_file, midi_bluetooth, workspace_home, workspace_pick_folder, workspace_open_folder, workspace_read_dir, workspace_read_file, workspace_rename, workspace_create_folder, workspace_create_file, stylus_capture, stylus_area, stylus_recognize]
+    tauri::generate_handler![bench_echo, bench_report, js_log, save_score, file_mtime, initial_score, share_file, midi_bluetooth, workspace_home, workspace_pick_folder, workspace_open_folder, workspace_read_dir, workspace_read_file, workspace_rename, workspace_create_folder, workspace_create_file, stylus_capture, stylus_area, stylus_recognize, stylus_reply, stylus_train, stylus_reset_training, stylus_share_replies, stylus_replies, stylus_delete_replies]
 }
 
 #[cfg(test)]
