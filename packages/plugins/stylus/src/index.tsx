@@ -140,13 +140,13 @@ export default definePlugin({
       feedback.set({ kind: "chooser", measureIndex: r.symbol.landing.at.measureIndex, x: c[0] - origin[0], y: c[1] - origin[1], options: r.options });
     };
 
-    /** What was written, with ✓ ✗ for a while — ✓ if left alone; the confidence when a classifier gave one. */
-    const showWritten = (r: Reading, name: string, confidence: number | null): void => {
+    /** What was written — the class as engraved — with ✓ ✗ for a while — ✓ if left alone; the confidence when a classifier gave one. */
+    const showWritten = (r: Reading, label: string, name: string, confidence: number | null): void => {
       clearShown();
       const c = corner(r, 2 * 34, 26);
       const origin = tileOrigin(r.symbol);
       shown = { kind: "confirm", corner: c, reading: r };
-      feedback.set({ kind: "label", measureIndex: r.symbol.landing.at.measureIndex, x: c[0] - origin[0], y: c[1] - origin[1], text: confidence === null ? name : `${name} · ${Math.round(confidence * 100)} %`, confirm: true });
+      feedback.set({ kind: "label", measureIndex: r.symbol.landing.at.measureIndex, x: c[0] - origin[0], y: c[1] - origin[1], label, name, confidence, confirm: true });
       fading = setTimeout(clearShown, LABEL_MS);
     };
 
@@ -158,7 +158,7 @@ export default definePlugin({
         ctx.notice(outcome.reason);
         return;
       }
-      if (execute(outcome.name, outcome)) showWritten({ ...r, written: outcome.label }, outcome.name, outcome.confidence);
+      if (execute(outcome.name, outcome)) showWritten({ ...r, written: outcome.label }, outcome.label, outcome.name, outcome.confidence);
       else clearShown();
     };
 
@@ -281,7 +281,7 @@ export default definePlugin({
       const write = (o: Option): Extract<Outcome, { kind: "write" }> => ({ kind: "write", label: o.label, name: o.name, confidence: 1, message: { type: "core.mark", eventId: d.from.eventId, mark: { kind: o.label === "tie" ? "tie" : "slur", endId: to.eventId } }, options: [] });
       const other = kind === "tie" ? "slur" : "tie";
       const r: Reading = { symbol: { strokes: [d.points], samples: [], box: boxOf(d.points), landing: d.landing }, at: d.landing.at, options: [{ label: other, name: other, confidence: 1 }], write };
-      if (execute(kind, write({ label: kind, name: kind, confidence: 1 }))) showWritten(r, kind, null);
+      if (execute(kind, write({ label: kind, name: kind, confidence: 1 }))) showWritten(r, kind, kind, null);
       else clearShown();
     };
 

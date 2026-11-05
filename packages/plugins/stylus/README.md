@@ -49,8 +49,9 @@ anywhere.
 
 The strokes show in blue as you write, until the symbol is read. What it
 reads is put in the score as the keyboard would put it, one undo step,
-and a small label says what was read and how sure it was (`sharp ·
-93 %`), with a **✓ ✗** beside it for three seconds: tap ✓, or nothing,
+and a small label shows what was read **as it is engraved** — ♯, 𝅘𝅥, a
+note wearing its staccato, 𝆑𝆑 — and how sure it was (93 %), with a **✓
+✗** beside it for three seconds: tap ✓, or nothing,
 and it stays; tap ✗ and it is undone, and the other readings are offered
 to choose from. The caret goes to the event it was put on. The rules of
 notation settle what the shapes cannot: a dot is an augmentation dot on
@@ -67,7 +68,8 @@ other rests are not written either — rests are what notes do not take: a
 shorter note entered with the cross leaves them.
 
 **When it isn't sure** — the best reading under 50 % — up to three
-choices appear beside the symbol, with their percentages: only readings
+choices appear beside the symbol, each as engraved, with their
+percentages: only readings
 that belong where you wrote (no fingering inside the staff, no rest above
 it). Tap one with the pen (or a finger) to write it, **none of these** —
 the last row — to discard the symbol, or write somewhere else to dismiss

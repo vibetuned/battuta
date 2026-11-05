@@ -13,6 +13,7 @@
  */
 import type { CSSProperties } from "react";
 import type { Store, TileOverlayProps } from "@battuta/api";
+import { Glyph } from "./glyphs";
 import type { Origins, Point } from "./handwriting";
 import { useStore } from "./store";
 
@@ -32,8 +33,8 @@ export interface Ink {
 
 export type Feedback =
   | { kind: "none" }
-  /** What was read, at a corner in the tile's px; with ✓ ✗ when `confirm`. */
-  | { kind: "label"; measureIndex: number; x: number; y: number; text: string; confirm: boolean }
+  /** What was written, at a corner in the tile's px — the class as engraved, its confidence when a classifier gave one; with ✓ ✗ when `confirm`. */
+  | { kind: "label"; measureIndex: number; x: number; y: number; label: string; name: string; confidence: number | null; confirm: boolean }
   /** The chooser's top left corner, in the tile's px, and its options; a last row discards. */
   | { kind: "chooser"; measureIndex: number; x: number; y: number; options: readonly Option[] };
 
@@ -59,7 +60,7 @@ export const confirmRect = (x: number, y: number, i: number): { x: number; y: nu
 
 const INK = "#1d6fd6";
 const LAYER: CSSProperties = { position: "absolute", inset: 0, overflow: "visible", pointerEvents: "none" };
-const LABEL: CSSProperties = { position: "absolute", background: "rgba(20, 28, 38, .9)", color: "#fff", font: "12px/1.3 system-ui, sans-serif", padding: "2px 6px", borderRadius: 4, whiteSpace: "nowrap", transform: "translateY(-100%)" };
+const LABEL: CSSProperties = { position: "absolute", background: "rgba(20, 28, 38, .9)", color: "#fff", font: "12px/1.3 system-ui, sans-serif", display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 8px", borderRadius: 4, whiteSpace: "nowrap", transform: "translateY(-100%)" };
 const BUTTON: CSSProperties = { position: "absolute", boxSizing: "border-box", background: "rgba(20, 28, 38, .92)", color: "#fff", font: "13px system-ui, sans-serif", border: "1px solid rgba(255,255,255,.25)", borderRadius: 6, pointerEvents: "auto", cursor: "pointer" };
 const OPTION: CSSProperties = { ...BUTTON, width: OPTION_W, height: OPTION_H, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 8px", textAlign: "left" };
 const CONFIRM: CSSProperties = { ...BUTTON, width: CONFIRM_W, height: CONFIRM_H, padding: 0, fontSize: 15, lineHeight: `${CONFIRM_H - 2}px` };
@@ -93,8 +94,9 @@ export function FeedbackLayer({ tile, state, onPick, onConfirm }: { tile: TileOv
     const no = confirmRect(f.x, f.y, 1);
     return (
       <div data-stylus-feedback style={LAYER}>
-        <div data-stylus-read style={{ ...LABEL, left: f.x, top: f.y - 4 }}>
-          {f.text}
+        <div data-stylus-read title={f.name} style={{ ...LABEL, left: f.x, top: f.y - 4 }}>
+          <Glyph label={f.label} />
+          {f.confidence !== null && <span style={QUIET}>{Math.round(f.confidence * 100)} %</span>}
         </div>
         {f.confirm && (
           <>
@@ -114,8 +116,8 @@ export function FeedbackLayer({ tile, state, onPick, onConfirm }: { tile: TileOv
       {f.options.map((o, i) => {
         const r = optionRect(f.x, f.y, i);
         return (
-          <button key={o.label} type="button" data-stylus-option={o.label} style={{ ...OPTION, left: r.x, top: r.y }} onClick={() => onPick(i)}>
-            <span>{o.name}</span>
+          <button key={o.label} type="button" data-stylus-option={o.label} title={o.name} style={{ ...OPTION, left: r.x, top: r.y }} onClick={() => onPick(i)}>
+            <Glyph label={o.label} />
             <span style={QUIET}>{Math.round(o.confidence * 100)} %</span>
           </button>
         );

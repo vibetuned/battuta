@@ -293,6 +293,16 @@ Phase 11). Its first slice is the bridge they all stand on.
   numbers re-read after a reply, a training, a reset or a delete. The
   natives keep the last training beside the layer (`stylus/training.json`)
   so the page shows it after a restart. Plugin 56 tests.
+- **Engraved symbols in the label and the chooser (2026-11-02).** The
+  user, after the plugins page: "replace the selection text by engraved
+  symbols". The label and the chooser now show each reading as it is
+  engraved — ♯, 𝅘𝅥, 𝄞, 𝆑𝆑, a quarter note wearing its staccato, a dotted
+  quarter for the dot, a digit for a fingering, Fine / D.S. / D.C. bold
+  italic — from Unicode's musical symbols in **Noto Music**, which the
+  editor already bundles behind the interface font; the mordent and the
+  two bows, which Unicode lacks, are drawn (`glyphs.tsx`). The name stays
+  on the button's title and in the notices. Checked glyph by glyph in the
+  WebView on the Galaxy Tab. No API change; plugin 59 tests.
 - **M2: granita in the shell (2026-11-01).** `plugins/battuta-mobile`
   carries granita's released model, copied by
   `scripts/copy-granita.sh <granita checkout>` and named in

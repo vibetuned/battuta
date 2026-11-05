@@ -245,8 +245,11 @@ const CLASSES: Record<string, Rule> = {
   daCapo: repeatMark("D.C.", "daCapo"),
 };
 
-/** The symbol's name for a class, as the label and the chooser show it. */
+/** The symbol's name for a class — the notices, a button's title; the label and the chooser show the glyph (`glyphs.tsx`). */
 export const nameOf = (label: string): string => CLASSES[label]?.name ?? label;
+
+/** Every class the plugin writes. */
+export const CLASS_LABELS: readonly string[] = Object.keys(CLASSES);
 
 export type Outcome =
   /** Sure enough, and the place fits: the message to send, and the other answers to offer if the user says no. */

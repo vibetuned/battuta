@@ -46,6 +46,7 @@ The user's decisions, each taken as asked:
 | Slurs and ties (the user, 2026-11-02) | **A third mode** on the same item: a bow drawn from a note to another — **a tie when they are the same note, a slur otherwise**; the editor judges the pitches. API 1.3.9: `Mark`'s `tie` and `slur` kinds (with `endId`) and `nearestNote.pitch` — **and nothing else**. |
 | The replies and the training (the user, 2026-11-02) | **Explicit replies only** — ✓ tapped, a chooser's pick, ✗ then a pick; never the silent ✓, never a bow. The replies **in the app's private data, with a share action**. The training as **plugin commands** — train, reset, share — each ending in a notice. API 1.3.10: `ctx.stylus.reply`, `train`, `resetTraining`, `shareReplies`, `StylusReply`, `StylusTraining` — **and nothing else**. battuta's iOS floor rises to 18 for the multi-function Core ML package. |
 | The replies in the plugins page (the user, 2026-11-02, on trying it) | The ✎ item **in the header with the other plugins' buttons** (the status bar before). **The replies' numbers and a train button in the plugins page, as the plugin's settings**: API 1.3.11's `pluginSettings` slot — an item under the plugin's own row — `ctx.stylus.replies()` (the counts, the training in use) and `deleteReplies()` (a delete button, asking first) — **and nothing else**. |
+| Engraved symbols (the user, 2026-11-02: "replace the selection text by engraved symbols") | The label and the chooser show each class **as engraved**, not by name (`glyphs.tsx`): Unicode's musical symbols in **Noto Music**, which the editor already bundles for the interface (its musical blocks, behind the interface font) — the accidentals, notes, the quarter rest, clefs, fermata, trill, turn, arpeggio, coda, segno, the dynamics from their letters (𝆍𝆑𝆎); an articulation as a **quarter note wearing it** (a combining mark alone is tofu), the dot as a dotted quarter, a fingering as its digit, Fine / D.S. / D.C. bold italic; the **mordent and the two bows drawn** (Unicode has neither). Checked in the WebView on the Galaxy Tab. The name stays on the button's title and in the notices. No API change. |
 | granita v8 (2026-11-02, the battuta variant, 43 classes) | The context measures the nearest note's **body** — head, stem and flag, a chord's as one, without accidentals, dots or articulations — and carries its size; the flags are "over" / "beside" the body within half a space. The host gives `nearestNote.box` (1.3.8), the plugin sends `noteW` / `noteH`, the natives build the vector from the body. The repeat marks (coda, segno, Fine, D.S., D.C.) came in: `core.mark { kind: "repeatMark" }` (1.3.8), the core setting one by name where the coda key cycles. |
 
 ## 2. Manifest
@@ -209,6 +210,8 @@ Three signals and a few plugin-held values (`index.tsx`):
   one far or late ending the symbol, the reach proportional to the symbol
   with its floor, the clock ending it, a tap as a symbol, a stroke off the
   score and a cancel.
+- `test/glyphs.test.ts` — every class and the two bows have a glyph or a
+  drawing; the glyphs are the engraved ones; an unknown label its name.
 - `test/bow.test.ts` — the note under the pen, within a space of its body;
   tie or slur by written pitch; the stroke events into a bow, and its end.
 - `test/rules.test.ts` — the place in staff spaces and in words; each
