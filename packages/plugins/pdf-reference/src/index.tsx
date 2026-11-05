@@ -26,10 +26,11 @@ import { bandHeightFor, cropOf, scaleFor } from "./geometry";
 import { matchMeasures, measureFor, type Matching } from "./match";
 import { PdfPanel, type PdfActions, type PdfState, type PickedFile } from "./Panel";
 import { PDF_NEEDS, pdfMissing, releasePages, renderPdf, type RenderedPage } from "./pdf";
+import { addTurns, frameOf, rotateAnnotations, rotateDrawing, rotatePage, turnAnnotations, turnsOf } from "./rotate";
 import { ScanCell } from "./ScanCell";
 import { signal, useStore } from "./store";
 
-const EMPTY: PdfState = { status: "empty", fileName: null, progress: null, error: null, notes: [], pages: [], annotations: null, matching: null, docMeasures: 0, current: null, currentStaff: null, view: null, showBands: true, source: null, drawing: null, editing: false, tool: "system", editPage: 1, editZoom: 1 };
+const EMPTY: PdfState = { status: "empty", rotations: {}, turning: false, fileName: null, progress: null, error: null, notes: [], pages: [], annotations: null, matching: null, docMeasures: 0, current: null, currentStaff: null, view: null, showBands: true, source: null, drawing: null, editing: false, tool: "system", editPage: 1, editZoom: 1 };
 
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
@@ -141,6 +142,11 @@ export default definePlugin({
         }
         let pages = before.pages;
         let fileName = before.fileName;
+        let rotations = before.rotations;
+        /** A PDF (or images) came in this pick: its kept turns are given to its pages. */
+        let fresh = false;
+        /** Annotations from files that are still in the files' own frame: this pick's, or ones that waited for this PDF. */
+        let unturned = jsons.length > 0;
         if (pdf) {
           if (pdfMissing().length) throw new Error(PDF_NEEDS);
           const bytes = await pdf.arrayBuffer();
@@ -160,11 +166,13 @@ export default definePlugin({
           pages = rendered;
           fileName = pdf.name;
           pdfKey = key;
+          fresh = true;
           exportBase = pdf.name.replace(/\.pdf$/i, "");
           // Without files in this pick: annotations read BEFORE any PDF were
           // waiting for this one and stay; otherwise the PDF brings its own
           // drawing, if one was made for it.
           const waiting = before.pages.length === 0 && before.source === "files" && annotations !== null;
+          if (waiting) unturned = true;
           if (!jsons.length && !waiting) {
             drawing = readDrawing(ctx.storage.get(key));
             annotations = drawing ? annotationsFromDrawing(drawing) : null;
@@ -184,8 +192,10 @@ export default definePlugin({
           pages = rendered;
           fileName = pageImages.length === 1 ? pageImages[0]!.name : `${pageImages[0]!.name} + ${pageImages.length - 1} more`;
           pdfKey = key;
+          fresh = true;
           exportBase = pageImages[0]!.name.replace(/\.[a-z0-9]+$/i, "").replace(/_page\d+$/i, "");
           const waiting = before.pages.length === 0 && before.source === "files" && annotations !== null;
+          if (waiting) unturned = true;
           if (!jsons.length && !waiting) {
             drawing = readDrawing(ctx.storage.get(key));
             annotations = drawing ? annotationsFromDrawing(drawing) : null;
@@ -193,6 +203,25 @@ export default definePlugin({
           }
         }
         if (gen !== run) return;
+        // The turns kept for this PDF (⟳), given to its fresh pages — and to
+        // annotation files still in their own frame, by each page's size before its turn.
+        if (fresh && pdfKey) {
+          rotations = readDrawing(ctx.storage.get(pdfKey))?.rotations ?? {};
+          const sizes = new Map(pages.map((p) => [p.page, { width: p.width, height: p.height }]));
+          const kept = rotations;
+          const turned = await Promise.all(pages.map((p) => rotatePage(p, turnsOf(kept[String(p.page)]))));
+          if (gen !== run) {
+            releasePages(turned);
+            return;
+          }
+          pages = turned;
+          if (annotations && unturned && source === "files") annotations = turnAnnotations(annotations, rotations, (page) => sizes.get(page));
+        } else if (annotations && unturned && source === "files") {
+          annotations = turnAnnotations(annotations, rotations, (page) => {
+            const p = pages.find((x) => x.page === page);
+            return p ? { width: p.width, height: p.height } : undefined;
+          });
+        }
         if (pages.length === 0) {
           // keep what was read: the PDF can come in a second pick
           patch({ annotations, source, drawing, notes });
@@ -203,7 +232,7 @@ export default definePlugin({
           if (missing.length) notes.push(`annotations for page ${missing.join(", ")}, which the PDF does not have`);
         }
         const first = annotations?.measures[0];
-        patch({ status: "ready", fileName, pages, annotations, source, drawing, notes, progress: null, current: null, view: first ? { page: first.page, system: first.system } : { page: 1, system: -1 } });
+        patch({ status: "ready", fileName, pages, annotations, source, drawing, rotations, notes, progress: null, current: null, view: first ? { page: first.page, system: first.system } : { page: 1, system: -1 } });
         rematch();
         follow(ctx.editor.get().caret);
         placeBands();
@@ -214,7 +243,7 @@ export default definePlugin({
 
     /** A changed drawing: kept for this PDF, made the annotations, matched, and the bands re-measured — the scans follow the pen. */
     const applyDrawing = (d: Drawing): void => {
-      if (pdfKey) ctx.storage.set(pdfKey, d);
+      if (pdfKey) ctx.storage.set(pdfKey, { ...d, rotations: state.get().rotations });
       const annotations = annotationsFromDrawing(d);
       patch({ drawing: d, annotations, source: annotations ? "drawn" : null });
       rematch();
@@ -222,6 +251,66 @@ export default definePlugin({
       placeBands();
     };
     const editImage = () => state.get().pages.find((p) => p.page === state.get().editPage);
+
+    /** Turns run one after the other: a second tap while a page is still being re-encoded would start from the state before the first (two taps netted one quarter on the Galaxy Tab). */
+    let turning: Promise<void> = Promise.resolve();
+    /** Turns asked for and not done yet: the buttons wait while any is. */
+    let queued = 0;
+    const turn = (pageNumbers: readonly number[]): Promise<void> => {
+      if (state.get().status !== "ready") return Promise.resolve();
+      queued++;
+      patch({ turning: true });
+      const next = turning.then(() => doTurn(pageNumbers)).finally(() => {
+        queued--;
+        if (queued === 0 && state.get().turning) patch({ turning: false });
+      });
+      turning = next.catch(() => undefined);
+      return next;
+    };
+    /** Pages turned a quarter clockwise, one after the other: the images, the files' boxes with them, a drawing's systems gone (with a word), the turns kept, the scans re-placed. */
+    const doTurn = async (pageNumbers: readonly number[]): Promise<void> => {
+      const gen = run;
+      if (state.get().status !== "ready") return;
+      await turnNow(pageNumbers, gen);
+    };
+    const turnNow = async (pageNumbers: readonly number[], gen: number): Promise<void> => {
+      const s0 = state.get();
+      let { pages, annotations, drawing, rotations, source } = s0;
+      const notes: string[] = [];
+      for (const n of pageNumbers) {
+        const image = pages.find((p) => p.page === n);
+        if (!image) continue;
+        let turned: RenderedPage;
+        try {
+          turned = await rotatePage(image, 1);
+        } catch (e) {
+          // The pages turned so far stay turned; the one that failed says why.
+          if (gen === run) patch({ pages, annotations, drawing, rotations, source, notes: [...notes, `page ${n} could not be turned: ${message(e)}`] });
+          return;
+        }
+        if (gen !== run) {
+          releasePages([turned]);
+          return;
+        }
+        pages = pages.map((p) => (p.page === n ? turned : p));
+        rotations = { ...rotations, [String(n)]: addTurns(turnsOf(rotations[String(n)]), 1) };
+        if (annotations && source === "files") annotations = rotateAnnotations(annotations, n, frameOf(annotations.pages.find((p) => p.page === n), image), 1);
+        if (drawing?.pages[String(n)]) {
+          const r = rotateDrawing(drawing, n, 1);
+          drawing = r.drawing;
+          if (r.dropped) notes.push(`page ${n} turned: ${r.dropped === 1 ? "the system drawn on it went" : `the ${r.dropped} systems drawn on it went`} — draw it again upright`);
+        }
+      }
+      if (drawing && source !== "files") {
+        annotations = annotationsFromDrawing(drawing);
+        source = annotations ? "drawn" : null;
+      }
+      patch({ pages, annotations, drawing, rotations, source, ...(notes.length ? { notes } : {}) });
+      if (pdfKey) ctx.storage.set(pdfKey, { ...(drawing ?? emptyDrawing()), rotations });
+      rematch();
+      follow(ctx.editor.get().caret);
+      placeBands();
+    };
 
     /** Every system in reading order, as (page, system) — or every page, without annotations. */
     const views = (): { page: number; system: number }[] => {
@@ -266,6 +355,8 @@ export default definePlugin({
         if (image) applyDrawing(resizeSystem(state.get().drawing ?? emptyDrawing(), state.get().editPage, index, image, box));
       },
       toggleSplit: (x, y) => applyDrawing(toggleSplit(state.get().drawing ?? emptyDrawing(), state.get().editPage, x, y)),
+      rotate: (page) => void turn([page]),
+      rotateAll: () => void turn(state.get().pages.map((p) => p.page)),
       zoomEditor: (delta) => {
         const at = ZOOM_STEPS.indexOf(state.get().editZoom as (typeof ZOOM_STEPS)[number]);
         patch({ editZoom: ZOOM_STEPS[Math.max(0, Math.min(ZOOM_STEPS.length - 1, (at < 0 ? ZOOM_STEPS.indexOf(1) : at) + delta))]! });

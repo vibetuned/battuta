@@ -12,6 +12,7 @@
  * format. Pure functions; the plugin persists a drawing per PDF.
  */
 import type { AnnotatedMeasure, AnnotatedPage, Annotations, Box } from "./annotations";
+import { turnsOf, type Turns } from "./rotate";
 
 export interface DrawnSystem {
   box: Box;
@@ -32,6 +33,8 @@ export interface DrawnPage {
 /** Page number → its drawn page (a record, so it stores as JSON). */
 export interface Drawing {
   pages: Record<string, DrawnPage>;
+  /** Page number → the quarter turns clockwise the page was given (`rotate.ts`); kept with the drawing, absent is none. */
+  rotations?: Record<string, Turns>;
 }
 
 /** A drag smaller than this (rendered pixels, either way) is a click, not a system. */
@@ -207,6 +210,12 @@ export function readDrawing(raw: unknown): Drawing | null {
       systems.push({ box: s.box, barlines: [...s.barlines].sort((a, b) => a - b), splits: [...((splits as number[] | undefined) ?? [])].sort((a, b) => a - b) });
     }
     out.pages[key] = { width: p.width, height: p.height, systems };
+  }
+  // The turns arrived after the first drawings were kept: absent is none.
+  const rotations = (raw as { rotations?: unknown }).rotations;
+  if (rotations && typeof rotations === "object") {
+    out.rotations = {};
+    for (const [key, v] of Object.entries(rotations as Record<string, unknown>)) if (/^\d+$/.test(key) && turnsOf(v) !== 0) out.rotations[key] = turnsOf(v);
   }
   return out;
 }

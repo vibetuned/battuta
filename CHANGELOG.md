@@ -303,6 +303,21 @@ Phase 11). Its first slice is the bridge they all stand on.
   two bows, which Unicode lacks, are drawn (`glyphs.tsx`). The name stays
   on the button's title and in the notices. Checked glyph by glyph in the
   WebView on the Galaxy Tab. No API change; plugin 59 tests.
+- **PDF reference: ⟳ turns a page (2026-11-05).** The user: "we need a
+  button to be able to rotate the reference considering landscape and
+  reversed images". **⟳** in the panel — the strip's toolbar and the
+  drawing editor's — turns the page shown a quarter clockwise, **⟳ all**
+  every page: the page image itself (a lossless canvas turn, no original
+  kept), the annotation files' boxes with it in their own frame, the
+  scans and the strip following. The turns are kept with the PDF's
+  drawing (`rotations` in `drawing:<name>:<bytes>`) and given back to the
+  pages on the next load. A drawing is made on the turned page: a turn
+  empties the page's drawn systems, with a word, since every tap is a
+  quarter and a system cannot lie on its side. Exported annotations
+  describe the pages as turned. A turn re-encodes the page, a second or
+  two at 254 dpi on the Galaxy Tab, so turns queue and the buttons wait
+  (two taps during a turn netted one quarter at first). No API change;
+  pdf-reference +7 tests.
 - **M2: granita in the shell (2026-11-01).** `plugins/battuta-mobile`
   carries granita's released model, copied by
   `scripts/copy-granita.sh <granita checkout>` and named in

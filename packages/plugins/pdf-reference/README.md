@@ -34,6 +34,14 @@ The switch is remembered. It has no keys.
    the barlines stand over each other; a row's band is as tall as its
    tallest scan.
 5. The strip shows the caret's system; **◀ ▶** step through the systems.
+6. A scan on its side, or upside down: **⟳** turns the page shown a
+   quarter clockwise (twice for upside down; three times is the other
+   way), **⟳ all** every page. The annotations' boxes turn with the
+   page; the turns are kept with the PDF (by its name and size) and come
+   back when it is loaded again. Turn the pages **before** drawing on
+   them: a page turned loses the systems drawn on it, with a word, since
+   they would be sideways. Exported annotations describe the pages as
+   turned.
 
 ## Drawing systems and measures
 
@@ -48,7 +56,7 @@ once, for a wide, short panel) up to four times. On a touch screen one finger dr
 **two fingers move the page** (a mouse wheel or a trackpad scrolls it as
 usual). Measures are
 the stretches between barlines, numbered as they will match the score;
-the **×** at a system's corner removes it; **◀ ▶** turn the pages; **done**
+the **×** at a system's corner removes it; **◀ ▶** turn the pages, **⟳** a page on its side upright (its drawing goes); **done**
 returns to the strip. The scans follow as you draw. The drawing is kept
 for that PDF (by its name and size) and comes back when it is loaded
 again; **export PDF annotations** in the battuta menu writes it — or the

@@ -16,6 +16,7 @@ import { PageEditor, ZOOM_STEPS, type Tool } from "./PageEditor";
 import type { Matching } from "./match";
 import { PDF_NEEDS, pdfMissing, type RenderedPage } from "./pdf";
 import { useStore } from "./store";
+import { turnsOf, type Turns } from "./rotate";
 
 export type PdfStatus = "empty" | "loading" | "ready" | "error";
 
@@ -52,6 +53,10 @@ export interface PdfState {
   editPage: number;
   /** The drawing editor's zoom, one of `ZOOM_STEPS`. */
   editZoom: number;
+  /** Page number → the quarter turns clockwise it was given (⟳); kept with the PDF's drawing. */
+  rotations: Readonly<Record<string, Turns>>;
+  /** A turn under way: the page is being re-encoded, a second or two for a page at 254 dpi; the ⟳ buttons wait. */
+  turning: boolean;
 }
 
 /** A file as the panel hands it over: a name, its bytes and its text, nothing of the DOM's File. */
@@ -84,6 +89,9 @@ export interface PdfActions {
   resizeSystem(index: number, box: Box): void;
   /** One zoom step in or out of the drawing editor. */
   zoomEditor(delta: -1 | 1): void;
+  /** A page turned a quarter clockwise — a scan on its side, or upside down (twice); `rotateAll` every page. */
+  rotate(page: number): void;
+  rotateAll(): void;
 }
 
 const ROOT: CSSProperties = { padding: "6px 10px 8px", fontSize: 12, color: "#dde" };
@@ -208,6 +216,7 @@ export function PdfPanel({ state, actions }: { state: Store<PdfState>; actions: 
       data-pdf-current={s.current ? String(s.current.order) : ""}
       data-pdf-source={s.source ?? ""}
       data-pdf-editing={s.editing ? "true" : "false"}
+      data-pdf-turns={s.pages.map((p) => turnsOf(s.rotations[String(p.page)])).join(",")}
       style={ROOT}
     >
       <div style={ROW}>
@@ -234,6 +243,12 @@ export function PdfPanel({ state, actions }: { state: Store<PdfState>; actions: 
             </span>
             <button data-pdf-next style={BTN} title="the next system" onClick={() => actions.step(1)}>
               ▶
+            </button>
+            <button data-pdf-rotate style={BTN} disabled={s.turning} title="turn this page a quarter clockwise — a scan on its side, or upside down (twice)" onClick={() => actions.rotate(s.view?.page ?? s.pages[0]?.page ?? 1)}>
+              {s.turning ? "turning…" : "⟳"}
+            </button>
+            <button data-pdf-rotate-all style={BTN} disabled={s.turning} title="turn every page a quarter clockwise" onClick={actions.rotateAll}>
+              ⟳ all
             </button>
           </>
         )}
@@ -276,6 +291,12 @@ export function PdfPanel({ state, actions }: { state: Store<PdfState>; actions: 
           </span>
           <button data-pdf-edit-next style={BTN} title="the next page" onClick={() => actions.stepEditPage(1)}>
             ▶
+          </button>
+          <button data-pdf-rotate style={BTN} disabled={s.turning} title="turn this page a quarter clockwise — a scan on its side, or upside down (twice); what was drawn on it goes" onClick={() => actions.rotate(s.editPage)}>
+            {s.turning ? "turning…" : "⟳"}
+          </button>
+          <button data-pdf-rotate-all style={BTN} disabled={s.turning} title="turn every page a quarter clockwise" onClick={actions.rotateAll}>
+            ⟳ all
           </button>
           <span data-pdf-drawn>{drawnLine}</span>
           <span data-pdf-move-hint style={DIM}>

@@ -66,7 +66,16 @@ the annotations read, the matching, the caret's measure and the system
 the strip shows, the checkbox, the drawing tools' state. Persisted
 (`ctx.storage`): `drawing:<pdf name>:<bytes>` → the systems and barlines
 drawn on that PDF, in its rendered pixels — kept on every edit, read when
-the same file is loaded without annotation files. Document: nothing.
+the same file is loaded without annotation files — and, since the ⟳
+(2026-11-05), its `rotations`: page → quarter turns clockwise, given back
+to the page images on every load (`rotate.ts`: a lossless canvas turn; no
+original is kept, four turns are the page again) and to annotation files
+still in their own frame. A drawing is in the turned page's pixels — so a
+turn empties the page's systems (they would be sideways) and says so. A
+turn re-encodes the page as PNG — a second or two for a page at 254 dpi
+on the Galaxy Tab — so turns queue one after the other (`turning`, the ⟳
+buttons wait): two taps during the first turn netted one quarter before,
+the second starting from the state before the first. Document: nothing.
 Nothing mutates the document outside `ctx.execute` — and this plugin never
 calls it; the lifecycle test asserts the adapter received no command, the
 e2e that the undo depth stays 0.
@@ -76,6 +85,14 @@ e2e that the undo depth stays 0.
 None.
 
 ## 6. Tests
+
+`test/rotate.test.ts` — a box a quarter at a time, four turns the box
+again; the annotations with one page turned, the same measure objects on
+the page and in the list; the files' frame; a drawing's page losing its
+systems. In the lifecycle test the canvas turn is faked (the size swaps):
+⟳ on files' annotations, four turns back, kept and given back on the next
+load; ⟳ all; a drawn page turned, its word, drawn again on the turned
+page.
 
 `test/annotations.test.ts` — boxes, the page by name or image, systems
 top to bottom, each measure in the system it overlaps most, reading order

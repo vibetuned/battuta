@@ -36,6 +36,11 @@ vi.mock("../src/images", async (original) => ({
     return orderImages(files).map((f, i) => ({ page: i + 1, url: `blob:img/${f.name}`, width: 2100, height: 2970 }));
   }),
 }));
+vi.mock("../src/rotate", async (original) => ({
+  ...(await original<typeof import("../src/rotate")>()),
+  // a canvas turns the image in the browser — the e2e sees the pixels; here the size swaps and the URL says so
+  rotatePage: vi.fn(async (page: { page: number; url: string; width: number; height: number }, turns: number) => (turns === 0 ? page : { page: page.page, url: `${page.url}~${turns}`, width: turns % 2 ? page.height : page.width, height: turns % 2 ? page.width : page.height })),
+}));
 const plugin = (await import("../src/index")).default;
 
 const PLUGIN_ID = manifest.id;
@@ -432,5 +437,96 @@ describe("staves, zoom and pages as images", () => {
     } finally {
       support.missing = [];
     }
+  });
+});
+
+describe("turning pages (⟳)", () => {
+  const sharpBox = { x0: 2570, y0: 200, x1: 2870, y1: 1000 };
+
+  it("a quarter clockwise turns the page image and the files' boxes with it; four turns are the page again; the turns are kept for that PDF and given back on the next load", async () => {
+    const storage = memoryStorage();
+    const f = await opened({ storage });
+    f.actions().load(ALL);
+    await flush();
+    f.actions().rotate(1);
+    await flush();
+    expect(f.state().pages[0]).toEqual({ page: 1, url: "blob:fake/1~1", width: 2970, height: 2100 });
+    expect(f.state().pages[1]).toMatchObject({ width: 2100, height: 2970 });
+    expect(f.state().rotations).toEqual({ "1": 1 });
+    expect(f.state().annotations!.byId.get("a")!.box).toEqual(sharpBox);
+    expect(f.state().annotations!.pages[0]).toMatchObject({ width: 2970, height: 2100 });
+    expect(f.state().annotations!.pages[1]).toMatchObject({ width: 2100, height: 2970 });
+    // the scan of "a" is still matched and fits the turned page
+    expect(f.band()!.height(cell(0, "a"))).toBeGreaterThan(0);
+    for (let i = 0; i < 3; i++) {
+      f.actions().rotate(1);
+      await flush();
+    }
+    expect(f.state().rotations).toEqual({ "1": 0 });
+    expect(f.state().pages[0]).toMatchObject({ width: 2100, height: 2970 });
+    expect(f.state().annotations!.byId.get("a")!.box).toEqual({ x0: 200, y0: 100, x1: 1000, y1: 400 });
+    // kept: cleared and loaded again, page 1 comes back turned, the files' boxes with it
+    f.actions().rotate(1);
+    await flush();
+    f.actions().clear();
+    f.actions().load(ALL);
+    await flush();
+    expect(f.state().rotations).toEqual({ "1": 1 });
+    expect(f.state().pages[0]).toMatchObject({ width: 2970, height: 2100 });
+    expect(f.state().annotations!.byId.get("a")!.box).toEqual(sharpBox);
+    expect(f.state().annotations!.byId.get("d")!.box).toEqual({ x0: 200, y0: 100, x1: 1200, y1: 400 });
+  });
+
+  it("two taps before the first turn is done are two quarters, not one: the turns queue", async () => {
+    const f = await opened();
+    f.actions().load(ALL);
+    await flush();
+    f.actions().rotate(1);
+    f.actions().rotate(1);
+    expect(f.state().turning).toBe(true);
+    await flush();
+    expect(f.state().turning).toBe(false);
+    expect(f.state().rotations).toEqual({ "1": 2 });
+    expect(f.state().pages[0]).toMatchObject({ url: "blob:fake/1~1~1", width: 2100, height: 2970 });
+    expect(f.state().annotations!.byId.get("a")!.box).toEqual({ x0: 1100, y0: 2570, x1: 1900, y1: 2870 });
+  });
+
+  it("⟳ all turns every page", async () => {
+    const f = await opened();
+    f.actions().load(ALL);
+    await flush();
+    f.actions().rotateAll();
+    await flush();
+    expect(f.state().rotations).toEqual({ "1": 1, "2": 1 });
+    expect(f.state().pages.map((p) => [p.width, p.height])).toEqual([
+      [2970, 2100],
+      [2970, 2100],
+    ]);
+    expect(f.state().annotations!.byId.get("d")!.box).toEqual({ x0: 2570, y0: 200, x1: 2870, y1: 1200 });
+  });
+
+  it("a drawn page turned loses its systems, with a word, and is drawn again on the turned page", async () => {
+    const storage = memoryStorage();
+    const f = await opened({ storage });
+    f.actions().load([file("piece.pdf")]);
+    await flush();
+    f.actions().startDrawing();
+    f.actions().addSystem({ x0: 100, y0: 200, x1: 2000, y1: 500 });
+    expect(f.state().annotations!.measures).toHaveLength(1);
+    f.actions().rotate(1);
+    await flush();
+    expect(f.state().drawing!.pages["1"]).toEqual({ width: 2970, height: 2100, systems: [] });
+    expect(f.state().annotations).toBeNull();
+    expect(f.state().source).toBeNull();
+    expect(f.state().notes).toEqual(["page 1 turned: the system drawn on it went — draw it again upright"]);
+    // drawn again on the turned page: kept with its turn
+    f.actions().addSystem({ x0: 100, y0: 200, x1: 2800, y1: 500 });
+    f.actions().clear();
+    f.actions().load([file("piece.pdf")]);
+    await flush();
+    expect(f.state().rotations).toEqual({ "1": 1 });
+    expect(f.state().pages[0]).toMatchObject({ width: 2970, height: 2100 });
+    expect(f.state()).toMatchObject({ source: "drawn" });
+    expect(f.state().annotations!.measures[0]!.box).toEqual({ x0: 100, y0: 200, x1: 2800, y1: 500 });
   });
 });
