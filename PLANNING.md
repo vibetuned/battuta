@@ -127,6 +127,14 @@ settings** — the `pluginSettings` slot, an item under the plugin's own
 row; `ctx.stylus.replies()`, `deleteReplies()` (a delete button, asking
 first) — and nothing else.
 
+**The end of the score (the user, 2026-11-05; API 1.3.12).** The editor
+appends a measure when a note from the keyboard or MIDI lands on the last
+event of the score, so the writing flows; and a plugin, **Add measure**,
+draws a gray measure with a + after the last one — a button for the pen,
+which writes where it touches. API 1.3.12: the overlays point's `end`
+tile and `core.appendMeasure` — and nothing else; the host presses a
+`data-pen-tap` button under a pen tap on nothing of the score.
+
 **Out of v1, to decide later.** The pedal (two signs); the double flat
 (the editor has none); the 32nd and 64th notes by hand (the cross writes
 notes exactly); handwriting on the desktop.

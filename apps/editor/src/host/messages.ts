@@ -10,7 +10,7 @@
  * and an API version bump.
  */
 import type { CommandMessage, Mark } from "@battuta/api";
-import { AddChordNoteCommand, ChainTieCommand, ChangeContextCommand, ChangeDurationCommand, ChordNoteAccidentalCommand, DeleteToRestsCommand, findAll, frac, measuresOf, meterCapacity, OrnamentCycleCommand, RemoveControlCommand, ReplaceEntryCommand, resolveContexts, SetHarmCommand, SetPitchesCommand, SetSylCommand, ToggleAccidentalCommand, ToggleArticCommand, ToggleDynamCommand, ToggleFingCommand, ToggleMarkCommand, TogglePedalCommand, ToggleSlurCommand, ToggleTieCommand, UnbeamThen, type ClefSpec, type Command, type CommandContext, type DirtyRegion, type EntrySpec } from "@battuta/core";
+import { AddChordNoteCommand, InsertMeasuresCommand, ChainTieCommand, ChangeContextCommand, ChangeDurationCommand, ChordNoteAccidentalCommand, DeleteToRestsCommand, findAll, frac, measuresOf, meterCapacity, OrnamentCycleCommand, RemoveControlCommand, ReplaceEntryCommand, resolveContexts, SetHarmCommand, SetPitchesCommand, SetSylCommand, ToggleAccidentalCommand, ToggleArticCommand, ToggleDynamCommand, ToggleFingCommand, ToggleMarkCommand, TogglePedalCommand, ToggleSlurCommand, ToggleTieCommand, UnbeamThen, type ClefSpec, type Command, type CommandContext, type DirtyRegion, type EntrySpec } from "@battuta/core";
 
 const DURATIONS = ["1", "2", "4", "8", "16", "32", "64"];
 
@@ -239,12 +239,40 @@ class EraseCommand implements Command {
 }
 
 /**
+ * A measure after the last (`core.appendMeasure`, 1.3.12): the keyboard's
+ * insert, at the end whatever the caret; the new measure's first rest is
+ * what it "wrote", so the caret goes there.
+ */
+class AppendMeasureCommand implements Command {
+  readonly label = "append a measure";
+  private inner: InsertMeasuresCommand | null = null;
+  private at = -1;
+  writtenId: string | null = null;
+
+  apply(ctx: CommandContext): DirtyRegion[] {
+    if (!this.inner) {
+      this.at = ctx.score.measures.length;
+      this.inner = new InsertMeasuresCommand(this.at, 1);
+    }
+    const dirty = this.inner.apply(ctx);
+    const measure = ctx.score.measures[this.at];
+    const first = measure ? (findAll(measure, "mRest")[0] ?? findAll(measure, "rest")[0]) : undefined;
+    this.writtenId = first?.attrs["xml:id"] ?? null;
+    return dirty;
+  }
+
+  revert(ctx: CommandContext): DirtyRegion[] {
+    return this.inner ? this.inner.revert(ctx) : [];
+  }
+}
+
+/**
  * The event a message's command wrote, once it ran — the note entered, the
  * chord grown, the event marked, the rest an erased note left — where the
  * caret goes (1.3.3, the stylus); null for every other message.
  */
 export function writtenBy(cmd: Command): string | null {
-  return cmd instanceof EntryCommand ? cmd.writtenId : cmd instanceof AddChordNoteCommand ? cmd.resultId : cmd instanceof MarkCommand ? cmd.writtenId : cmd instanceof EraseCommand ? cmd.writtenId : null;
+  return cmd instanceof EntryCommand ? cmd.writtenId : cmd instanceof AddChordNoteCommand ? cmd.resultId : cmd instanceof MarkCommand ? cmd.writtenId : cmd instanceof EraseCommand ? cmd.writtenId : cmd instanceof AppendMeasureCommand ? cmd.writtenId : null;
 }
 
 /** A written pitch, checked at the door: a letter and an octave. */
@@ -337,6 +365,8 @@ export function toCommand(message: CommandMessage): Command {
       if (typeof message.id !== "string" || message.id === "") throw new Error("core.erase: id must name a note, a chord or a mark");
       return new EraseCommand(message.id);
     }
+    case "core.appendMeasure":
+      return new AppendMeasureCommand();
     default: {
       const unknown = message as { type?: unknown };
       throw new Error(`unknown command message type ${JSON.stringify(unknown.type)}`);

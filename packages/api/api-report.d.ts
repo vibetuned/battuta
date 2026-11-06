@@ -1,4 +1,4 @@
-// @battuta/api 1.3.11 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
+// @battuta/api 1.3.12 — public surface snapshot. Bump the version, then `npm run api:update -w @battuta/api`.
 
 // ---- ../dist/.tsbuildinfo
 {"version":"5.9.3"}
@@ -492,7 +492,7 @@ export interface FormatsService {
  * public type here requires a version bump: `api-report.d.ts` is the
  * committed snapshot of this surface and the surface test enforces it.
  */
-export declare const API_VERSION = "1.3.11";
+export declare const API_VERSION = "1.3.12";
 export type { ActivationEvent, HostCapability, SlotName, KeyboardLayout, CommandContribution, KeybindingContribution, SlotItemContribution, PluginContributions, PluginManifest } from "./manifest.js";
 export { ACTIVATION_EVENT_PREFIXES, HOST_CAPABILITIES, SLOT_NAMES, validateManifest } from "./manifest.js";
 export type { Disposable } from "./disposable.js";
@@ -503,12 +503,12 @@ export type { CaretPosition, BlockSelection, Pitch, PitchEvent, SylValue, HarmKi
 export type { Timemap, TimemapEvent, TimemapNote } from "./render.js";
 export type { AudioService } from "./audio.js";
 export type { HighlightCue, ViewService } from "./view.js";
-export type { OverlayBox, OverlayStaff, TileOverlayProps, OverlaySpec, OverlaysService, BandCell, OverlayBand } from "./overlays.js";
+export type { OverlayBox, OverlayStaff, TileOverlayProps, OverlaySpec, OverlaysService, BandCell, OverlayBand, EndOverlayProps } from "./overlays.js";
 export type { ExportContribution, ExportFile, ExportPayload, ImportContribution, ImportFile, FormatsService } from "./formats.js";
 export type { DirEntry, WatchEvent, WatchEventKind, WorkspaceService } from "./workspace.js";
 export type { StylusSample, StylusScorePoint, StylusEvent, StylusService, StylusSymbolContext, StylusRecognizeRequest, StylusRecognition, StylusReply, StylusTraining, StylusReplies } from "./stylus.js";
 export type { KeyPress, KeysService } from "./keys.js";
-export type { SetPitchesMessage, SetSylMessage, SetHarmMessage, EnterNoteMessage, AddChordNoteMessage, Mark, MarkMessage, EraseMessage, CommandMessage, CommandMessageType } from "./messages.js";
+export type { SetPitchesMessage, SetSylMessage, SetHarmMessage, EnterNoteMessage, AddChordNoteMessage, Mark, MarkMessage, EraseMessage, AppendMeasureMessage, CommandMessage, CommandMessageType } from "./messages.js";
 export { COMMAND_MESSAGE_TYPES } from "./messages.js";
 export type { MidiPort, MidiNoteEvent, MidiVirtualInput, MidiOutputs, MidiService } from "./midi.js";
 export type { KeymapEntry, ActionsService } from "./actions.js";
@@ -948,7 +948,15 @@ export interface EraseMessage {
     type: "core.erase";
     id: string;
 }
-export type CommandMessage = SetPitchesMessage | SetSylMessage | SetHarmMessage | EnterNoteMessage | AddChordNoteMessage | MarkMessage | EraseMessage;
+/**
+ * A measure after the last (1.3.12): empty like its neighbour, as the
+ * keyboard's ⊞+ adds one — at the end of the score, whatever the caret. The
+ * caret goes to its first event, as to anything a plugin writes.
+ */
+export interface AppendMeasureMessage {
+    type: "core.appendMeasure";
+}
+export type CommandMessage = SetPitchesMessage | SetSylMessage | SetHarmMessage | EnterNoteMessage | AddChordNoteMessage | MarkMessage | EraseMessage | AppendMeasureMessage;
 export type CommandMessageType = CommandMessage["type"];
 export declare const COMMAND_MESSAGE_TYPES: readonly CommandMessageType[];
 
@@ -1083,6 +1091,17 @@ export interface OverlayBand {
         height: number;
     }) => ReactNode;
 }
+/**
+ * The tile after the last measure (1.3.12): what the host gives an `end`
+ * renderer — the box, and the staves as the last tile has them (the same
+ * lines at the same heights, so a drawing of them lines up with the row).
+ */
+export interface EndOverlayProps {
+    measureCount: number;
+    width: number;
+    height: number;
+    staves: readonly OverlayStaff[];
+}
 export interface OverlaySpec {
     /** Unique within the plugin. Adding the same id again replaces the earlier overlay — and makes the host re-measure its band. */
     id: string;
@@ -1090,6 +1109,8 @@ export interface OverlaySpec {
     render?: (tile: TileOverlayProps) => ReactNode;
     /** A band above every tile (1.2.0). */
     band?: OverlayBand;
+    /** A tile after the last measure, in the last row of edit view (1.3.12): a place to add to the score from. Drawn while the disposable lives; the box is a typical tile's width by the row's height. */
+    end?: (end: EndOverlayProps) => ReactNode;
 }
 export interface OverlaysService {
     /** Mount an overlay on every tile until disposed (or the plugin deactivates). */

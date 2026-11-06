@@ -73,6 +73,18 @@ export interface OverlayBand {
   render: (cell: BandCell & { height: number }) => ReactNode;
 }
 
+/**
+ * The tile after the last measure (1.3.12): what the host gives an `end`
+ * renderer — the box, and the staves as the last tile has them (the same
+ * lines at the same heights, so a drawing of them lines up with the row).
+ */
+export interface EndOverlayProps {
+  measureCount: number;
+  width: number;
+  height: number;
+  staves: readonly OverlayStaff[];
+}
+
 export interface OverlaySpec {
   /** Unique within the plugin. Adding the same id again replaces the earlier overlay — and makes the host re-measure its band. */
   id: string;
@@ -80,6 +92,8 @@ export interface OverlaySpec {
   render?: (tile: TileOverlayProps) => ReactNode;
   /** A band above every tile (1.2.0). */
   band?: OverlayBand;
+  /** A tile after the last measure, in the last row of edit view (1.3.12): a place to add to the score from. Drawn while the disposable lives; the box is a typical tile's width by the row's height. */
+  end?: (end: EndOverlayProps) => ReactNode;
 }
 
 export interface OverlaysService {

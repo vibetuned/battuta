@@ -318,6 +318,32 @@ Phase 11). Its first slice is the bridge they all stand on.
   two at 254 dpi on the Galaxy Tab, so turns queue and the buttons wait
   (two taps during a turn netted one quarter at first). No API change;
   pdf-reference +7 tests.
+- **The score grows as you write, and a + after the last measure — API
+  1.3.12 (2026-11-05).** The user: "the editor will create a new measure
+  if a note (midi or keyboard) is input and we are at the end of the score
+  … then the plugin will add a gray measure with a + in the middle of the
+  staff … to add measure without the need of the keyboard, specially handy
+  when writing with the stylus". The editor: a note entered from the
+  keyboard or MIDI on the last event of the score appends a measure and
+  the caret goes into it (`DocumentSession.advanceAfterEntry`; a voice
+  that merely ends before the last measure stays put; the note and the
+  measure are two undo steps). The new plugin, **Add measure**
+  (`battuta.add-measure`, on by default, woken at startup): a gray measure
+  with a + in the middle of the staff after the last tile in edit view,
+  drawn at the last tile's staff heights — one button, pressed by a
+  finger, a mouse or the pen. API 1.3.12: the overlays point's **`end`**
+  tile (`OverlaySpec.end`, `EndOverlayProps { measureCount, width,
+  height, staves }`; the host packs it after the last measure, a typical
+  tile's width, in the last row — alone in a row it takes the row before
+  it) and **`core.appendMeasure`** (a measure after the last, as ⊞+ makes
+  one; the caret goes to its rest) — and nothing else. The pen: the shell
+  captures it over the whole score, so the host presses, for a pen tap on
+  nothing of the score, the button under it that asks for the pen
+  (`data-pen-tap`, `PenTap` in `host/stylus.tsx` — not a new host module:
+  that is an architecture decision); a plugin never touches the DOM, the
+  first draft of this in the stylus plugin failed the boundary test.
+  Editor +9 tests (the message, the session's flow, the pen tap), the
+  plugin 4.
 - **M2: granita in the shell (2026-11-01).** `plugins/battuta-mobile`
   carries granita's released model, copied by
   `scripts/copy-granita.sh <granita checkout>` and named in

@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import { synthesizeTile, synthesizeRowHeader, contextHash, caretLeft, caretRight, caretVertical, eventRange, normalizeBlock, fragmentToText, type CaretPosition, type TileHeader, type BlockSelection, type ClipboardFragment } from "@battuta/core";
 import { RenderPool, type TileResult } from "./render/renderPool";
 import { keyMatches, type Keymap, type Layout } from "./keymap";
-import { host, useStore, Slot, Panels, SIDE_PANEL_WIDTH, SAFE_TOP, SAFE_BOTTOM, SAFE_LEFT, SAFE_RIGHT, useNarrowScreen, shellPlatform, LaneInput, laneFace, TileOverlays, TileBands, rowBandHeights, confirmDialog, tauriInvoke, onTablet, blockOfEvents, rule, gate, modal, isMod, writtenBy, type ActionStep, type KeyEvent, type Outcome, type OverlayStore } from "./host";
+import { host, useStore, Slot, Panels, SIDE_PANEL_WIDTH, SAFE_TOP, SAFE_BOTTOM, SAFE_LEFT, SAFE_RIGHT, useNarrowScreen, shellPlatform, LaneInput, laneFace, TileOverlays, EndTileOverlays, TileBands, rowBandHeights, confirmDialog, tauriInvoke, onTablet, blockOfEvents, rule, gate, modal, isMod, writtenBy, type ActionStep, type KeyEvent, type Outcome, type OverlayStore } from "./host";
 import { ShortcutEditor } from "./ShortcutEditor";
 // The about box and its notices load when it opens (phase 10, M4).
 const About = lazy(() => import("./About").then((m) => ({ default: m.About })));
@@ -216,6 +216,8 @@ function TileGrid({ session, version, pool, zoom, overlays, onRendered, onSettle
   // tiles. Re-added specs (a plugin's data changed) re-measure the rows.
   const allOverlays = useStore(overlays.specs);
   const bandSpecs = useMemo(() => allOverlays.filter((s) => s.band), [allOverlays]);
+  // The end tile (1.3.12): a plugin's `end` overlay packs after the last measure, as wide as a typical tile.
+  const endSpecs = useMemo(() => allOverlays.filter((s) => s.end), [allOverlays]);
   useEffect(() => {
     onLayout();
   }, [tiles, headers, measureTick, zoom, containerW, onLayout, bandSpecs]);
@@ -227,15 +229,18 @@ function TileGrid({ session, version, pool, zoom, overlays, onRendered, onSettle
 
   // --- Row layout: greedy fill by real (or estimated) tile widths, each row
   // prefixed by a system-start header cell (clef + keysig for that context).
+  const hasEnd = endSpecs.length > 0 && measureCount > 0;
   const rows = useMemo(() => {
     const out: { headerKey: string; indices: number[] }[] = [];
     const headerW = 110 * zoom;
+    // The end tile's row keeps the last measure's header.
+    const keyOf = (i: number): string => headerSlices[Math.min(i, measureCount - 1)]!.key;
     let cur: number[] = [];
     let acc = 0;
-    for (let i = 0; i < measureCount; i++) {
-      const wpx = (tiles.get(i)?.w ?? estimateW) * zoom;
+    for (let i = 0; i < measureCount + (hasEnd ? 1 : 0); i++) {
+      const wpx = (i < measureCount ? (tiles.get(i)?.w ?? estimateW) : estimateW) * zoom;
       if (cur.length && acc + wpx > containerW - headerW) {
-        out.push({ headerKey: headerSlices[cur[0]!]!.key, indices: cur });
+        out.push({ headerKey: keyOf(cur[0]!), indices: cur });
         cur = [i];
         acc = wpx;
       } else {
@@ -243,9 +248,9 @@ function TileGrid({ session, version, pool, zoom, overlays, onRendered, onSettle
         acc += wpx;
       }
     }
-    if (cur.length) out.push({ headerKey: headerSlices[cur[0]!]!.key, indices: cur });
+    if (cur.length) out.push({ headerKey: keyOf(cur[0]!), indices: cur });
     return out;
-  }, [measureCount, tiles, estimateW, zoom, containerW, headerSlices]);
+  }, [measureCount, hasEnd, tiles, estimateW, zoom, containerW, headerSlices]);
   const rowsSig = rows.map((r) => r.indices[0]).join(",");
 
   /** A row's forced gap: the max intrinsic need among its measured tiles. */
@@ -342,11 +347,13 @@ function TileGrid({ session, version, pool, zoom, overlays, onRendered, onSettle
       const ss = rowSpacing(row);
       const sfx = ss > 0 ? `-ss${ss}` : "";
       const options = ss > 0 ? { spacingStaff: ss } : undefined;
-      const headerBase = headerSlices[row.indices[0]!]!.key;
+      // A row that starts with the end tile (1.3.12, its index is measureCount) keeps the last measure's header.
+      const first = Math.min(row.indices[0]!, measureCount - 1);
+      const headerBase = headerSlices[first]!.key;
       const headerKey = headerBase + sfx;
       if (!requestedHeaders.current.has(headerKey)) {
         requestedHeaders.current.add(headerKey);
-        const hs = headerSlices[row.indices[0]!]!;
+        const hs = headerSlices[first]!;
         void pool.render(headerKey, hs.xml, options).then((r) => {
           if (!alive.current || r.error) return;
           setHeaders((prev) => new Map(prev).set(headerKey, measureTile(r.svg, headerBase, headerKey, r)));
@@ -391,6 +398,8 @@ function TileGrid({ session, version, pool, zoom, overlays, onRendered, onSettle
     </div>
   );
 
+  // The last row's geometry, for a row holding only the end tile (1.3.12).
+  let lastGeo: { rowTop: number; rowBottom: number } | null = null;
   return (
     <div ref={containerRef}>
       {rows.map((row) => {
@@ -400,12 +409,15 @@ function TileGrid({ session, version, pool, zoom, overlays, onRendered, onSettle
         const withHeader = header ? [header, ...members] : members;
         // Compact baseline: real ink above the line (intrinsic), not the
         // forced variants' padding. Bottom extents come from what is shown.
-        const rowTop = members.reduce((m, t) => Math.max(m, intrinsicTop.current.get(t.baseKey) ?? t.staffTop), 60);
-        const rowBottom = withHeader.reduce((m, t) => Math.max(m, t.h - t.staffTop), 140);
+        // A row holding only the end tile (1.3.12) takes the row before it, so its staves line up.
+        const own = members.length > 0 || !lastGeo;
+        const rowTop = own ? members.reduce((m, t) => Math.max(m, intrinsicTop.current.get(t.baseKey) ?? t.staffTop), 60) : lastGeo!.rowTop;
+        const rowBottom = own ? withHeader.reduce((m, t) => Math.max(m, t.h - t.staffTop), 140) : lastGeo!.rowBottom;
+        lastGeo = { rowTop, rowBottom };
         const rowBoxH = (rowTop + rowBottom) * zoom;
         // Band cells for this row: a placeholder's width is the estimate, so
-        // the row does not jump when its tiles arrive.
-        const cells = row.indices.map((i) => ({ measureIndex: i, measureId: session.score.measures[i]?.attrs["xml:id"] ?? null, width: (tiles.get(i)?.w ?? estimateW) * zoom }));
+        // the row does not jump when its tiles arrive. The end tile has no band.
+        const cells = row.indices.filter((i) => i < measureCount).map((i) => ({ measureIndex: i, measureId: session.score.measures[i]?.attrs["xml:id"] ?? null, width: (tiles.get(i)?.w ?? estimateW) * zoom }));
         const bandHeights = bandSpecs.length ? rowBandHeights(bandSpecs, cells) : [];
         const bandTotal = bandHeights.reduce((a, b) => a + b, 0);
         return (
@@ -417,6 +429,15 @@ function TileGrid({ session, version, pool, zoom, overlays, onRendered, onSettle
               </div>
             )}
             {row.indices.map((index, k) => {
+              if (index === measureCount) {
+                // The end tile (1.3.12): a plugin's `end` overlay after the last measure — the row's height, a typical tile's width, no band of its own.
+                return (
+                  <div className="tile" data-index={index} data-end-tile key="end">
+                    {bandTotal > 0 && <div data-band-spacer style={{ height: bandTotal }} />}
+                    <EndTileOverlays store={overlays} measureCount={measureCount} width={estimateW * zoom} height={rowBoxH} layoutKey={`${tiles.get(measureCount - 1)?.displayKey ?? ""}|${zoom}|${rowTop}|${rowBoxH}`} staffNOf={staffNOf} contextOf={contextOf} />
+                  </div>
+                );
+              }
               const tile = tiles.get(index);
               return (
                 <div className="tile" data-index={index} key={index}>
@@ -1000,7 +1021,12 @@ export default function App() {
         });
         lastEntered.current = entered;
         afterCommand(session);
-        if (opts?.advance !== false) setCaret((c) => (c ? caretRight(session.index, session.score, c) ?? c : c));
+        if (opts?.advance !== false) {
+          // The next event — or, at the end of the score, a new measure to write into (the user, 2026-11-05).
+          const { caret: next, grew } = session.advanceAfterEntry(caret);
+          if (grew) afterCommand(session);
+          setCaret(next);
+        }
         setNotice(null);
       } catch (err) {
         setNotice(`entry refused: ${err instanceof Error ? err.message : err}`);
@@ -2398,13 +2424,15 @@ export default function App() {
         const s = sessionRef.current;
         const pos = caretRef.current;
         if (s && pos) {
-          const next = caretRight(s.index, s.score, pos) ?? pos;
+          // The next event — or, at the end of the score, a new measure to write into (the user, 2026-11-05).
+          const { caret: next, grew } = s.advanceAfterEntry(pos);
+          if (grew) afterCommand(s);
           caretRef.current = next;
           setCaret(next);
         }
       }
     },
-    [],
+    [afterCommand],
   );
 
   useEffect(() => host.midi.start(), []);

@@ -138,8 +138,18 @@ export interface EraseMessage {
   id: string;
 }
 
-export type CommandMessage = SetPitchesMessage | SetSylMessage | SetHarmMessage | EnterNoteMessage | AddChordNoteMessage | MarkMessage | EraseMessage;
+/**
+ * A measure after the last (1.3.12): empty like its neighbour, as the
+ * keyboard's ⊞+ adds one — at the end of the score, whatever the caret. The
+ * caret goes to its first event, as to anything a plugin writes.
+ */
+export interface AppendMeasureMessage {
+  type: "core.appendMeasure";
+}
+
+export type CommandMessage = SetPitchesMessage | SetSylMessage | SetHarmMessage | EnterNoteMessage | AddChordNoteMessage | MarkMessage | EraseMessage
+  | AppendMeasureMessage;
 
 export type CommandMessageType = CommandMessage["type"];
 
-export const COMMAND_MESSAGE_TYPES: readonly CommandMessageType[] = ["core.setPitches", "core.setSyl", "core.setHarm", "core.enterNote", "core.addChordNote", "core.mark", "core.erase"];
+export const COMMAND_MESSAGE_TYPES: readonly CommandMessageType[] = ["core.setPitches", "core.setSyl", "core.setHarm", "core.enterNote", "core.addChordNote", "core.mark", "core.erase", "core.appendMeasure"];

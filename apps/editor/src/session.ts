@@ -5,6 +5,7 @@
  * version, and tiles re-render off cache-key changes alone.
  */
 import {
+  caretRight,
   buildScore, resolveContexts, buildEventIndex, ensureIds, fromDom, serialize, serializeDocument, childElements, findAll, meterCapacity, frac,
   CommandStack, TransposeStepCommand, TransposeOctaveCommand, ToggleAccidentalCommand, ChordNoteAccidentalCommand, chordNotes, DeleteToRestsCommand, RegenerateIdsCommand,
   copyBlock, planPasteReplace, PasteReplaceMeasuresCommand, InsertMeasuresCommand, DeleteMeasuresCommand, DuplicateMeasuresCommand, AddStaffCommand, RemoveStaffCommand, AddVoiceCommand, RemoveVoiceCommand, ToggleRepeatCommand, ToggleEndRepeatCommand, ToggleVoltaCommand,
@@ -14,6 +15,19 @@ import {
   type CoreScore, type MeasureContext, type EventIndex, type Command, type DirtyRegion, type DomLikeElement, type DomLikeNode,
   type BlockSelection, type ClipboardFragment, type PastePlan, type EntrySpec, type MarkKind, type HarmKind, type CoreElement, type CaretPosition, type ContextChangeSpec,
 } from "@battuta/core";
+
+/**
+ * Where the caret goes after an entry, and whether a measure must be
+ * appended first: the next event while there is one; at the last event of
+ * the last measure, the first event of a measure to come. A voice that
+ * merely ends before the last measure stays where it is.
+ */
+export function planAdvance(index: Parameters<typeof caretRight>[0], score: Parameters<typeof caretRight>[1], pos: CaretPosition): { caret: CaretPosition; grow: boolean } {
+  const next = caretRight(index, score, pos);
+  if (next) return { caret: next, grow: false };
+  if (pos.measureIndex !== score.measures.length - 1) return { caret: pos, grow: false };
+  return { caret: { measureIndex: score.measures.length, staffN: pos.staffN, layerN: pos.layerN, eventIndex: 0 }, grow: true };
+}
 
 export class DocumentSession {
   readonly score: CoreScore;
@@ -162,6 +176,18 @@ export class DocumentSession {
   }
   insertMeasures(at: number, count = 1): DirtyRegion[] {
     return this.execute(new InsertMeasuresCommand(at, count));
+  }
+  /**
+   * The caret after an entry: the next event — or, at the end of the score,
+   * the first event of a measure appended so the writing flows (the user,
+   * 2026-11-05: a note entered at the end makes a new measure). `grew` says
+   * a measure was added, for the caller to re-render; a voice that merely
+   * ends before the last measure is left where it is.
+   */
+  advanceAfterEntry(pos: CaretPosition): { caret: CaretPosition; grew: boolean } {
+    const plan = planAdvance(this.index, this.score, pos);
+    if (plan.grow) this.insertMeasures(this.score.measures.length, 1);
+    return { caret: plan.caret, grew: plan.grow };
   }
   deleteMeasures(at: number, count = 1): DirtyRegion[] {
     return this.execute(new DeleteMeasuresCommand(at, count));

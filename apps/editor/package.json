@@ -19,6 +19,7 @@
   "dependencies": {
     "@battuta/api": "*",
     "@battuta/core": "*",
+    "@battuta/plugin-add-measure": "*",
     "@battuta/plugin-folder-view": "*",
     "@battuta/plugin-formats": "*",
     "@battuta/plugin-harmony": "*",

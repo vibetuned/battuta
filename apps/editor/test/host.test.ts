@@ -1083,3 +1083,23 @@ describe("storage and settings namespaces", () => {
     expect(settings.load().plugins?.["test.echo"]).toEqual({ values: { greeting: "hi" } });
   });
 });
+
+describe("core.appendMeasure (1.3.12)", () => {
+  it("maps to a measure after the last, empty like its neighbour; the caret goes to its rest; a revert takes it back", () => {
+    const el = (tag: string, attrs: Record<string, string> = {}, ...children: CoreElement[]): CoreElement => ({ tag, attrs, children });
+    const root = el("music", {}, el("body", {}, el("mdiv", {}, el("score", {}, el("scoreDef", { "meter.count": "3", "meter.unit": "4" }, el("staffGrp", {}, el("staffDef", { n: "1", lines: "5", "clef.shape": "G", "clef.line": "2" }))), el("section", {}, el("measure", { n: "1", "xml:id": "m1" }, el("staff", { n: "1" }, el("layer", { n: "1" }, el("mRest", { "xml:id": "mr1" })))))))));
+    const score = buildScore(root);
+    const ctx = () => ({ score, index: buildEventIndex(score) });
+    const cmd = toCommand({ type: "core.appendMeasure" });
+    expect(cmd.label).toBe("append a measure");
+    cmd.apply(ctx());
+    expect(score.measures).toHaveLength(2);
+    const rest = findAll(score.measures[1]!, "mRest")[0]!;
+    expect(rest.attrs["xml:id"]).toBeTruthy();
+    expect(writtenBy(cmd)).toBe(rest.attrs["xml:id"]);
+    expect(buildEventIndex(score).byId.has(rest.attrs["xml:id"]!)).toBe(true);
+    cmd.revert(ctx());
+    expect(score.measures).toHaveLength(1);
+  });
+});
+

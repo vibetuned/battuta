@@ -13,6 +13,7 @@
  *   { manifest: mine, load: () => import("@battuta/plugin-mine") },
  */
 import type { PluginEntry } from "@battuta/api";
+import { manifest as addMeasure } from "@battuta/plugin-add-measure/manifest";
 import { manifest as folderView } from "@battuta/plugin-folder-view/manifest";
 import { manifest as formats } from "@battuta/plugin-formats/manifest";
 import { manifest as harmony } from "@battuta/plugin-harmony/manifest";
@@ -37,4 +38,5 @@ export const BUILTIN_PLUGINS: readonly PluginEntry[] = [
   { manifest: pdfReference, load: () => import("@battuta/plugin-pdf-reference") },
   { manifest: stylus, load: () => import("@battuta/plugin-stylus") },
   { manifest: screencastKeys, load: () => import("@battuta/plugin-screencast-keys") },
+  { manifest: addMeasure, load: () => import("@battuta/plugin-add-measure") },
 ];

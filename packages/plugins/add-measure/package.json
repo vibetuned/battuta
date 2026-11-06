@@ -1,0 +1,27 @@
+{
+  "name": "@battuta/plugin-add-measure",
+  "version": "1.0.0",
+  "license": "AGPL-3.0-only",
+  "description": "A gray measure with a + after the last one: tap it to add a measure, no keyboard needed — for the stylus.",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./manifest": "./src/manifest.ts"
+  },
+  "//": [
+    "exports point at src/, NOT a built dist/: Vite and tsc both consume linked TypeScript, so a plugin has no build step and no prepare — nothing to be stale.",
+    "dependencies: @battuta/api and nothing else of the workspace. @battuta/core is not here and cannot be added — apps/editor/test/plugin-boundaries.test.ts fails the build on it."
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@battuta/api": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

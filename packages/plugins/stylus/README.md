@@ -108,8 +108,11 @@ nothing and says so; landing off a note draws nothing.
 
 In every mode the pen writes **only on the score**: everywhere else —
 the toolbar, the panels, the on-screen keyboard, a menu open over the
-score — it taps like a finger. Fingers scroll and zoom as always, even
-while the pen writes.
+score — it taps like a finger. On the score, a tap on nothing of it
+presses what asks for the pen there: the gray **+** measure after the
+last one (the *Add measure* plugin) adds a measure, so a score grows
+without the keyboard. Fingers scroll and zoom as always, even while the
+pen writes.
 
 ## Replies and training
 

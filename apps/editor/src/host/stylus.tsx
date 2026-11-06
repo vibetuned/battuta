@@ -354,9 +354,70 @@ const pointOf = (e: ShellEvent): { x: number; y: number } | null => {
   return e.x !== null && e.y !== null ? { x: e.x, y: e.y } : null;
 };
 
+/**
+ * A pen tap off the staves presses the button under it (1.3.12, the + after
+ * the last measure). The shell captures the pen over the whole score area —
+ * the pen writes on the score, fingers scroll — so a tap there never reaches
+ * the page by itself; the host presses, for a tap (down and up within a few
+ * px and half a second) whose point resolves to nothing of the score, the
+ * button that asks for the pen under it: `data-pen-tap`. Any other button
+ * stays out of the pen's reach, as before. The event still goes to the
+ * plugins; a tap on nothing is nothing to them.
+ */
+export const TAP_MS = 500;
+export const TAP_PX = 8;
+
+export interface Doc {
+  elementFromPoint(x: number, y: number): { closest?: (selector: string) => { click?: () => void } | null } | null;
+}
+
+/** The pen-tap button under a page point, pressed; false when there is none. */
+export function pressUnder(x: number, y: number, doc: Doc | undefined = typeof document === "undefined" ? undefined : (document as unknown as Doc)): boolean {
+  const button = doc?.elementFromPoint(x, y)?.closest?.("[data-pen-tap]");
+  if (!button?.click) return false;
+  button.click();
+  return true;
+}
+
+/** A stroke event as the tap needs it: its phase, its id, its last sample's point, whether the point is on the score. */
+export interface TapEvent {
+  phase: "down" | "move" | "up" | "cancel";
+  id: number;
+  x: number;
+  y: number;
+  onScore: boolean;
+}
+
+/** Follows the pen through a stroke that began off the score; `press` says whether the stroke ended as a tap that pressed a button. */
+export class PenTap {
+  private tap: { id: number; x: number; y: number; t: number } | null = null;
+
+  constructor(
+    private readonly press: (x: number, y: number) => boolean = pressUnder,
+    private readonly now: () => number = Date.now,
+  ) {}
+
+  event(e: TapEvent): boolean {
+    if (e.phase === "down") {
+      this.tap = e.onScore ? null : { id: e.id, x: e.x, y: e.y, t: this.now() };
+      return false;
+    }
+    const tap = this.tap;
+    if (!tap || tap.id !== e.id) return false;
+    if (e.phase === "move") {
+      if (Math.hypot(e.x - tap.x, e.y - tap.y) > TAP_PX) this.tap = null;
+      return false;
+    }
+    this.tap = null;
+    return e.phase === "up" && this.now() - tap.t <= TAP_MS && Math.hypot(e.x - tap.x, e.y - tap.y) <= TAP_PX && this.press(e.x, e.y);
+  }
+}
+
 export class StylusService {
   /** The active score's lookups (`host.bindStylus`); null while no document is open. */
   lookups: () => ScoreLookups | null = () => null;
+  /** A pen tap off the staves, pressing the button under it. */
+  private readonly penTap = new PenTap();
   private readonly claims = new Set<string>();
   private readonly listeners = new Set<(e: StylusEvent) => void>();
   private subscribed = false;
@@ -511,6 +572,8 @@ export class StylusService {
     const lookups = this.lookups();
     const at = p && lookups && within(this.area, p.x, p.y) ? resolvePoint(p.x, p.y, lookups) : null;
     const event = { ...raw, at } as StylusEvent;
+    // A pen tap on nothing of the score presses the pen-tap button under it (1.3.12): the + after the last measure.
+    if (raw.type === "stroke" && p) this.penTap.event({ phase: raw.phase, id: raw.id, x: p.x, y: p.y, onScore: at !== null });
     // Debug builds: the shell log names every event but the per-frame ones.
     if (shellPlatform()?.debug && raw.type !== "hover" && !(raw.type === "stroke" && raw.phase === "move")) {
       const what = raw.type === "stroke" ? `stroke ${raw.phase} #${raw.id}` : raw.type === "hold" ? `hold #${raw.id}` : `${raw.button} ${raw.phase}`;

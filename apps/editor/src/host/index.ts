@@ -485,7 +485,7 @@ export { useStore } from "./store";
 export { Slot, Panels, SIDE_PANEL_WIDTH, SAFE_TOP, SAFE_BOTTOM, SAFE_LEFT, SAFE_RIGHT, useNarrowScreen } from "./slots";
 export { LaneStore, LaneInput, laneFace } from "./lanes";
 export type { LaneAdapter, LaneState, LaneOption, DeclaredLane } from "./lanes";
-export { OverlayStore, TileOverlays, TileBands, tileGeometry, measureTile, rowBandHeights } from "./overlays";
+export { OverlayStore, TileOverlays, EndTileOverlays, TileBands, tileGeometry, measureTile, rowBandHeights } from "./overlays";
 export type { RegisteredOverlay, TileMeasurement, Rect } from "./overlays";
 export { HostAudioService } from "./audio";
 export type { AudioContextFactory } from "./audio";

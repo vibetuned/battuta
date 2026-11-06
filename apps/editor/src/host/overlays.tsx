@@ -13,7 +13,7 @@
  * takes no pointer events; the host's hit-testing underneath is untouched.
  */
 import { useLayoutEffect, useRef, useState } from "react";
-import { toDisposable, type BandCell, type Disposable, type OverlayBox, type OverlaySpec, type OverlayStaff, type StaffContext, type TileOverlayProps } from "@battuta/api";
+import { toDisposable, type BandCell, type Disposable, type EndOverlayProps, type OverlayBox, type OverlaySpec, type OverlayStaff, type StaffContext, type TileOverlayProps } from "@battuta/api";
 import { createStore, useStore } from "./store";
 
 export interface RegisteredOverlay extends OverlaySpec {
@@ -156,3 +156,34 @@ export function TileBands({ specs, heights, cell }: { specs: readonly Registered
     </>
   );
 }
+
+/**
+ * The tile after the last measure (1.3.12): the `end` renderers, given the
+ * box and the last tile's staves — measured off that tile's frame, whose
+ * lines sit at the same heights in this row (a row holding only this tile
+ * takes the row before it). Nothing is mounted while no `end` is registered.
+ */
+export function EndTileOverlays({ store, measureCount, width, height, layoutKey, staffNOf, contextOf }: { store: OverlayStore; measureCount: number; width: number; height: number; layoutKey: string; staffNOf: (staffId: string) => number | undefined; contextOf: (measureIndex: number, n: number) => StaffContext | undefined }) {
+  const specs = useStore(store.specs).filter((s) => s.end);
+  const ref = useRef<HTMLDivElement>(null);
+  const [staves, setStaves] = useState<readonly OverlayStaff[]>([]);
+  const active = specs.length > 0;
+  useLayoutEffect(() => {
+    if (!active || !ref.current) return;
+    const frame = ref.current.ownerDocument.querySelector<HTMLElement>(`.tile[data-index="${measureCount - 1}"] [data-tile-frame]`);
+    if (!frame) return;
+    setStaves(tileGeometry(measureTile(frame), staffNOf, (n) => contextOf(measureCount - 1, n)).staves);
+  }, [active, layoutKey, measureCount, staffNOf, contextOf]);
+  if (!active) return null;
+  const end: EndOverlayProps = { measureCount, width, height, staves };
+  return (
+    <div ref={ref} data-end-overlays style={{ position: "relative", width, height }}>
+      {specs.map((s) => (
+        <div key={`${s.pluginId}:${s.id}`} data-overlay={s.id} data-plugin={s.pluginId} style={FILL}>
+          {s.end?.(end)}
+        </div>
+      ))}
+    </div>
+  );
+}
+

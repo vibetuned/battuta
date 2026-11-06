@@ -54,6 +54,11 @@ everywhere.
   just entered, building a chord.
 - **<kbd>r</kbd>** (or numpad <kbd>0</kbd>, right under the duration digits) writes a rest of the current duration.
 
+The caret moves on to the next event after each entry. At the **end of the
+score** — the last event of the last measure — a new measure is added and
+the caret goes into it, so the writing flows; undo takes the measure back,
+then the note.
+
 <Figure name="chord" caption="Type c, then shift+E and shift+G." />
 
 ## Accidentals
@@ -124,7 +129,7 @@ A MIDI keyboard is a first-class input, not an add-on. With input mode on:
 
 1. Play a note — it is entered at the caret with the current duration.
 2. Hold several keys down together — they build a chord.
-3. Release, and the caret advances.
+3. Release, and the caret advances — into a new measure, at the end of the score.
 
 </Steps>
 
