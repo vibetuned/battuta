@@ -16,10 +16,14 @@
  * Android), a touch screen — so the on-screen keyboard comes up by itself —
  * and the device's width. The scenes: writing at the caret; page view
  * playing; a block selected; a PDF's scans over the measures to transcribe;
- * the folder view. Schumann's Melodie from docs/excerpts, the Chopin PDF the
- * e2e uses (fixtures/pdf-reference). One thing is staged: a browser has no
- * folder to list, so the folder view's list comes through the very commands
- * the shell answers, as in the docs' shot — the panel is the app's.
+ * the folder view; and on the tablets, the pen's cross unfolded into its
+ * rulers (1.3.0). Schumann's Melodie from docs/excerpts, the Chopin PDF the
+ * e2e uses (fixtures/pdf-reference). Two things are staged, each through the
+ * very calls the shell answers: a browser has no folder to list, so the
+ * folder view's list comes through the shell's commands, as in the docs'
+ * shot; and a browser has no pen, so the stylus's commands are answered and
+ * a stroke is replayed through the shell's "stylus" event — the cross and
+ * its rulers are the app's.
  *
  *   npm run store:screenshots   → apps/editor/store/screenshots/<set>/NN-<scene>.png
  *
@@ -215,6 +219,54 @@ try {
     await page.locator("[data-folder-view] button", { hasText: "Schumann" }).first().click();
     await until(() => [...document.querySelectorAll("[data-folder-view] button")].some((b) => b.textContent.includes("Kinderszenen")), null, 10000);
     await shot("05-folders");
+
+    // ---- 6. the pen's cross, on the tablets: the rulers over the Melodie ----------
+    // Staged: the shell's half of the stylus — its commands and its "stylus"
+    // event — answered here, and the plugin started again to find a pen. A
+    // stroke lands on a note, drags a length longer and a step up, and is
+    // photographed with the pen still down; then cancelled: nothing written.
+    if (set.id === "ios-ipad-13" || set.id === "android-tablet") {
+      await page.locator('[data-slot-command="battuta.folder-view.toggle"], [data-folder-toggle]').first().click();
+      await until(() => !document.querySelector("[data-folder-view]"));
+      await page.evaluate(async () => {
+        const handlers = {};
+        window.__TAURI__ = {
+          core: { invoke: async () => null }, // stylus_capture, stylus_area: nothing to answer
+          event: { listen: async (event, handler) => ((handlers[event] = handler), () => undefined) },
+        };
+        window.__penEmit = (payload) => handlers.stylus?.({ event: "stylus", id: 0, payload });
+        await window.__HOST__.registry.deactivate("battuta.stylus");
+        await window.__HOST__.registry.activate("battuta.stylus");
+      });
+      await page.waitForSelector("[data-stylus-mode]");
+      // Zoomed in all the way, so the rulers — sized to the staff — read at a glance; the panel closed again, since the pen does not write under it.
+      await page.locator("[data-zoom-toggle]").click();
+      for (let k = 0; k < 8 && Number(await page.locator("[data-zoom-toggle]").getAttribute("data-zoom")) < 2.5; k++) await page.locator("[data-zoom-in]").click();
+      await page.locator("[data-zoom-toggle]").click();
+      await until(() => !document.querySelector("[data-zoom-panel]"));
+      await until(() => document.querySelectorAll(".tile svg").length >= 4, null, 60000);
+      await page.waitForTimeout(800); // the tiles at the new zoom
+      // The pen on the second measure of the first row: room for the rulers on both sides, whatever the width.
+      const landingTile = await page.evaluate(() => [...document.querySelectorAll(".score-row")].map((r) => [...r.querySelectorAll(".tile[data-index]")]).find((t) => t.length >= 2)[1].dataset.index);
+      await page.locator(`.tile[data-index="${landingTile}"]`).evaluate((el) => el.scrollIntoView({ block: "center" }));
+      await page.waitForTimeout(300);
+      const pen = await page.evaluate((m) => {
+        const s = window.__SESSION__.index;
+        const id = s.eventsAt(m, 1, 1).find((e) => s.byId.get(e)?.tag === "note");
+        const head = document.querySelector(`g[id="${id}"] g.notehead`) ?? document.querySelector(`g[id="${id}"]`);
+        const r = head.getBoundingClientRect();
+        const lines = [...document.querySelector(`.tile[data-index="${m}"] g.staff[id]`).children].filter((c) => c.tagName === "path").map((l) => l.getBoundingClientRect().top).sort((a, b) => a - b);
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2, space: (lines[lines.length - 1] - lines[0]) / (lines.length - 1) };
+      }, Number(landingTile));
+      let t = 0;
+      const stroke = (phase, x, y) => page.evaluate((e) => window.__penEmit(e), { type: "stroke", phase, id: 7, samples: [[x, y, (t += 16), 0.5, 1.2, 0, null]], predicted: [] });
+      await stroke("down", pen.x, pen.y);
+      // One length longer (a drag step is 36 px) and two staff steps up, in small moves.
+      for (let k = 1; k <= 10; k++) await stroke("move", pen.x + k * 4, pen.y - (k * pen.space) / 10);
+      await until(() => document.querySelector('[data-stylus-cross="unfolded"]'));
+      await shot("06-pen");
+      await stroke("cancel", pen.x + 40, pen.y - pen.space);
+    }
 
     await context.close();
   }

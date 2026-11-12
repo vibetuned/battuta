@@ -32,8 +32,8 @@ const ARM = 10;
 /** A length's cell across: the drag's step less a gap, and its height. */
 export const CELL_W = STEP_X - 4;
 export const CELL_H = 28;
-/** How far from the column a letter's pill sits; the pill itself is a staff space less a pixel, 9 to 13 px, so a side's letters never touch. */
-const PILL_OFF = 12;
+/** A letter's pill is a staff space less a pixel, 9 to 16 px — growing as the editor zooms in — so a side's letters never touch; its centre sits this far from the column, clear of it even lit. */
+const pillOffset = (pill: number): number => Math.round(pill * 0.75 + 4);
 /** Kept clear inside the frame's top. */
 const MARGIN = 2;
 const INK = "#1d6fd6";
@@ -99,7 +99,8 @@ export function rulersOf(x: number, lines: readonly number[], landing: { step: n
   const top = lines[0] ?? 0;
   const space = lines.length > 1 ? (lines[lines.length - 1]! - top) / (lines.length - 1) : 10;
   const topStep = 2 * (lines.length - 1);
-  const pill = Math.max(9, Math.min(13, Math.round(space - 1)));
+  const pill = Math.max(9, Math.min(16, Math.round(space - 1)));
+  const off = pillOffset(pill);
   // The staff and a ledger line either side, and the choice with a step to spare.
   const lo = Math.min(-2, g.choice.step - 1);
   const hi = Math.max(topStep + 2, g.choice.step + 1);
@@ -110,7 +111,7 @@ export function rulersOf(x: number, lines: readonly number[], landing: { step: n
     const p = stepPitch(landing.pitch, step - landing.step);
     const lit = step === g.choice.step;
     // Lines (even steps) left of the column, spaces right: a space apart on each side.
-    pills.push({ step, x: x + (step % 2 === 0 ? -PILL_OFF : PILL_OFF), y, text: p.pname.toUpperCase() + (lit ? String(p.oct) : ""), lit });
+    pills.push({ step, x: x + (step % 2 === 0 ? -off : off), y, text: p.pname.toUpperCase() + (lit ? String(p.oct) : ""), lit });
   }
   const highest = Math.min(...pills.map((p) => p.y)) - pill / 2;
   // Above the staff, clear of the letters above it — unless the frame has no room.

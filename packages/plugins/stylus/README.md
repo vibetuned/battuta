@@ -148,13 +148,13 @@ shortcuts:
   the released model's answers, which it is held to.
 - **Stylus: reset the training** puts the released classifier back. The
   replies stay.
+- **Stylus: share my replies** puts the file on the share sheet — AirDrop,
+  Mail, Files, another app — to contribute it.
+- **Stylus: delete my replies** deletes the file, after asking.
 
 A new release of the classifier forgets the trained layer: it was trained
 on the old classifier's reading of your symbols. The replies stay; train
 again.
-- **Stylus: share my replies** puts the file on the share sheet — AirDrop,
-  Mail, Files, another app — to contribute it.
-- **Stylus: delete my replies** deletes the file, after asking.
 
 ## Turning it on and off
 

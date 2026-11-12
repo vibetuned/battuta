@@ -22,7 +22,7 @@
 | Encryption | None at all — exempt |
 | Third-party content | Verovio (LGPL v3), the Salamander piano samples (CC BY 3.0), Noto Music (OFL), pdf.js (Apache 2.0) and the libraries listed in the app (battuta menu → *about battuta*) |
 | Content | A music notation editor: no violence, language, sexual content, drugs, gambling or horror |
-| Devices | iPhone and iPad from iOS / iPadOS 15; Android phones and tablets from Android 7.0 (API 24). Reading a PDF in the PDF reference needs iOS / iPadOS 26.2 (its PDF library); before that the panel says so and takes the pages as images |
+| Devices | iPhone and iPad from iOS / iPadOS 18 (since 1.3.0: the multi-function Core ML package; 15 before); Android phones and tablets from Android 7.0 (API 24). Reading a PDF in the PDF reference needs iOS / iPadOS 26.2 (its PDF library); before that the panel says so and takes the pages as images |
 
 ## App Store Connect
 

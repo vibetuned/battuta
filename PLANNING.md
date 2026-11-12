@@ -8,8 +8,8 @@ Each phase ends in something usable day-to-day; nothing in a later phase is requ
 > the quality-of-life round — lyrics, staff groups, the mouse-free
 > context bar, playback to MIDI devices).** Plans, exit criteria,
 > triage and progress notes live in [CHANGELOG.md](CHANGELOG.md).
-> **Phase 9 below shipped as 1.0.0, Phase 10 — tablets — as 1.2.0;
-> Phase 11 — the stylus — is the open one.** Still carried into Phase 9 from earlier
+> **Phase 9 below shipped as 1.0.0, Phase 10 — tablets — as 1.2.0,
+> Phase 11 — the stylus — as 1.3.0.** Still carried into Phase 9 from earlier
 > rounds: live (rather than save-time) file watching, which ships in
 > the folder-view slice; splice-at-caret and overlay-as-new-layer paste
 > policies; split view; MusicXML *export* (no Verovio support — needs

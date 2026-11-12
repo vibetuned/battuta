@@ -11,6 +11,53 @@ A user-facing digest. The full engineering record — every phase, every fix, ev
 probed Verovio behaviour — lives in
 [CHANGELOG.md](https://github.com/vibetuned/battuta/blob/main/CHANGELOG.md).
 
+## 1.3.0 — 2026-11-12
+
+### New
+
+- **Write with the Apple Pencil or the S Pen** on an iPad or an Android
+  tablet. The **✎** in the header switches three modes. **The cross**:
+  touch a staff and drag — two rulers show every length across and every
+  pitch down — and lift to write the note; squeeze the Pencil Pro or press
+  the S Pen's button first to add it to a chord. **Handwriting**: write a
+  sharp, a staccato, a dynamic, a fingering, a trill, a clef or a note as
+  on paper, where it belongs; battuta's own reader, granita, runs in the
+  app, shows what it read as engraved with a ✓ ✗, and offers a choice when
+  it is unsure. A quarter rest erases. **Slurs and ties**: draw from a note
+  to another. [Writing with a stylus →](../../guide/stylus/)
+- **The reader learns from you**: the readings you confirm are kept on the
+  tablet; the Stylus row of the Plugins tab trains the reader on them in
+  under a second, resets it, shares them or deletes them.
+  [Writing with a stylus →](../../guide/stylus/#replies-and-training)
+- **The score grows as you write**: a note entered from the keyboard or
+  MIDI on the last event of the score adds a measure, and the gray measure
+  with a **+** after the last one adds one with a tap — finger, mouse or
+  pen. [Structure →](../../guide/structure/#measures)
+- **The PDF reference turns a page**: **⟳** puts a scan on its side or
+  upside down the right way up, **⟳ all** every page; the turns are kept
+  with the PDF. [PDF reference →](../../guide/pdf-reference/#the-panel)
+- **Screencast keys**, off until you turn it on in the Plugins tab: the
+  keys you press, what they did and the MIDI notes you play, in the
+  window's corner, for videos and screenshots. [Plugins →](../plugins/)
+
+### Changed
+
+- **iPhone and iPad need iOS / iPadOS 18** (15 before): the reader trains
+  on the device with Core ML's multi-function models, new in 18.
+- On the iPad, a long press or a double tap no longer selects the text of
+  a button; fields and the texts meant to be copied still select.
+
+### For plugin authors
+
+- `@battuta/api` **1.3.12**: `ctx.stylus` — the pen's events with their
+  place on the score, `at`, `recognize`, and the replies and the training —
+  the command messages `core.enterNote`, `core.addChordNote`, `core.mark`,
+  `core.erase` and `core.appendMeasure`, the input's length
+  (`ctx.editor`'s `entryDur` and `entryDots`, `ctx.setEntryLength`),
+  `ctx.keys`, the float panel and `enabledByDefault`, the `pluginSettings`
+  slot, and the overlays point's `end` tile.
+  [Writing a plugin →](../writing-a-plugin/)
+
 ## 1.2.0 — 2026-10-29
 
 ### New

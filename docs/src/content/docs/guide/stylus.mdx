@@ -1,0 +1,135 @@
+---
+title: Writing with a stylus
+description: The Apple Pencil and the S Pen on the score — notes with the cross, symbols by hand, slurs and ties — and the reader that learns from your writing.
+sidebar:
+  order: 10
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+On an iPad with an **Apple Pencil**, or an Android tablet with an **S Pen**,
+the pen writes on the score in edit view. The **✎** item in the header,
+beside the other plugins' buttons, switches between three ways of writing:
+
+- **✎ cross** — notes, with a cross at the pen's tip;
+- **✎ hand** — the symbols around them, written by hand;
+- **✎ slur** — slurs and ties, drawn from note to note.
+
+Every start is the cross. The pen writes **only on the score**: on the
+toolbar, the panels, the on-screen keyboard or a menu it taps like a
+finger. Fingers scroll and zoom as always, even while the pen writes.
+
+<Aside type="note" title="Where it works">
+On iPhone and iPad battuta needs iOS / iPadOS 18. On the desktop and in a
+browser there is no pen to capture: the Stylus plugin does nothing there,
+not even the ✎. It does not write in page view either, which has no
+measures to write on.
+</Aside>
+
+## Notes with the cross
+
+**Touch** a staff: a small cross comes up at the tip, with a ghost notehead
+where the note will go — the pitch under the pen, at the input's length
+(the one the digits 1–7 pick, dotted if you dotted it).
+
+**Drag**, and past a few pixels the cross unfolds into two rulers that
+cross like the words of a crossword:
+
+- **across**, above the staff, a cell for every length from the 64th to
+  the whole note, each where the pen has to be to choose it — drag right
+  for a longer note, left for a shorter one; a dot stays;
+- **down** through the note, a letter for every step of the staff at its
+  height — the lines' letters on the left, the spaces' on the right — drag
+  up and down for the pitch.
+
+The choice is lit in both, the pitch with its octave, and pulses at every
+change.
+
+**Lift** the pen to write the note, over the note or rest nearest where it
+landed on that staff, the way the keyboard enters a note: a shorter note
+leaves rests for the rest of the time, a longer one takes the events after
+it. A length you dragged to becomes the input's, as if you had typed the
+digit. A **tap** is a lift where you touched: the note as the cross first
+showed it. The key signature supplies the accidental, every note is one
+undo step, and the caret goes to the note you wrote.
+
+**Chords.** Squeeze the Apple Pencil Pro, or press the S Pen's side button,
+then touch above or below a note: only the letters come up, and lifting
+adds that pitch to the note — or to the chord it already is — at its own
+length. A press arms just the next stroke; press again before touching to
+disarm it.
+
+**At the end of the score**, the gray measure with a **+** after the last
+one adds a measure when you tap it with the pen (or a finger), so a score
+grows without the keyboard. See [Structure](../structure/#measures).
+
+## Symbols by hand
+
+Tap **✎ cross**: it reads **✎ hand**. Write a symbol as you would on paper,
+at its natural size, where it belongs — a sharp just left of its note, a
+dot just right of it, a staccato above it, a fingering or a trill above the
+staff, a dynamic below it, a clef on the staff, a note with its head where
+the pitch is. Strokes that follow each other closely are one symbol: a
+sharp's four strokes join, while a staccato written just after on the next
+note is its own. The strokes show in blue as you write.
+
+A moment after the last lift the symbol is read by **granita**, battuta's
+own reader, which runs in the app and sends nothing anywhere. What it reads
+is put in the score as the keyboard would put it, one undo step, and a
+small label shows it **as it is engraved** — ♯, a note wearing its
+staccato, **ff** — with how sure the reader was and a **✓ ✗** for three
+seconds. Tap ✓, or nothing, and it stays; tap ✗ and it is undone and the
+other readings are offered.
+
+**When it isn't sure**, up to three readings appear beside the symbol, each
+as engraved — only the ones that belong where you wrote: no fingering
+inside the staff, no clef above it. Tap one to write it, or **none of
+these** to discard the symbol.
+
+**What it reads**: sharp, flat and natural; staccato, tenuto, accent,
+staccatissimo and marcato; the augmentation dot; the fermata; fingerings 1
+to 5; the trill, mordent and turn above a note, and the arpeggio just left
+of a chord; the dynamics from **pp** to **fff**, **sfz**, **sf** and
+**fz**; notes from the whole to the 16th; the G, F and C clefs; the coda
+and segno signs, *Fine*, *D.S.* and *D.C.*
+
+<Aside type="tip" title="The quarter rest erases">
+A quarter rest is never written: draw one on a note and the note becomes a
+rest of its length, as <kbd>Delete</kbd> does it; draw one on a fingering,
+a dynamic, a fermata or an ornament and that mark goes. To remove an
+accidental, an articulation or a dot, write the same mark again.
+</Aside>
+
+## Slurs and ties
+
+Tap **✎ hand**: it reads **✎ slur**. Touch a note, or a chord, draw to
+another note and lift on it: the two are **tied** when they are the same
+note — the same written pitch, accidental included — and **slurred**
+otherwise, in either direction. The bow is written as you lift, with the
+✓ ✗ of handwriting: ✗ undoes it and offers the other kind.
+
+## Replies and training
+
+The reader learns from you, when you tell it. A reading you confirm with
+**✓**, pick from the choices, or pick after a **✗** is a **reply**: the
+symbol as you drew it and what it was. A reading you leave alone is not one.
+Replies are kept on the tablet, in battuta's own data, and never sent
+anywhere.
+
+The Stylus row of battuta menu → 🌣 shortcuts → **plugins** shows how many
+replies the tablet keeps and which reader is in use, with four buttons:
+
+- **train** — retrains the reader on your replies, in well under a second,
+  and reads with it from then on;
+- **reset** — puts the released reader back; the replies stay;
+- **share** — puts the replies on the share sheet, to contribute them to
+  the next granita;
+- **delete replies** — deletes them, after asking.
+
+A new release of battuta's reader forgets what it learnt from you — it
+learnt it on the old reader — but keeps your replies: train again.
+
+## Turning it off
+
+battuta menu → 🌣 shortcuts → **plugins** → *Stylus*. Off gives the pen back
+to the page everywhere; the switch is remembered.

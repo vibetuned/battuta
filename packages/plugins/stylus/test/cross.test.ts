@@ -78,10 +78,16 @@ describe("the ruler down", () => {
     expect([high[0], high[high.length - 1]]).toEqual([-2, 14]);
   });
 
-  it("sizes its letters to the staff: a space less a pixel, 9 to 13 px", () => {
+  it("sizes its letters to the staff: a space less a pixel, 9 to 16 px, the lit one clear of the column", () => {
     expect(rulersOf(500, LINES, LANDING, g("4", 4)).pill).toBe(11);
-    expect(rulersOf(500, [100, 120, 140, 160, 180], LANDING, g("4", 4)).pill).toBe(13);
+    expect(rulersOf(500, [100, 120, 140, 160, 180], LANDING, g("4", 4)).pill).toBe(16);
     expect(rulersOf(500, [100, 106, 112, 118, 124], LANDING, g("4", 4)).pill).toBe(9);
+    for (const lines of [LINES, [100, 120, 140, 160, 180], [100, 106, 112, 118, 124]]) {
+      const r = rulersOf(500, lines, LANDING, g("4", 4));
+      const lit = r.pills.find((p) => p.lit)!;
+      // the lit pill is the pill and its octave wide: its near edge stays off the column
+      expect(Math.abs(lit.x - 500) - (r.pill + 11) / 2).toBeGreaterThan(0);
+    }
   });
 
   it("lights the choice with its octave", () => {

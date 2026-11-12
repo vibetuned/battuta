@@ -27,8 +27,12 @@ notation and the format instead of repeating it.
 ## Full description
 
 The same text for both stores (under 4,000 characters, Google Play's limit;
-the App Store's is the same). The sentence on files differs: the App Store's
-first, Google Play's in brackets.
+the App Store's is the same), but for two sentences, the pen's and the
+files': the App Store's first, Google Play's in brackets. **Each store's text
+names only its own platform**: Apple refuses a listing that mentions Android
+or Google Play, and the Google Play text keeps away from Apple's names —
+the App Store, iOS, the iPhone, the iPad, the Apple Pencil, iCloud — the same
+way (the user, 2026-11-12). The release notes below follow the rule too.
 
 > battuta is a music notation editor that works the way a text editor does: a
 > caret that walks through the notes, a selection, copy and paste, and undo
@@ -39,6 +43,13 @@ first, Google Play's in brackets.
 >   keyboard, or by playing a MIDI instrument connected by USB or Bluetooth.
 >   Accidentals follow the key signature, and what you enter always adds up to
 >   a full measure.
+> • Write with the Apple Pencil on iPad: notes with a cross at the pen's tip,
+>   marks written by hand and read on your iPad — by a reader that learns
+>   from your writing and sends nothing anywhere — and slurs and ties drawn
+>   from note to note. *(Google Play: Write with a stylus such as the S Pen
+>   on a tablet: notes with a cross at the pen's tip, marks written by hand
+>   and read on your tablet — by a reader that learns from your writing and
+>   sends nothing anywhere — and slurs and ties drawn from note to note.)*
 > • Arrange in blocks: select measures and staves, copy them, paste them into
 >   another staff or another score, transpose them.
 > • Ties, slurs, articulations, ornaments, dynamics, hairpins, pedal and
@@ -79,7 +90,35 @@ The App Store's promotional text and keywords, and Google Play's tags:
 
 **Google Play** — the release's *Release notes* box (Play Console → the
 release → *Release notes*), 500 characters per language, between language
-tags, pasted as is:
+tags, pasted as is. **App Store** — *What's New in This Version* (4,000
+characters), asked from the second version on.
+
+### 1.3.0 — the stylus
+
+Google Play (459 characters):
+
+```
+<en-US>
+New in 1.3: write with a stylus such as the S Pen. Touch a staff and drag: rulers show every length and every pitch, and lifting writes the note. Write sharps, staccatos, dynamics, fingerings, trills, clefs and notes by hand, read on your tablet by battuta's own reader, which learns from the readings you confirm. Draw slurs and ties from note to note. The score grows as you write, with a + to add a measure, and the PDF reference turns pages on their side.
+</en-US>
+```
+
+App Store:
+
+> Write with the Apple Pencil on iPad. Touch a staff and drag: rulers show
+> every length and every pitch, and lifting writes the note; squeeze the
+> Pencil Pro to build a chord. Write sharps, staccatos, dynamics,
+> fingerings, trills, clefs and notes by hand, read on your iPad by
+> battuta's own reader, which learns from the readings you confirm and
+> never sends them anywhere. Draw slurs and ties from note to note. The
+> score grows as you write, with a + to add a measure at the end, and the
+> PDF reference turns pages on their side.
+>
+> battuta now needs iOS and iPadOS 18.
+
+### 1.2.0 — the first version on the stores
+
+Google Play:
 
 ```
 <en-US>
@@ -87,12 +126,7 @@ battuta on Android: write, edit and play MEI scores by touch or with a MIDI inst
 </en-US>
 ```
 
-**App Store** — *What's New in This Version* is not asked for an app's
-first version; from the next one on:
-
-> battuta on iPhone and iPad: write, edit and play MEI scores by touch or
-> with a MIDI instrument over USB or Bluetooth, with your scores in the Files
-> app.
+The App Store asks nothing for a first version.
 
 ## Privacy answers
 
@@ -118,7 +152,12 @@ from the app itself, into `store/screenshots/` (not kept in git), each set
 as that device sees the app — its shell, a touch screen, its width: writing
 at the caret with the on-screen keyboard; page view playing; a block
 selected; a PDF's scans over the measures to transcribe; the folder view
-(its list staged — a browser has no folder; the panel is the app's).
+(its list staged — a browser has no folder; the panel is the app's); and,
+on the two tablet sets only, `06-pen`: the pen's cross unfolded into its
+rulers over the Melodie, zoomed in (a browser has no pen: the stylus's
+commands are answered and a stroke replayed through the shell's event —
+the cross is the app's). For 1.3.0, put `06-pen` first in both tablet
+galleries: it is the release.
 
 | Folder | Size | For |
 |---|---|---|

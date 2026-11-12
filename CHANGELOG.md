@@ -11,14 +11,36 @@ below, and changes since the last tag gather under *Unreleased*.
 
 ## Unreleased
 
-The stylus, for 1.3.0 (Phase 11): battuta's first native plugin, in three
-parts as the user set them out on 2026-10-29. First, notes added with the
-pen, a held pen popping a cross at its tip (left–right the duration,
-top–bottom the pitch). Second, ABC music written by hand with ML Kit and
-PencilKit — dropped by the user on 2026-11-01 after feedback. Third,
-symbols written by hand and read by granita, a glyph classifier of
-battuta's own (vibetuned/granita), planned on 2026-11-01 (PLANNING.md,
-Phase 11). Its first slice is the bridge they all stand on.
+Nothing since 1.3.0.
+
+## 1.3.0 — 2026-11-12 (Phase 11 — The stylus)
+
+The Apple Pencil and the S Pen write on the score — battuta's first native
+plugin, in three parts as the user set them out on 2026-10-29. First, notes
+with the pen: a cross at the tip, which since 2026-11-12 unfolds into two
+rulers, every length across and every step of the staff down, and chords
+with the Pencil's squeeze or the S Pen's button. Second, ABC music written
+by hand with ML Kit and PencilKit — dropped by the user on 2026-11-01 after
+feedback. Third, symbols written by hand and read in the app by **granita**,
+a glyph classifier of battuta's own (vibetuned/granita; v10, trained with
+the replies of its test shells): accidentals, articulations, the
+augmentation dot, fermata, fingerings, ornaments, dynamics, notes, clefs and
+the repeat marks, the quarter rest as the eraser, each reading shown as
+engraved with a ✓ ✗ and a chooser; and a third mode that draws slurs and
+ties. The readings the user confirms are kept on the tablet as a dataset,
+train the classifier's last layer on the device and can be shared. Around
+it: the score grows at its end as notes are entered and the *Add measure*
+plugin's **+** adds a measure by tap, the PDF reference turns a page (⟳),
+and *Screencast keys* shows the keys and notes for videos. On iPhone and
+iPad battuta now needs **iOS / iPadOS 18**, the floor of the multi-function
+Core ML package that lets the classifier train on the device. The plan is
+in [PLANNING.md](PLANNING.md) (Phase 11).
+
+The application, the shell, core and the docs carry 1.3.0. `@battuta/api`
+has had a line of its own since its 1.3.0 of 2026-10-29 — a patch for
+every addition the user approved, 1.3.12 at this release — and the
+plugins keep theirs: Stylus 1.4.0, Screencast keys 1.3.0, Add measure
+1.0.0 and the rest 1.2.0, each `engines` range at the api it needs.
 
 - **Part 3 planned: handwriting read by granita (2026-11-01).** After the
   user tried v7 of granitanet on both tablets with granita's test shells
@@ -344,6 +366,32 @@ Phase 11). Its first slice is the bridge they all stand on.
   first draft of this in the stylus plugin failed the boundary test.
   Editor +9 tests (the message, the session's flow, the pen tap), the
   plugin 4.
+- **The stores for 1.3.0 (2026-11-12).** The user: "you forgot the release
+  notes and the screen shots of the cross for the store". The listing
+  (`apps/editor/store/listing.md`) gains 1.3.0's notes — Google Play's
+  (459 of 500 characters) and the App Store's *What's New*, which says
+  iOS and iPadOS 18 — with 1.2.0's kept below, and a bullet in the full
+  description for the pen. Then the user: "you cannot mention google play
+  or android in the apple store so we should also avoid mentioning the
+  apple store or ios devices in the android version" — the bullet had
+  named the Apple Pencil and the S Pen in the text both stores share, so
+  it is two sentences now, the App Store's (the Apple Pencil on iPad) and
+  Google Play's (a stylus such as the S Pen), and the listing states the
+  rule. The store answers' device line says iOS / iPadOS 18. `npm run
+  store:screenshots` gains a sixth scene on the two tablet sets,
+  `06-pen`: the Melodie zoomed in all the way, the pen landing on the
+  second measure of the first row, dragged a length longer and two steps
+  up, photographed with the pen down and cancelled. A browser has no pen,
+  so the script answers the stylus's commands and replays the stroke
+  through the shell's `stylus` event, as it stages the folder view's
+  list: the cross and its rulers are the app's. Two findings on the way:
+  the **end tile was a `.tile`** — the Add measure plugin's **+** — so
+  everything counting or finding tiles as measures counted one more (the
+  script's transcribe scene waited forever for 38 tiles; five end-to-end
+  scripts count `.tile` the same way): it is now `.end-tile`, laid out
+  the same. And the **ruler's letters stopped at 13 px**, too small for a
+  store image even zoomed in: they now grow with the staff up to 16 px,
+  their distance from the column with them.
 - **The cross unfolds into rulers (2026-11-12).** The user: the cross was
   covered by the measures around it, as the handwriting's label had been,
   and should become "a smaller cross" that past a threshold "will unfold

@@ -65,6 +65,7 @@ export default defineConfig({
             { slug: "guide/structure" },
             { slug: "guide/form" },
             { slug: "guide/virtual-keyboard" },
+            { slug: "guide/stylus" },
           ],
         },
         {

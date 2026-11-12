@@ -432,7 +432,8 @@ function TileGrid({ session, version, pool, zoom, overlays, onRendered, onSettle
               if (index === measureCount) {
                 // The end tile (1.3.12): a plugin's `end` overlay after the last measure — the row's height, a typical tile's width, no band of its own.
                 return (
-                  <div className="tile" data-index={index} data-end-tile key="end">
+                  // Not a `.tile`: it is no measure, and everything that counts or finds tiles means measures (found by the store screenshots, 2026-11-12).
+                  <div className="end-tile" data-end-tile key="end">
                     {bandTotal > 0 && <div data-band-spacer style={{ height: bandTotal }} />}
                     <EndTileOverlays store={overlays} measureCount={measureCount} width={estimateW * zoom} height={rowBoxH} layoutKey={`${tiles.get(measureCount - 1)?.displayKey ?? ""}|${zoom}|${rowTop}|${rowBoxH}`} staffNOf={staffNOf} contextOf={contextOf} />
                   </div>
@@ -3149,7 +3150,7 @@ export default function App() {
         body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
         input, textarea, [contenteditable="true"], [data-error], [data-error] *, [data-notice-toast], [data-notice-toast] * { -webkit-user-select: text; user-select: text; }
         .score-row { display: flex; align-items: flex-start; margin: 10px 0; }
-        .tile, .rowhdr { position: relative; flex: none; }
+        .tile, .rowhdr, .end-tile { position: relative; flex: none; }
         .tile svg, .rowhdr svg { width: 100%; height: 100%; display: block; }
         .tile g.mNum { display: none; } /* every tile is a "system start"; our .ms label already numbers it */
         .tile .ms { position: absolute; top: -4px; right: 2px; font-size: 10px; color: #bbb; z-index: 1; }

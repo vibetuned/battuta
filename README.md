@@ -15,7 +15,18 @@ it. Verovio does all notation rendering — battuta never draws notation.
 
 ## Status
 
-**1.2.0 released (2026-10-29): battuta on iPhone, iPad and Android.** The
+**1.3.0 released (2026-11-12): the stylus.** On an iPad or an Android
+tablet the Apple Pencil and the S Pen write on the score: notes with a
+cross at the tip that unfolds into rulers of lengths and pitches, symbols
+written by hand and read in the app by granita — battuta's own glyph
+classifier, which learns from the readings you confirm, on the device —
+and slurs and ties drawn from note to note. Since 1.2.0 too: the score
+growing at its end as you write, with a **+** measure to tap, the PDF
+reference turning a page, and screencast keys. iPhone and iPad need iOS /
+iPadOS 18. The application, core and docs carry 1.3.0; `@battuta/api`
+(1.3.12) and the plugins keep their own numbers.
+
+**1.2.0 (2026-10-29): battuta on iPhone, iPad and Android.** The
 same shell builds for tablets and phones — files in battuta's own folder or
 any folder picked, a share sheet, MIDI by USB and Bluetooth, an on-screen
 keyboard made for touch, every notice in the about box — with the App Store
@@ -23,8 +34,6 @@ and Google Play listings ready ([`apps/editor/store/`](apps/editor/store/)).
 Since 1.0.0 too: the PDF reference (the start of the facsimile), the folder
 view writing files, sounding accidentals written into the file
 (`@accid.ges`), MIDI spelled by the key, ties between chords and tenuto.
-`@battuta/api` 1.2.0 is the contract, and every package carries the one
-number.
 
 **1.0.0 (2026-09-18)** was the first stable version. The editor is a
 **host**: tiles, caret, selection, reversible commands with byte-identical
@@ -42,7 +51,7 @@ it was built). Packaged for Linux (deb + AppImage, apt repository), macOS
 (signed and notarized universal dmg, Homebrew cask) and Windows (NSIS
 installer, winget).
 
-Phases 0–10 are done — Phase 10's store uploads follow the 1.2.0 tag; the
+Phases 0–11 are done — Phase 11's store uploads follow the 1.3.0 tag; the
 full record, phase by phase, lives in
 [CHANGELOG.md](CHANGELOG.md). Next: the second overlay plugins — the
 piano-roll reference layer and OMR correction — planned against API
