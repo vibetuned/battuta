@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from "vitest";
 import type { StylusEvent, StylusSample, StylusScorePoint } from "@battuta/api";
-import { IDLE, STEP_X, lengthOf, lengthName, next, type Gesture, type Length } from "../src/gesture";
+import { IDLE, STEP_X, UNFOLD_PX, lengthOf, lengthName, next, type Gesture, type Length } from "../src/gesture";
 
 /** A point on staff 1 of measure 3, whose tile frame starts at page (100, 200). */
 const point = (x: number, y: number, step: number, over: Partial<StylusScorePoint> = {}): StylusScorePoint => ({
@@ -88,6 +88,27 @@ describe("the cross", () => {
   it("ignores the shell's hold, and another stroke's events", () => {
     const { g } = run([down, hold(1, 150, 250), stroke("up", 7, 150, 250, null), hold(7, 150, 250)]);
     expect(g).toMatchObject({ kind: "cross", choice: { dur: "4", step: 4 } });
+  });
+});
+
+describe("the cross unfolding (the user, 2026-11-12)", () => {
+  const unfolded = (g: Gesture) => (g.kind === "cross" ? g.unfolded : null);
+  it("is small as the pen lands, and stays small while it moves no further than UNFOLD_PX", () => {
+    expect(unfolded(run([down]).g)).toBe(false);
+    expect(unfolded(run([down, stroke("move", 1, 150 + UNFOLD_PX - 1, 250, point(150 + UNFOLD_PX - 1, 250, 4))]).g)).toBe(false);
+  });
+
+  it("unfolds past UNFOLD_PX in any direction, before the first step, and stays open when the pen comes back", () => {
+    const right = run([down, stroke("move", 1, 150 + UNFOLD_PX + 1, 250, point(150 + UNFOLD_PX + 1, 250, 4))]).g;
+    expect(unfolded(right)).toBe(true);
+    expect(right.kind === "cross" && right.choice.dur).toBe("4");
+    expect(unfolded(run([down, stroke("move", 1, 150, 250 - UNFOLD_PX - 1, point(150, 250 - UNFOLD_PX - 1, 4))]).g)).toBe(true);
+    expect(unfolded(run([down, stroke("move", 1, 170, 250, point(170, 250, 4)), stroke("move", 1, 150, 250, point(150, 250, 4))]).g)).toBe(true);
+  });
+
+  it("unfolds for a chord too, and a tap still writes what the small cross showed", () => {
+    expect(unfolded(run([press("squeeze"), down, stroke("move", 1, 150, 230, point(150, 230, 6))]).g)).toBe(true);
+    expect(run([down, stroke("up", 1, 150, 250, point(150, 250, 4))]).written).toEqual([{ type: "core.enterNote", eventId: "n1", pname: "b", oct: 4, dur: "4" }]);
   });
 });
 

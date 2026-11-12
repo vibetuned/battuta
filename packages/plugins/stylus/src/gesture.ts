@@ -15,7 +15,7 @@
  *   - The Pencil Pro's squeeze or the S Pen's side button ARMS the next
  *     stroke (the user, 2026-10-29: "like a shift"): its pitch joins the
  *     note or chord under the pen instead of writing over it — the cross
- *     says "chord", follows the pitch only, and the length is the note's
+ *     follows the pitch only, and the length is the note's
  *     own. Pressing again before the pen lands disarms; pressing while it
  *     is down (the S Pen's button held as it touches) arms that stroke.
  *   - A stroke that lands off a staff, or is cancelled, writes nothing.
@@ -28,6 +28,8 @@ export type Duration = (typeof DURATIONS)[number];
 export const DURATION_NAMES: Record<Duration, string> = { "1": "whole", "2": "half", "4": "quarter", "8": "eighth", "16": "16th", "32": "32nd", "64": "64th" };
 /** Pixels of drag per duration step. */
 export const STEP_X = 36;
+/** Pixels the pen moves from where it landed before the small cross unfolds into its cells (the user, 2026-11-12). */
+export const UNFOLD_PX = 12;
 
 /** A note length: a written duration and its dots. */
 export interface Length {
@@ -60,8 +62,8 @@ export interface Choice extends Length {
 export type Gesture =
   /** No pen on the score; `armed`: the next stroke joins a chord. */
   | { kind: "idle"; armed: boolean }
-  /** The pen is on a staff: the cross is up, showing what lifting it writes; `from` is the input's duration's index; `chord`: it joins the note under the pen. */
-  | { kind: "cross"; landing: Landing; choice: Choice; from: number; chord: boolean }
+  /** The pen is on a staff: the cross is up, showing what lifting it writes; `from` is the input's duration's index; `chord`: it joins the note under the pen; `unfolded`: the pen has moved past `UNFOLD_PX` — the small cross opened into its cells, and stays open until the lift. */
+  | { kind: "cross"; landing: Landing; choice: Choice; from: number; chord: boolean; unfolded: boolean }
   /** A stroke that writes nothing, until it ends; the arming waits for the next. */
   | { kind: "ignored"; id: number; armed: boolean };
 
@@ -97,12 +99,13 @@ export function next(g: Gesture, e: StylusEvent, input: Length): Step {
       const armed = g.kind === "idle" && g.armed;
       if (!sample || !landed(e.at)) return { gesture: { kind: "ignored", id: e.id, armed } };
       const landing = { id: e.id, x: sample[0], y: sample[1], at: e.at };
-      return { gesture: { kind: "cross", landing, choice: { ...input, step: e.at.step, pitch: e.at.pitch }, from: DURATIONS.indexOf(input.dur), chord: armed } };
+      return { gesture: { kind: "cross", landing, choice: { ...input, step: e.at.step, pitch: e.at.pitch }, from: DURATIONS.indexOf(input.dur), chord: armed, unfolded: false } };
     }
     if (strokeOf(g) !== e.id) return { gesture: g };
     if (e.phase === "cancel") return { gesture: IDLE };
     if (g.kind === "cross") {
       let choice = g.choice;
+      const unfolded = g.unfolded || (sample !== undefined && Math.hypot(sample[0] - g.landing.x, sample[1] - g.landing.y) > UNFOLD_PX);
       if (sample) {
         const steps = g.chord ? 0 : Math.round((sample[0] - g.landing.x) / STEP_X);
         const dur = DURATIONS[Math.max(0, Math.min(DURATIONS.length - 1, g.from + steps))]!;
@@ -114,7 +117,7 @@ export function next(g: Gesture, e: StylusEvent, input: Length): Step {
         if (g.chord) return { gesture: IDLE, write: { type: "core.addChordNote", eventId: g.landing.at.eventId, pname: choice.pitch.pname, oct: choice.pitch.oct } };
         return { gesture: IDLE, write: enter(g.landing, choice.pitch, choice), ...(choice.dur !== DURATIONS[g.from] && { length: { dur: choice.dur, dots: choice.dots } }) };
       }
-      return { gesture: choice.dur === g.choice.dur && choice.step === g.choice.step ? g : { ...g, choice } };
+      return { gesture: choice.dur === g.choice.dur && choice.step === g.choice.step && unfolded === g.unfolded ? g : { ...g, choice, unfolded } };
     }
     return e.phase === "up" && g.kind === "ignored" ? { gesture: { kind: "idle", armed: g.armed } } : { gesture: g };
   }

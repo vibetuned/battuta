@@ -216,8 +216,42 @@ class BattutaMobilePlugin(private val activity: Activity) : Plugin(activity) {
     private val trainingFile: File get() = File(replies.directory, "training.json")
 
     /** The model, loaded once — with the trained layer, when the user trained one. */
+    /**
+     * Which model the saved layer was trained for (`head.model`): a layer belongs to the features
+     * of one release, and the sidecar names every release alike, so this is a fingerprint of the
+     * release's own last layer — FNV-1a over its weights' bits (granita v10, 2026-11-12).
+     */
+    private val headModelFile: File get() = File(replies.directory, "head.model")
+
+    private fun fingerprint(h: Sidecar.Head): String {
+        var hash = 0xcbf29ce484222325uL
+        fun mix(v: Float) {
+            var b = java.lang.Float.floatToRawIntBits(v).toUInt()
+            repeat(4) {
+                hash = (hash xor (b and 0xffu).toULong()) * 0x100000001b3uL
+                b = b shr 8
+            }
+        }
+        for (row in h.weight) for (v in row) mix(v)
+        for (v in h.bias) mix(v)
+        return hash.toString(16)
+    }
+
+    /** The trained layer gone: reset, or trained for another release of the model. */
+    private fun forgetTraining() {
+        headFile.delete()
+        trainingFile.delete()
+        headModelFile.delete()
+    }
+
+    /** The model, loaded once — with the trained layer when the user trained one for this release; one trained for another release is forgotten (its features are not this model's). */
     private fun loadGranita(): GranitaModel = granita ?: GranitaModel(activity.assets).also { m ->
-        if (m.personal) HeadWeights.load(headFile)?.let { m.head = it }
+        val origin = m.sidecar.head
+        if (m.personal && origin != null) {
+            val mark = if (headModelFile.isFile) headModelFile.readText().trim() else null
+            if (mark == fingerprint(origin)) HeadWeights.load(headFile)?.let { m.head = it }
+            else if (headFile.isFile) forgetTraining()
+        }
         granita = m
     }
 
@@ -311,6 +345,7 @@ class BattutaMobilePlugin(private val activity: Activity) : Plugin(activity) {
                 val report = Trainer.train(head, original, ReplayBuffer(examples), anchors)
                 model.head = head
                 head.save(headFile)
+                model.sidecar.head?.let { headModelFile.writeText(fingerprint(it)) }
                 val record = TrainingRecord(records.size, report.examples, report.anchors, report.loss.toDouble(), report.accuracy.toDouble(), report.anchorDrift.toDouble())
                 record.save(trainingFile)
                 invoke.resolve(record.into(JSObject()))
@@ -327,8 +362,7 @@ class BattutaMobilePlugin(private val activity: Activity) : Plugin(activity) {
             try {
                 val model = loadGranita()
                 model.sidecar.head?.let { model.head = HeadWeights(it.weight, it.bias) }
-                headFile.delete()
-                trainingFile.delete()
+                forgetTraining()
                 invoke.resolve(JSObject())
             } catch (e: Exception) {
                 invoke.reject("resetTraining: ${e.message ?: e}")

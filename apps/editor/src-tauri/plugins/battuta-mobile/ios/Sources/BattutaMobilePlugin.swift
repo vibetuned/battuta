@@ -125,10 +125,41 @@ class BattutaMobilePlugin: Plugin, UIDocumentPickerDelegate {
   private lazy var replies = Annotations(directory: stylusDirectory)
 
   /// The model, loaded once — with the trained layer, when the user trained one.
+  /// Which model the saved layer was trained for (`head.model`): a layer belongs to the features of
+  /// one release, and the sidecar names every release alike, so this is a fingerprint of the
+  /// release's own last layer — FNV-1a over its weights' bits (granita v10, 2026-11-12).
+  private var headModelURL: URL { stylusDirectory.appendingPathComponent("head.model") }
+
+  static func fingerprint(_ h: GranitaModel.Sidecar.Head) -> String {
+    var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+    for v in Array(h.weight.joined()) + h.bias {
+      var b = v.bitPattern
+      for _ in 0..<4 {
+        hash = (hash ^ UInt64(b & 0xff)) &* 0x0000_0100_0000_01b3
+        b >>= 8
+      }
+    }
+    return String(hash, radix: 16)
+  }
+
+  /// The trained layer gone: reset, or trained for another release of the model.
+  private func forgetTraining() {
+    for url in [headURL, trainingURL, headModelURL] { try? FileManager.default.removeItem(at: url) }
+  }
+
+  /// The model, loaded once — with the trained layer when the user trained one for this release;
+  /// one trained for another release is forgotten (its features are not this model's).
   private func loadGranita() throws -> GranitaModel {
     if let model = granita { return model }
     let model = try GranitaModel()
-    if model.personal, let saved = HeadWeights.load(from: headURL) { model.head = saved }
+    if model.personal, let origin = model.sidecar.head {
+      let mark = (try? String(contentsOf: headModelURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
+      if mark == Self.fingerprint(origin), let saved = HeadWeights.load(from: headURL) {
+        model.head = saved
+      } else if FileManager.default.fileExists(atPath: headURL.path) {
+        forgetTraining()
+      }
+    }
     granita = model
     return model
   }
@@ -218,6 +249,7 @@ class BattutaMobilePlugin: Plugin, UIDocumentPickerDelegate {
         let report = Trainer.train(&head, origin: origin, buffer: ReplayBuffer(replies: examples), anchors: anchors)
         model.head = head
         try head.save(to: self.headURL)
+        try Self.fingerprint(sidecarHead).write(to: self.headModelURL, atomically: true, encoding: .utf8)
         let record = TrainingRecord(replies: records.count, buffer: report.examples, anchors: report.anchors, loss: Double(report.loss), accuracy: Double(report.accuracy), drift: Double(report.anchorDrift))
         try record.save(to: self.trainingURL)
         invoke.resolve(record.json)
@@ -233,8 +265,7 @@ class BattutaMobilePlugin: Plugin, UIDocumentPickerDelegate {
       do {
         let model = try self.loadGranita()
         if let original = model.sidecar.head { model.head = HeadWeights(original) }
-        try? FileManager.default.removeItem(at: self.headURL)
-        try? FileManager.default.removeItem(at: self.trainingURL)
+        self.forgetTraining()
         invoke.resolve([:])
       } catch {
         invoke.reject("resetTraining: \(error)")

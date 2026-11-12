@@ -344,6 +344,40 @@ Phase 11). Its first slice is the bridge they all stand on.
   first draft of this in the stylus plugin failed the boundary test.
   Editor +9 tests (the message, the session's flow, the pen tap), the
   plugin 4.
+- **The cross unfolds into rulers (2026-11-12).** The user: the cross was
+  covered by the measures around it, as the handwriting's label had been,
+  and should become "a smaller cross" that past a threshold "will unfold
+  like an unfolded cube or a crossword puzzle", every change with "a note
+  of the corresponding length for the x axis and a letter of the pitch for
+  the y axis". The touch now shows a small cross and the ghost notehead;
+  past 12 px of drag (`UNFOLD_PX`, the gesture's new `unfolded`) it opens
+  into two rulers that cross like a crossword's words: across, above the
+  staff, a cell for every length engraved in Noto Music, one drag step
+  apart, so each sits where the pen chooses it; down the landing's column,
+  a letter for every step of the staff at its height, the lines' letters
+  left and the spaces' right, sized to the staff. The choice is lit in
+  both, the pitch with its octave, and pulses at every change; a chord
+  gets the letters only. A first version opened into five cells showing
+  the next step each way; the user meant a ruler. A ruler is wider than a
+  measure and each tile's frame clips what spills, so the overlap's fix is
+  that every tile of the landing's row draws its own part: the plugin
+  reads where each tile starts when the pen lands (`ctx.stylus.at` along
+  the reach) and lays the rulers out in the row's coordinates. Checked in
+  Chrome on the Mac over a row of clipped measures; plugin 75 tests.
+- **granita v10 in the shell (2026-11-12).** The user retrained granita's
+  battuta variant with the 140 replies the test shells recorded (run
+  `battuta_v10_replies_ctx`, granita commit b6f4a5a); `copy-granita.sh`
+  copied it. The classes, the input, the context and the tflite's names
+  are v8's, so no code changed for the model itself. granita's notes asked
+  for the Core ML package, exported on Linux, to be checked on a Mac: on
+  the fixtures it gives PyTorch's top-1 13 of 13, the logits within 0.036
+  on both functions, on the CPU and on every compute unit (fp16; granita's
+  bar is 0.1). **A trained layer belongs to its model**: a layer trained
+  on v8's features reads wrong on v10's, and the sidecar names every
+  release alike, so the natives keep beside the layer the release it was
+  trained for (`stylus/head.model`, a fingerprint of the release's own
+  last layer) and forget a layer trained for another one when the model
+  loads. The replies stay: *Stylus: train on my replies* again.
 - **M2: granita in the shell (2026-11-01).** `plugins/battuta-mobile`
   carries granita's released model, copied by
   `scripts/copy-granita.sh <granita checkout>` and named in

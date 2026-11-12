@@ -454,3 +454,16 @@ describe("the replies and the training (1.3.10)", () => {
     expect(state()?.training).toBeNull();
   });
 });
+
+describe("the cross's rulers reach the whole row", () => {
+  it("reads where the landing's tile starts on the page when the pen lands, for every tile to draw its part", () => {
+    const f = fixture(true);
+    f.place(at(4));
+    f.pen(stroke("down", 1, 150, at(4)));
+    const cross = f.overlays.find((o) => o.id === "cross")!;
+    const el = cross.render!({ measureIndex: 0, measureId: null, width: 300, height: 260, boxes: {}, staves: [] }) as ReactElement<{ origins: Store<Record<number, number>> }>;
+    // The landing at page x 150 is at x 50 in its tile: the tile starts at 100.
+    expect(el.props.origins.get()).toEqual({ 0: 100 });
+  });
+});
+

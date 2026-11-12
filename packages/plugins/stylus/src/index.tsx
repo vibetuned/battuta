@@ -19,10 +19,10 @@
  *     other kind.
  */
 import { definePlugin, type PluginContext, type StylusEvent, type StylusRecognition, type StylusReplies, type StylusScorePoint } from "@battuta/api";
-import { Cross } from "./Cross";
+import { Cross, type Origins } from "./Cross";
 import { bowKind, bowStep, boxOf, type Bow, type BowDone } from "./bow";
 import { chooserHeight, confirmRect, FeedbackLayer, InkLayer, ModeItem, OPTION_W, optionRect, type Feedback, type Ink, type Mode, type Option } from "./Feedback";
-import { IDLE, lengthOf, next, type Gesture } from "./gesture";
+import { DURATIONS, IDLE, lengthOf, next, STEP_X, type Gesture, type Landing } from "./gesture";
 import { group, tick, type Point, type Symbol, type Writing } from "./handwriting";
 import { DELETE_REPLIES_COMMAND, FEEDBACK_ID, INK_ID, MODE_COMMAND, OVERLAY_ID, RESET_TRAINING_COMMAND, SHARE_REPLIES_COMMAND, TRAIN_COMMAND } from "./manifest";
 import { RepliesSection } from "./Replies";
@@ -85,10 +85,29 @@ export default definePlugin({
 
     // --- the cross ---------------------------------------------------------------
 
+    /**
+     * Where each tile of the landing's row starts on the page, read when the
+     * pen lands: the cross's rulers reach past the landing's measure, and each
+     * tile draws its own part of them (the tile's frame clips what spills).
+     */
+    const rowOrigins = signal<Origins>({});
+    const readRow = (landing: Landing): void => {
+      const out: Record<number, number> = { [landing.at.measureIndex]: landing.x - landing.at.tile.x };
+      const reach = DURATIONS.length * STEP_X;
+      for (let dx = -reach; dx <= reach; dx += 24) {
+        const at = ctx.stylus.at(landing.x + dx, landing.y);
+        // The same row: the frames there sit at the landing's height.
+        if (at && !(at.measureIndex in out) && Math.abs(at.tile.y - landing.at.tile.y) < 2) out[at.measureIndex] = landing.x + dx - at.tile.x;
+      }
+      rowOrigins.set(out);
+    };
+
     const crossEvent = (e: StylusEvent): void => {
       const { entryDur, entryDots } = ctx.editor.get();
-      const step = next(gesture.get(), e, lengthOf(entryDur, entryDots));
+      const before = gesture.get();
+      const step = next(before, e, lengthOf(entryDur, entryDots));
       gesture.set(step.gesture);
+      if (step.gesture.kind === "cross" && (before.kind !== "cross" || before.landing.id !== step.gesture.landing.id)) readRow(step.gesture.landing);
       if (!step.write) return;
       try {
         ctx.execute(step.write);
@@ -325,7 +344,7 @@ export default definePlugin({
       clearShown();
     };
 
-    ctx.overlays.add({ id: OVERLAY_ID, render: (tile) => <Cross tile={tile} state={gesture} /> });
+    ctx.overlays.add({ id: OVERLAY_ID, render: (tile) => <Cross tile={tile} state={gesture} origins={rowOrigins} /> });
     ctx.overlays.add({ id: INK_ID, render: (tile) => <InkLayer tile={tile} state={ink} /> });
     ctx.overlays.add({ id: FEEDBACK_ID, render: (tile) => <FeedbackLayer tile={tile} state={feedback} onPick={pick} onConfirm={confirm} /> });
     ctx.registerCommand(MODE_COMMAND, toggle);

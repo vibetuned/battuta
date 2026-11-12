@@ -7,13 +7,20 @@ around them; and **slurs and ties**, drawn from note to note.
 
 ## The cross
 
-- **Touch** a staff: a cross comes up at the tip, with a label saying
-  what lifting the pen will write — the pitch under the pen, at the
+- **Touch** a staff: a small cross comes up at the tip, with a ghost
+  notehead where the note will go — the pitch under the pen, at the
   input's length (the one digits 1–7 pick in input mode, dotted if you
   dotted it).
-- **Drag** **right** for a longer note and **left** for a shorter one
-  (whole down to 64th; a dot stays), **up and down** for the pitch — a
-  step of the staff at a time, a ghost notehead showing where it goes.
+- **Drag**, and past a few pixels the cross **unfolds** into two rulers
+  that cross like a crossword's words. Across, above the staff, a cell for
+  every length as an engraved note, each where the pen has to be to
+  choose it: drag **right** for a longer note and **left** for a shorter
+  one (whole down to 64th; a dot stays). Down through the note, a letter
+  for every step of the staff at its height — the lines' letters on the
+  left, the spaces' on the right: drag **up and down** for the pitch, a
+  step at a time. The choice is lit in both, the pitch with its octave,
+  and pulses at every change. The rulers reach over the neighbouring
+  measures, which no longer cover them.
 - **Lift** the pen to write it, over the note or rest nearest where it
   landed on that staff, the way the keyboard enters a note: a shorter note
   leaves rests for the rest of the time, a longer one takes the events
@@ -22,8 +29,9 @@ around them; and **slurs and ties**, drawn from note to note.
   lift where you touched: the note as the cross first showed it.
 
 **Chords.** Squeeze the Apple Pencil Pro, or press the S Pen's side
-button, then touch above or below a note: the cross says "chord", follows
-the pitch only, and lifting adds that pitch to the note — or to the
+button, then touch above or below a note: the cross follows the pitch
+only — the letters, no ruler across — and lifting
+adds that pitch to the note — or to the
 chord it already is — at its own length. A press arms just the next
 stroke; press again before touching to disarm it. Holding the S Pen's
 button as the tip lands works too. A chord can't be built on a rest, and
@@ -140,6 +148,10 @@ shortcuts:
   the released model's answers, which it is held to.
 - **Stylus: reset the training** puts the released classifier back. The
   replies stay.
+
+A new release of the classifier forgets the trained layer: it was trained
+on the old classifier's reading of your symbols. The replies stay; train
+again.
 - **Stylus: share my replies** puts the file on the share sheet — AirDrop,
   Mail, Files, another app — to contribute it.
 - **Stylus: delete my replies** deletes the file, after asking.
