@@ -26,57 +26,70 @@ notation and the format instead of repeating it.
 
 ## Full description
 
-The same text for both stores (under 4,000 characters, Google Play's limit;
-the App Store's is the same), but for two sentences, the pen's and the
-files': the App Store's first, Google Play's in brackets. **Each store's text
-names only its own platform**: Apple refuses a listing that mentions Android
-or Google Play, and the Google Play text keeps away from Apple's names —
-the App Store, iOS, the iPhone, the iPad, the Apple Pencil, iCloud — the same
-way (the user, 2026-11-12). The release notes below follow the rule too.
+One text per store, pasted as is (each under 4,000 characters, both stores'
+limit). They differ in two bullets, the pen's and the files', because **each
+store's text names only its own platform**: Apple refuses a listing that
+mentions Android or Google Play, and the Google Play text keeps away from
+Apple's names (the App Store, iOS, the iPhone, the iPad, the Apple Pencil,
+iCloud, the Files app) the same way (the user, 2026-11-12). The release notes
+below follow the rule too.
 
-> battuta is a music notation editor that works the way a text editor does: a
-> caret that walks through the notes, a selection, copy and paste, and undo
-> that always lands. Your score is an MEI file, the open format of the Music
-> Encoding Initiative, and it stays yours.
->
-> • Write music by touch with the on-screen keyboard, from a hardware
->   keyboard, or by playing a MIDI instrument connected by USB or Bluetooth.
->   Accidentals follow the key signature, and what you enter always adds up to
->   a full measure.
-> • Write with the Apple Pencil on iPad: notes with a cross at the pen's tip,
->   marks written by hand and read on your iPad — by a reader that learns
->   from your writing and sends nothing anywhere — and slurs and ties drawn
->   from note to note. *(Google Play: Write with a stylus such as the S Pen
->   on a tablet: notes with a cross at the pen's tip, marks written by hand
->   and read on your tablet — by a reader that learns from your writing and
->   sends nothing anywhere — and slurs and ties drawn from note to note.)*
-> • Arrange in blocks: select measures and staves, copy them, paste them into
->   another staff or another score, transpose them.
-> • Ties, slurs, articulations, ornaments, dynamics, hairpins, pedal and
->   fingering; tuplets and grace notes; lyrics, chord symbols and Roman
->   numerals.
-> • Repeats, voltas, segno and coda — and playback that takes the jumps you
->   wrote, on the built-in piano or on your own MIDI instrument or app.
-> • Transcribe with a PDF of the original beside the score, or with a
->   recording's pitch traced over it.
-> • Open MusicXML, ABC, Humdrum and Plaine & Easie; export SVG pages, MIDI,
->   Humdrum and Plaine & Easie. Page view shows the score engraved as printed
->   pages.
-> • Your scores live in battuta's own folder in the Files app, or in any
->   folder you pick, iCloud Drive included; the share sheet sends a score or
->   an export anywhere. *(Google Play: Your scores live in battuta's own
->   folder, or in any folder you pick; the share sheet sends a score or an
->   export anywhere.)*
->
-> battuta is made in the open by Vibetuned, a non-profit for music and arts
-> education. It is free software (GNU AGPL v3): no account, no ads, no
-> tracking, and it never connects to the internet — nothing you write leaves
-> your device. The source is at github.com/vibetuned/battuta.
->
-> **Music notation is engraved by Verovio (verovio.org), © RISM Digital
-> Center, used under the GNU LGPL v3.** Piano samples from the Salamander
-> Grand Piano (Alexander Holm; CC BY 3.0). PDF display by pdf.js (Mozilla;
-> Apache License 2.0).
+Both stores show the description as plain text, line breaks as typed: one
+line per paragraph, a blank line between the bullets so the dots stand
+apart, no Markdown (the credit to Verovio is visible as a sentence of its
+own), and no em dashes (the user, 2026-11-12).
+
+### App Store
+
+```
+battuta is a music notation editor that works the way a text editor does: a caret that walks through the notes, a selection, copy and paste, and undo that always lands. Your score is an MEI file, the open format of the Music Encoding Initiative, and it stays yours.
+
+• Write music by touch with the on-screen keyboard, from a hardware keyboard, or by playing a MIDI instrument connected by USB or Bluetooth. Accidentals follow the key signature, and what you enter always adds up to a full measure.
+
+• Write with the Apple Pencil on iPad: notes with a cross at the pen's tip, marks written by hand, and slurs and ties drawn from note to note. Your handwriting is read on your iPad by a reader that learns from your writing and sends nothing anywhere.
+
+• Arrange in blocks: select measures and staves, copy them, paste them into another staff or another score, transpose them.
+
+• Ties, slurs, articulations, ornaments, dynamics, hairpins, pedal and fingering; tuplets and grace notes; lyrics, chord symbols and Roman numerals.
+
+• Repeats, voltas, segno and coda, with playback that takes the jumps you wrote, on the built-in piano or on your own MIDI instrument or app.
+
+• Transcribe with a PDF of the original beside the score, or with a recording's pitch traced over it.
+
+• Open MusicXML, ABC, Humdrum and Plaine & Easie; export SVG pages, MIDI, Humdrum and Plaine & Easie. Page view shows the score engraved as printed pages.
+
+• Your scores live in battuta's own folder in the Files app, or in any folder you pick, iCloud Drive included; the share sheet sends a score or an export anywhere.
+
+battuta is made in the open by Vibetuned, a non-profit for music and arts education. It is free software (GNU AGPL v3): no account, no ads, no tracking, and it never connects to the internet, so nothing you write leaves your device. The source is at github.com/vibetuned/battuta.
+
+Music notation is engraved by Verovio (verovio.org), © RISM Digital Center, used under the GNU LGPL v3. Piano samples from the Salamander Grand Piano (Alexander Holm; CC BY 3.0). PDF display by pdf.js (Mozilla; Apache License 2.0).
+```
+
+### Google Play
+
+```
+battuta is a music notation editor that works the way a text editor does: a caret that walks through the notes, a selection, copy and paste, and undo that always lands. Your score is an MEI file, the open format of the Music Encoding Initiative, and it stays yours.
+
+• Write music by touch with the on-screen keyboard, from a hardware keyboard, or by playing a MIDI instrument connected by USB or Bluetooth. Accidentals follow the key signature, and what you enter always adds up to a full measure.
+
+• Write with a stylus such as the S Pen on a tablet: notes with a cross at the pen's tip, marks written by hand, and slurs and ties drawn from note to note. Your handwriting is read on your tablet by a reader that learns from your writing and sends nothing anywhere.
+
+• Arrange in blocks: select measures and staves, copy them, paste them into another staff or another score, transpose them.
+
+• Ties, slurs, articulations, ornaments, dynamics, hairpins, pedal and fingering; tuplets and grace notes; lyrics, chord symbols and Roman numerals.
+
+• Repeats, voltas, segno and coda, with playback that takes the jumps you wrote, on the built-in piano or on your own MIDI instrument or app.
+
+• Transcribe with a PDF of the original beside the score, or with a recording's pitch traced over it.
+
+• Open MusicXML, ABC, Humdrum and Plaine & Easie; export SVG pages, MIDI, Humdrum and Plaine & Easie. Page view shows the score engraved as printed pages.
+
+• Your scores live in battuta's own folder, or in any folder you pick; the share sheet sends a score or an export anywhere.
+
+battuta is made in the open by Vibetuned, a non-profit for music and arts education. It is free software (GNU AGPL v3): no account, no ads, no tracking, and it never connects to the internet, so nothing you write leaves your device. The source is at github.com/vibetuned/battuta.
+
+Music notation is engraved by Verovio (verovio.org), © RISM Digital Center, used under the GNU LGPL v3. Piano samples from the Salamander Grand Piano (Alexander Holm; CC BY 3.0). PDF display by pdf.js (Mozilla; Apache License 2.0).
+```
 
 **URLs**: support `https://github.com/vibetuned/battuta/issues` · marketing
 `https://battuta.vibetuned.com/` · privacy policy

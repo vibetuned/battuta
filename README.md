@@ -134,8 +134,9 @@ npm run ios -- build --debug --target aarch64-sim         # the simulator (an iP
 ```
 
 `scripts/mobile.sh` finds Android's SDK and NDK where Android Studio puts
-them and a JDK 21 (Android Studio's bundled Java 25 is too new for the
-generated Gradle), for these commands only; granita's model (and the anchors
+them and a JDK 21, for these commands only. The Android project is Gradle
+9.8 with the Android Gradle plugin 9.5 and Kotlin 2.4 (since 1.3.0, as in
+midi-stroke), so it needs Android Studio 2026.2.1 or later; granita's model (and the anchors
 its training on the device holds to), which both tablet apps carry for the
 stylus, comes from a granita checkout by
 `sh src-tauri/plugins/battuta-mobile/scripts/copy-granita.sh <granita>`
@@ -161,7 +162,11 @@ first.
 Vibetuned's midi-stroke is. `npm run ios -- build --open` (or `android`)
 builds, opens the IDE on the generated project and keeps the Tauri CLI
 running — leave that terminal open: the project's Rust step calls back into
-it. In Xcode, *Any iOS Device (arm64)*, **Product → Archive**, then the
+it. Quit Android Studio (⌘Q) before: the CLI hands it the NDK's linkers in
+its environment, and an Android Studio already running — or one that
+restarted itself after an update — keeps the one it started with, so its
+builds link the Rust library with the Mac's own `cc` ("ld: unknown
+options: --version-script…"; 2026-11-12). In Xcode, *Any iOS Device (arm64)*, **Product → Archive**, then the
 Organizer's **Distribute App → App Store Connect**; in Android Studio,
 **Build → Generate Signed App Bundle or APK → Android App Bundle**, the
 upload key, the *universalRelease* variant. (A release build from the

@@ -8,9 +8,11 @@ set -e
 if [ -z "$NDK_HOME" ] && [ -d "$ANDROID_HOME/ndk" ]; then
   NDK_HOME="$ANDROID_HOME/ndk/$(ls "$ANDROID_HOME/ndk" | sort -V | tail -1)"
 fi
-# Gradle 8.14 (the generated wrapper) runs on Java 17–21; Android Studio's
-# bundled runtime is Java 25, which it rejects ("class file major version
-# 69"), so a JDK 21 (else 17) is picked unless JAVA_HOME is set.
+# Gradle's daemon runs on the JDK 21 gradle/gradle-daemon-jvm.properties
+# names, whatever starts it: since Gradle 9.8 (2026-11-12) Android Studio's
+# bundled Java 25 starts it too — Gradle 8.14 rejected it ("class file major
+# version 69"). A JDK 21 (else 17) is still picked unless JAVA_HOME is set:
+# no longer needed, and harmless.
 if [ -z "$JAVA_HOME" ] && [ -x /usr/libexec/java_home ]; then
   JAVA_HOME="$(/usr/libexec/java_home -v 21 2>/dev/null || /usr/libexec/java_home -v 17 2>/dev/null || true)"
 fi

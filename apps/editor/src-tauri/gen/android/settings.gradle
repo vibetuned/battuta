@@ -1,6 +1,6 @@
 // The Gradle daemon's JDK 21 (gradle/gradle-daemon-jvm.properties) is fetched
-// through this resolver when the machine has none: Android Studio's own
-// runtime (Java 25) is too new for Gradle 8.14.
+// through this resolver when the machine has none. Gradle 9.8 starts from
+// whatever Java launches it, Android Studio's own Java 25 included (8.14 did not).
 plugins {
     id 'org.gradle.toolchains.foojay-resolver-convention' version '0.10.0'
 }

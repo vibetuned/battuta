@@ -76,6 +76,11 @@ android {
     // the first alphabetically, "arm" (32-bit only); "universal" carries all four,
     // as the Tauri CLI builds it (after Vibetuned's midi-stroke).
     productFlavors.getByName("universal").isDefault = true
+    // Java 8, as before AGP 9 (which defaults to 11), so that Java and Kotlin agree.
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
     buildFeatures {
         buildConfig = true
     }
@@ -104,4 +109,6 @@ dependencies {
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")
 }
 
-apply(from = "tauri.build.gradle.kts")
+// Through file(): AGP 9's release lint follows a script applied from a plain string and
+// crashes on it ("findFirCompiledSymbol only works on compiled declarations"; midi-stroke).
+apply(from = file("tauri.build.gradle.kts"))

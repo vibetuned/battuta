@@ -366,6 +366,29 @@ plugins keep theirs: Stylus 1.4.0, Screencast keys 1.3.0, Add measure
   first draft of this in the stylus plugin failed the boundary test.
   Editor +9 tests (the message, the session's flow, the pen tap), the
   plugin 4.
+- **Gradle 9.8, the Android Gradle plugin 9.5 and Kotlin 2.4 (2026-11-12).**
+  The user, having moved midi-stroke: "I think we can do the same here".
+  The Android project (`src-tauri/gen/android`) takes midi-stroke's
+  changes: the Gradle 9.8.2 wrapper (its jar and scripts, the
+  distribution's checksum), the plugin 9.5.0 in the root and in
+  `buildSrc`, Kotlin's 2.4.10, the Rust build step running through
+  Gradle's `ExecOperations` (`project.exec` is gone in Gradle 9),
+  `android.builtInKotlin=false` and `android.newDsl=false` while Tauri's
+  own Android libraries — and battuta-mobile — still apply the
+  `kotlin-android` plugin, the app on Java 8 (the plugin's default became
+  11) and `tauri.build.gradle.kts` applied through `file(…)`, which the
+  release lint does not follow. battuta-mobile keeps its consumer rules
+  (midi-stroke's library dropped a line naming a file it did not have).
+  **Found on the way:** the plugin 9.5 brings Kotlin's Gradle plugin
+  2.2.10 into `buildSrc`, whose classes win over the root script's, so
+  the 2.4.10 asked for there was never loaded, and a 2.2 compiler cannot
+  read LiteRT's Kotlin 2.4 metadata (granita's classifier): `buildSrc`
+  asks for 2.4.10 too. Gradle 9.8 starts from Android Studio's own Java
+  25, which 8.14 refused; the daemon still runs on JDK 21, and the
+  comments that said otherwise (`mobile.sh`, `settings.gradle`, the
+  README) are corrected. The project needs Android Studio 2026.2.1 or
+  later. Debug and release builds pass; the release one is unsigned here,
+  without the upload key.
 - **The stores for 1.3.0 (2026-11-12).** The user: "you forgot the release
   notes and the screen shots of the cross for the store". The listing
   (`apps/editor/store/listing.md`) gains 1.3.0's notes — Google Play's

@@ -5,8 +5,15 @@ import org.gradle.api.GradleException
 import org.gradle.api.logging.LogLevel
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.TaskAction
+import javax.inject.Inject
+import org.gradle.process.ExecOperations
 
-open class BuildTask : DefaultTask() {
+// Gradle 9 removed project.exec: commands run through the injected ExecOperations, and
+// the project's folder is read while the build is configured, not while the task runs
+// (after Vibetuned's midi-stroke, 2026-11-05).
+open class BuildTask @Inject constructor(private val execOperations: ExecOperations) : DefaultTask() {
+    private val projectDir = project.projectDir
+
     @Input
     var rootDirRel: String? = null
     @Input
@@ -50,13 +57,13 @@ open class BuildTask : DefaultTask() {
         val release = release ?: throw GradleException("release cannot be null")
         val args = listOf("run", "--", "tauri", "android", "android-studio-script");
 
-        project.exec {
-            workingDir(File(project.projectDir, rootDirRel))
+        execOperations.exec {
+            workingDir(File(projectDir, rootDirRel))
             executable(executable)
             args(args)
-            if (project.logger.isEnabled(LogLevel.DEBUG)) {
+            if (logger.isEnabled(LogLevel.DEBUG)) {
                 args("-vv")
-            } else if (project.logger.isEnabled(LogLevel.INFO)) {
+            } else if (logger.isEnabled(LogLevel.INFO)) {
                 args("-v")
             }
             if (release) {
